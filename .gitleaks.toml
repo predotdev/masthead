@@ -1,0 +1,22 @@
+title = "masthead"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "predev-api-key"
+description = "pre.dev API key"
+regex = '''\bpdk_[A-Za-z0-9_-]{16,}'''
+keywords = ["pdk_"]
+
+[[rules]]
+id = "ghost-admin-api-key"
+description = "Ghost Admin API key"
+regex = '''\b[0-9a-f]{24}:[0-9a-f]{64}\b'''
+
+[allowlist]
+paths = [
+  '''node_modules/''',
+  '''dist/''',
+  '''bun\.lock''',
+]

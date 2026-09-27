@@ -1,0 +1,24 @@
+{
+  "name": "masthead",
+  "private": true,
+  "type": "module",
+  "description": "An open-source blog and newsletter with an AI writing studio.",
+  "license": "MIT",
+  "workspaces": [
+    "packages/*",
+    "connectors/*",
+    "apps/*",
+    "examples/*"
+  ],
+  "scripts": {
+    "masthead": "bun packages/cli/src/index.ts",
+    "typecheck": "tsc -p tsconfig.json && tsc -p packages/server/tsconfig.json && tsc -p packages/admin/tsconfig.json",
+    "check:leaks": "bun scripts/leak-guard.ts && gitleaks dir . --no-banner --redact --config .gitleaks.toml",
+    "smoke": "bun scripts/smoke.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/turndown": "^5.0.5",
+    "typescript": "^5.9.3"
+  }
+}

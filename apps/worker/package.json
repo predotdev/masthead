@@ -1,0 +1,18 @@
+{
+  "name": "@masthead/worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@masthead/ai-predev": "workspace:*",
+    "@masthead/email-resend": "workspace:*",
+    "@masthead/server": "workspace:*",
+    "@masthead/theme-default": "workspace:*"
+  },
+  "devDependencies": {
+    "wrangler": "4.142.0"
+  }
+}

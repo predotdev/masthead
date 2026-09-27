@@ -1,0 +1,17 @@
+{
+  "name": "@masthead/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "masthead": "./src/index.ts"
+  },
+  "dependencies": {
+    "@masthead/ai-predev": "workspace:*",
+    "@masthead/core": "workspace:*",
+    "@masthead/import-ghost": "workspace:*",
+    "@masthead/render": "workspace:*",
+    "@masthead/theme-default": "workspace:*",
+    "@masthead/web-fs": "workspace:*"
+  }
+}

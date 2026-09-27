@@ -1,0 +1,13 @@
+{
+  "name": "@masthead/source-json",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "description": "Any JSON feed (a changelog, a status page, an API) as a Masthead studio source.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@masthead/core": "workspace:*"
+  }
+}

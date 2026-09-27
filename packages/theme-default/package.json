@@ -1,0 +1,13 @@
+{
+  "name": "@masthead/theme-default",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "description": "The default Masthead theme: fast, readable, no third-party scripts.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@masthead/core": "workspace:*"
+  }
+}

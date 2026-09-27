@@ -1,0 +1,14 @@
+{
+  "name": "@masthead/render",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "description": "Render a Masthead snapshot to a static site: pages, feeds, sitemaps, structured data, llms.txt and markdown copies.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@masthead/core": "workspace:*",
+    "marked": "^18.0.14"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "@masthead/email-resend",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "description": "Send Masthead newsletters and account email through Resend.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@masthead/core": "workspace:*"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "@masthead/import-ghost",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "description": "Import posts, pages, tags, authors and settings from a Ghost site into a Masthead snapshot.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@masthead/core": "workspace:*",
+    "turndown": "^7.2.4"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "@masthead/source-predev",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "description": "Projects you build on pre.dev, as a Masthead studio source.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@masthead/core": "workspace:*"
+  }
+}

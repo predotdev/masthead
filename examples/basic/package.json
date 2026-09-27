@@ -1,0 +1,12 @@
+{
+  "name": "@masthead/example-basic",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@masthead/ai-predev": "workspace:*",
+    "@masthead/cli": "workspace:*",
+    "@masthead/core": "workspace:*",
+    "@masthead/theme-default": "workspace:*",
+    "@masthead/web-fs": "workspace:*"
+  }
+}

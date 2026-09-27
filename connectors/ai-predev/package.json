@@ -1,0 +1,13 @@
+{
+  "name": "@masthead/ai-predev",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "description": "pre.dev AI for Masthead: hundreds of text and image models on one pre.dev API key.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@masthead/core": "workspace:*"
+  }
+}

@@ -1,0 +1,49 @@
+# Copy to wrangler.toml and fill in your own ids. Keep that copy out of the
+# public repo if it names your account or resources.
+name = "masthead"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+workers_dev = true
+
+# Every minute: scheduled posts and newsletter batches.
+[triggers]
+crons = ["* * * * *"]
+
+[observability]
+enabled = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "masthead"
+database_id = "<your D1 database id>"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "masthead"
+
+# The admin app, built by `bun run --cwd packages/admin build` into ../../packages/admin/dist.
+[assets]
+directory = "../../packages/admin/dist"
+binding = "ASSETS"
+run_worker_first = true
+# The Worker maps <base>admin/... onto these files itself.
+html_handling = "none"
+not_found_handling = "none"
+
+[vars]
+SITE_URL = "https://example.com/blog/"
+EMAIL_FROM = "Example <news@example.com>"
+# Until you switch traffic, keep newsletters away from real inboxes:
+EMAIL_TEST_MODE = "true"
+# LINK_TAG = "ref=example.com"
+# Default models for drafting and images; editors can change them in Settings, AI.
+# TEXT_MODEL = "<model id>"
+# IMAGE_MODEL = "<model id>"
+# APP_URL = "https://masthead.<your-subdomain>.workers.dev/blog/"
+
+# Secrets (wrangler secret put <NAME>):
+#   SECRET            random, 32+ characters: signs links
+#   BOOTSTRAP_TOKEN   random, 32+ characters: first sign-in and the CLI
+#   RESEND_API_KEY    email
+#   RESEND_WEBHOOK_SECRET  from the Resend webhook you point at <base>api/webhooks/email
+#   PREDEV_API_KEY    AI drafting and images

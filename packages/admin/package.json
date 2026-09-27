@@ -1,0 +1,20 @@
+{
+  "name": "@masthead/admin",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "description": "The Masthead admin: editor, members, newsletters, studio.",
+  "scripts": {
+    "build": "bun build.ts"
+  },
+  "dependencies": {
+    "@preact/signals": "^2.11.2",
+    "@tiptap/core": "^3.31.3",
+    "@tiptap/extension-image": "^3.31.3",
+    "@tiptap/extension-placeholder": "^3.31.3",
+    "@tiptap/markdown": "^3.31.3",
+    "@tiptap/pm": "^3.31.3",
+    "@tiptap/starter-kit": "^3.31.3",
+    "preact": "^10.29.8"
+  }
+}

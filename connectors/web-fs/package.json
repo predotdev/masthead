@@ -1,0 +1,13 @@
+{
+  "name": "@masthead/web-fs",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "description": "Write the rendered site to a local folder.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@masthead/core": "workspace:*"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "name": "@masthead/server",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "description": "The Masthead server: public blog, admin API, newsletter and studio, on Cloudflare Workers with D1 and R2.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@masthead/ai-predev": "workspace:*",
+    "@masthead/core": "workspace:*",
+    "@masthead/email-resend": "workspace:*",
+    "@masthead/render": "workspace:*",
+    "@masthead/theme-default": "workspace:*"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250920.0"
+  }
+}

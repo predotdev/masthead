@@ -1,0 +1,13 @@
+{
+  "name": "@masthead/source-github",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "description": "GitHub for the Masthead studio: merged pull requests, releases and structured files from an explicit list of repositories.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@masthead/core": "workspace:*"
+  }
+}
