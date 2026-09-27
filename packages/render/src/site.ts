@@ -1,9 +1,9 @@
-import type { Author, ListItem, ListView, OutputFile, PageMeta, Post, PostView, RenderOptions, SiteSettings, Snapshot, Tag, Theme, ThemeContext } from '@masthead/core';
+import type { Author, ListItem, ListView, OutputFile, PageMeta, Post, PostView, RenderOptions, SearchEntry, SiteSettings, Snapshot, Tag, Theme, ThemeContext } from '@masthead/core';
 import { renderBody } from './body';
 import { rss, sitemapIndex, urlset } from './feeds';
 import { blogLd, blogPostingLd, breadcrumbLd, collectionLd, headTags, profileLd } from './head';
 import { llmsTxt, markdownCopy } from './llms';
-import { autoExcerpt, fileFor, plainText, readingMinutes, tagLinks, wordCount } from './util';
+import { autoExcerpt, fileFor, plainText, readingMinutes, shortHash, tagLinks, wordCount } from './util';
 
 export interface BuildOptions {
     theme: Theme;
@@ -51,9 +51,23 @@ export async function buildSite(snapshot: Snapshot, options: BuildOptions): Prom
         author: (a: Author) => `${basePath}author/${a.slug}/`,
         paged: (prefix: string, n: number) => (n === 1 ? prefix : `${prefix}page/${n}/`),
         rss: `${basePath}rss/`,
-        css: `${basePath}assets/masthead.css`
+        css: `${basePath}assets/masthead.css`,
+        assets: `${basePath}assets/`,
+        search: `${basePath}search/`,
+        searchIndex: `${basePath}search.json`
     };
-    const ctx: ThemeContext = { site, basePath, cssHref: urls.css, rssHref: urls.rss, subscribeUrl: options.features?.subscribeUrl };
+    const version = themeAssetsVersion(theme);
+    const ctx: ThemeContext = {
+        site,
+        basePath,
+        cssHref: `${urls.css}?v=${version}`,
+        assetsVersion: version,
+        rssHref: urls.rss,
+        assetsHref: urls.assets,
+        searchHref: urls.search,
+        searchIndexHref: urls.searchIndex,
+        subscribeUrl: options.features?.subscribeUrl
+    };
     // Share cards, structured data, feeds and sitemaps need absolute image URLs.
     const absolute = (u: string | null | undefined) => (u && u.startsWith('/') && !u.startsWith('//') ? `${base.origin}${u}` : (u ?? null));
     const metaSite: SiteSettings = {
@@ -70,6 +84,11 @@ export async function buildSite(snapshot: Snapshot, options: BuildOptions): Prom
     }
 
     const publicTags = (p: Post) => p.tags.map(id => tagsById.get(id)).filter((t): t is Tag => !!t && t.visibility === 'public');
+    ctx.topics = snapshot.tags
+        .filter(t => t.visibility === 'public')
+        .map(t => ({ name: t.name, slug: t.slug, url: urls.tag(t), count: posts.filter(p => p.tags.includes(t.id)).length }))
+        .filter(t => t.count > 0)
+        .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
     const postAuthors = (p: Post) => p.authors.map(id => authorsById.get(id)).filter((a): a is Author => !!a);
     const listItem = (p: Post): ListItem => {
         const r = rendered.get(p.id)!;
@@ -247,6 +266,23 @@ export async function buildSite(snapshot: Snapshot, options: BuildOptions): Prom
         contentType: 'text/html; charset=utf-8'
     });
     files.push({ path: fileFor(urls.css), contents: theme.css, contentType: 'text/css; charset=utf-8' });
+    for (const a of theme.assets ?? []) files.push({ ...a, path: fileFor(`${urls.assets}${a.path}`) });
+
+    // Search index: read by the theme's search box, and by the server's search page.
+    const search: SearchEntry[] = [...posts, ...pages].map(p => {
+        const r = rendered.get(p.id)!;
+        return {
+            title: p.title,
+            url: urls.post(p),
+            excerpt: r.excerpt,
+            tags: publicTags(p).map(t => t.name),
+            authors: postAuthors(p).map(a => a.name),
+            date: p.type === 'post' ? p.publishedAt : null,
+            image: p.featureImage ?? null,
+            text: plainText(r.html).slice(0, 1500)
+        };
+    });
+    files.push({ path: fileFor(urls.searchIndex), contents: JSON.stringify(search), contentType: 'application/json; charset=utf-8' });
 
     const feedUrl = abs(urls.rss);
     files.push({
@@ -316,6 +352,11 @@ export async function buildSite(snapshot: Snapshot, options: BuildOptions): Prom
         routes,
         stats: { posts: posts.length, pages: pages.length, tags: tagsWithPosts.length, authors: authorsWithPosts.length, files: files.length }
     };
+}
+
+/** Changes whenever the theme's stylesheet or files change, so their URLs can be cached for good. */
+export function themeAssetsVersion(theme: Theme): string {
+    return shortHash(theme.css + (theme.assets ?? []).map(a => (typeof a.contents === 'string' ? a.contents : String(a.contents.length))).join(''));
 }
 
 /** Up to three other posts, preferring the same primary tag. */

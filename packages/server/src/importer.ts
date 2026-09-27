@@ -10,10 +10,11 @@ import { HttpError, newId, now, slugify } from './util';
 export async function importContent(ctx: Ctx, snap: Snapshot) {
     if (snap?.format !== 'masthead.snapshot/1') throw new HttpError(400, 'Expected a masthead.snapshot/1 document.');
     const db = ctx.db;
+    // Settings already made here win: re-running an import never undoes the site's own design.
     const { url: _url, ...site } = snap.site;
     const current = await getSetting<Record<string, unknown>>(db, 'site', {});
-    await setSetting(db, 'site', { ...current, ...site });
-    if (snap.newsletter) await setSetting(db, 'newsletter', { ...(await getSetting(db, 'newsletter', {})), ...snap.newsletter });
+    await setSetting(db, 'site', { ...site, ...current });
+    if (snap.newsletter) await setSetting(db, 'newsletter', { ...snap.newsletter, ...(await getSetting(db, 'newsletter', {})) });
 
     // Staff first: posts reference them as authors.
     const staffIds = new Map<string, string>();

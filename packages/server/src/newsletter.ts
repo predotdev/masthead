@@ -238,6 +238,9 @@ export async function recordEmailEvents(db: D1Database, events: EmailEvent[]): P
         const r = e.providerId
             ? await db.prepare('SELECT send_id, member_id FROM send_recipients WHERE provider_id = ?').bind(e.providerId).first<{ send_id: string; member_id: string }>()
             : null;
+        // Provider webhooks cover every email on the account. Keep only newsletter events,
+        // plus bounces and complaints, which protect the list whatever email caused them.
+        if (!r && e.type !== 'bounced' && e.type !== 'complained') continue;
         const stmts: D1PreparedStatement[] = [
             db.prepare('INSERT INTO email_events (send_id, member_id, type, provider_id, at) VALUES (?, ?, ?, ?, ?)').bind(r?.send_id ?? null, r?.member_id ?? null, e.type, e.providerId ?? null, e.at)
         ];

@@ -1,9 +1,12 @@
+import type { SearchEntry, ThemeContext } from '@masthead/core';
+import { themeAssetsVersion } from '@masthead/render';
+import { principal } from './auth';
 import { siteSettings } from './content';
 import { migrate } from './db';
-import { confirmEmail, page } from './email';
+import { confirmEmail } from './email';
 import type { Ctx } from './env';
 import { checkMemberToken, getMember, getMemberByExternalUuid, memberToken, requestSubscription, setStatus } from './members';
-import { appUrl, recordEmailEvents, testAddress, testMode } from './newsletter';
+import { appUrl, recordEmailEvents, testMode } from './newsletter';
 import { SITE_PREFIX, edgeCache, edgeKey } from './publish';
 import { Router } from './router';
 import { HttpError, body, escapeHtml as esc, html, json, redirect } from './util';
@@ -39,18 +42,22 @@ export async function serveSite(req: Request, ctx: Ctx): Promise<Response> {
     }
     key = key.replace(/^\/+/, '');
 
+    // Theme files are requested with ?v=<content hash>; each version is its own cache entry and never changes.
+    const version = key.startsWith(`${base.slice(1)}assets/`) ? ctx.url.searchParams.get('v') : null;
+
     // Served from the edge cache when possible: fresh for a minute, then refreshed in the background.
     const canonical = !robots(ctx)['x-robots-tag'];
     const cache = edgeCache();
+    const cacheKey = version ? `${key}?v=${version}` : key;
     if (cache && req.method === 'GET') {
-        const hit = await cache.match(edgeKey(key, canonical));
+        const hit = await cache.match(edgeKey(cacheKey, canonical));
         const age = hit ? Date.now() - Number(hit.headers.get(CACHED_AT) ?? 0) : Infinity;
-        if (hit && age < EDGE_MAX_STALE_MS) {
-            if (age > EDGE_FRESH_MS) ctx.exec.waitUntil(fromStorage(ctx, key, canonical, null).catch(() => {}));
+        if (hit && (version || age < EDGE_MAX_STALE_MS)) {
+            if (!version && age > EDGE_FRESH_MS) ctx.exec.waitUntil(fromStorage(ctx, key, canonical, null, null).catch(() => {}));
             return notModified(req, hit.headers) ?? toBrowser(hit);
         }
     }
-    return fromStorage(ctx, key, canonical, req);
+    return fromStorage(ctx, key, canonical, req, version);
 }
 
 const EDGE_FRESH_MS = 60_000;
@@ -59,7 +66,7 @@ const CACHED_AT = 'x-masthead-cached-at';
 const BROWSER_CC = 'x-masthead-cache-control';
 
 /** Reads a site file from storage, answers the reader (when there is one) and refreshes the edge copy. */
-async function fromStorage(ctx: Ctx, key: string, canonical: boolean, req: Request | null): Promise<Response> {
+async function fromStorage(ctx: Ctx, key: string, canonical: boolean, req: Request | null, version: string | null): Promise<Response> {
     // Revalidation: weak ETags survive Cloudflare's compression, and Last-Modified
     // covers HTML, whose ETag Cloudflare drops when it may rewrite the page.
     const cached = req?.headers.get('if-none-match')?.split(',')[0]?.trim().replace(/^W\//, '').replace(/"/g, '');
@@ -78,7 +85,7 @@ async function fromStorage(ctx: Ctx, key: string, canonical: boolean, req: Reque
     headers.set('etag', `W/${obj.httpEtag}`);
     headers.set('last-modified', obj.uploaded.toUTCString());
     const isHtml = (headers.get('content-type') ?? '').startsWith('text/html');
-    headers.set('cache-control', isHtml || key.endsWith('.xml') || key.endsWith('.txt') ? 'public, max-age=0, must-revalidate' : 'public, max-age=300');
+    headers.set('cache-control', version ? 'public, max-age=31536000, immutable' : isHtml || key.endsWith('.xml') || key.endsWith('.txt') || key.endsWith('.json') ? 'public, max-age=0, must-revalidate' : 'public, max-age=300');
     if (!('body' in obj)) return new Response(null, { status: 304, headers });
 
     let body: ReadableStream | null = obj.body;
@@ -88,7 +95,7 @@ async function fromStorage(ctx: Ctx, key: string, canonical: boolean, req: Reque
         stored.headers.set(BROWSER_CC, headers.get('cache-control')!);
         stored.headers.set('cache-control', 'public, max-age=86400');
         stored.headers.set(CACHED_AT, String(Date.now()));
-        const put = cache.put(edgeKey(key, canonical), stored);
+        const put = cache.put(edgeKey(version ? `${key}?v=${version}` : key, canonical), stored);
         if (!req) {
             await put;
             return new Response(null, { status: 204 });
@@ -128,12 +135,15 @@ export async function serveMedia(req: Request, ctx: Ctx): Promise<Response> {
     } catch {
         return new Response('Not found', { status: 404 });
     }
-    const obj = await ctx.env.BUCKET.get(`${MEDIA_PREFIX}${rel}`, { onlyIf: req.headers, range: req.headers });
+    let obj = await ctx.env.BUCKET.get(`${MEDIA_PREFIX}${rel}`, { onlyIf: req.headers, range: req.headers });
+    // A resized variant that was never made: serve the original, briefly cached, until one exists.
+    const variant = obj === null ? rel.match(/^content\/images\/size\/w\d+(?:h\d+)?\/(.+)$/) : null;
+    if (variant) obj = await ctx.env.BUCKET.get(`${MEDIA_PREFIX}content/images/${variant[1]}`, { onlyIf: req.headers, range: req.headers });
     if (obj === null) return new Response('Not found', { status: 404 });
     const headers = new Headers(SECURITY_HEADERS);
     obj.writeHttpMetadata(headers);
     headers.set('etag', obj.httpEtag);
-    headers.set('cache-control', 'public, max-age=31536000, immutable');
+    headers.set('cache-control', variant ? 'public, max-age=3600' : 'public, max-age=31536000, immutable');
     headers.set('accept-ranges', 'bytes');
     if (!('body' in obj)) return new Response(null, { status: 304, headers });
     if (req.headers.has('range') && obj.range && 'offset' in obj.range) {
@@ -150,9 +160,76 @@ function wantsHtml(req: Request): boolean {
     return (req.headers.get('accept') ?? '').includes('text/html') || (req.headers.get('content-type') ?? '').includes('form');
 }
 
-async function resultPage(ctx: Ctx, title: string, bodyHtml: string, status = 200): Promise<Response> {
+/** What a theme needs to render a page that isn't part of the published site. */
+export async function themeContext(ctx: Ctx): Promise<ThemeContext> {
     const site = await siteSettings(ctx.env, ctx.db);
-    return html(page(site, `${ctx.basePath}assets/masthead.css`, title, bodyHtml), status, { ...SECURITY_HEADERS, 'x-robots-tag': 'noindex' });
+    const base = ctx.basePath;
+    const version = themeAssetsVersion(ctx.options.theme);
+    return {
+        site,
+        basePath: base,
+        cssHref: `${base}assets/masthead.css?v=${version}`,
+        assetsVersion: version,
+        rssHref: `${base}rss/`,
+        assetsHref: `${base}assets/`,
+        searchHref: `${base}search/`,
+        searchIndexHref: `${base}search.json`,
+        subscribeUrl: `${base}api/subscribe`
+    };
+}
+
+async function resultPage(ctx: Ctx, title: string, bodyHtml: string, status = 200): Promise<Response> {
+    const theme = ctx.options.theme;
+    const t = await themeContext(ctx);
+    const main = theme.message ? theme.message(t, { title, html: bodyHtml }) : `<section><h1>${esc(title)}</h1>${bodyHtml}</section>`;
+    const page = theme.document(t, { title: `${title} - ${t.site.title}`, description: t.site.description, canonical: t.site.url, head: '<meta name="robots" content="noindex">' }, main);
+    return html(page, status, { ...SECURITY_HEADERS, 'x-robots-tag': 'noindex' });
+}
+
+/** Posts matching every word of the query, best first. The theme's search box scores the same way. */
+export function searchEntries(all: SearchEntry[], query: string): SearchEntry[] {
+    const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+    if (!terms.length) return [];
+    const scored: { e: SearchEntry; s: number }[] = [];
+    for (const e of all) {
+        const title = e.title.toLowerCase();
+        const tags = e.tags.join(' ').toLowerCase();
+        const text = `${e.excerpt} ${e.text} ${e.authors.join(' ')}`.toLowerCase();
+        let s = 0;
+        for (const q of terms) {
+            let hit = false;
+            const at = title.indexOf(q);
+            if (at >= 0) (hit = true), (s += at === 0 || title[at - 1] === ' ' ? 12 : 6);
+            if (tags.includes(q)) (hit = true), (s += 4);
+            if (text.includes(q)) (hit = true), (s += 1);
+            if (!hit) {
+                s = 0;
+                break;
+            }
+        }
+        if (s > 0) scored.push({ e, s });
+    }
+    return scored.sort((a, b) => b.s - a.s || String(b.e.date).localeCompare(String(a.e.date))).map(x => x.e);
+}
+
+/** The search page: results rendered on the server, so search works without JavaScript. */
+export async function serveSearch(_req: Request, ctx: Ctx): Promise<Response> {
+    await migrate(ctx.db);
+    const q = (ctx.url.searchParams.get('q') ?? '').trim().slice(0, 200);
+    const theme = ctx.options.theme;
+    const t = await themeContext(ctx);
+    let results: SearchEntry[] = [];
+    if (q) {
+        const index = await ctx.env.BUCKET.get(`${SITE_PREFIX}${ctx.basePath.slice(1)}search.json`);
+        results = searchEntries(index ? await index.json<SearchEntry[]>() : [], q).slice(0, 25);
+    }
+    if (!theme.search) return redirect(ctx.basePath, 302);
+    const page = theme.document(
+        t,
+        { title: q ? `Search: ${q} - ${t.site.title}` : `Search - ${t.site.title}`, description: t.site.description, canonical: `${t.site.url}search/`, head: '<meta name="robots" content="noindex">' },
+        theme.search(t, { query: q, results })
+    );
+    return html(page, 200, { ...SECURITY_HEADERS, ...robots(ctx), 'x-robots-tag': 'noindex', 'cache-control': 'no-store' });
 }
 
 export function publicRoutes(): Router<Ctx> {
@@ -173,7 +250,8 @@ export function publicRoutes(): Router<Ctx> {
                 ctx.exec.waitUntil(
                     transport.send([
                         {
-                            to: testMode(ctx.env) ? testAddress(ctx.env) : member.email,
+                            // Test mode holds back newsletters only: someone who signs up gets their confirmation.
+                            to: member.email,
                             from: ctx.env.EMAIL_FROM,
                             subject: mail.subject,
                             html: mail.html,
@@ -189,8 +267,13 @@ export function publicRoutes(): Router<Ctx> {
                 ? resultPage(ctx, 'Check your email', '<p class="dek">We sent you a link to confirm your subscription.</p>')
                 : resultPage(ctx, "You're already subscribed", `<p class="dek">You'll keep getting new posts. <a href="${esc(ctx.basePath)}">Back to the blog</a></p>`);
         }
-        // In test mode the link is returned so automated checks can confirm without an inbox.
-        return json({ ok: true, status: needsConfirmation ? 'pending' : 'subscribed', ...(testMode(ctx.env) && confirmUrl ? { confirmUrl } : {}) });
+        // Automated checks signed in as an admin get the link back in test mode, so they can confirm without an inbox.
+        let reveal = false;
+        if (confirmUrl && testMode(ctx.env) && req.headers.get('authorization')) {
+            const caller = await principal(req, ctx.env, ctx.db);
+            reveal = caller?.role === 'owner' || caller?.role === 'admin';
+        }
+        return json({ ok: true, status: needsConfirmation ? 'pending' : 'subscribed', ...(reveal ? { confirmUrl } : {}) });
     });
 
     r.get('/api/confirm', async (req, ctx) => {

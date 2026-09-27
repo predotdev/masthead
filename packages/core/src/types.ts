@@ -87,6 +87,57 @@ export interface NewsletterSettings {
 export interface NavigationItem {
     label: string;
     url: string;
+    /** Shown under the label in a dropdown menu. */
+    description?: string | null;
+    /** A small badge next to the label, e.g. "New" or "Labs". */
+    badge?: string | null;
+    /** An icon name from the theme's set, shown in dropdown menus (e.g. "terminal", "window", "workflow", "pointer", "flask"). */
+    icon?: string | null;
+    /** Heading this item sits under inside a dropdown menu. */
+    group?: string | null;
+    /** Makes the item a dropdown menu; its own url is then ignored. */
+    items?: NavigationItem[];
+}
+
+export type SocialNetwork = 'x' | 'linkedin' | 'youtube' | 'instagram' | 'discord' | 'github' | 'facebook' | 'threads' | 'bluesky' | 'mastodon' | 'tiktok';
+
+export interface FooterSettings {
+    /** One line under the brand. */
+    tagline?: string | null;
+    columns?: { title: string; links: NavigationItem[] }[];
+    /** Links in the bottom row, such as the privacy policy and terms. */
+    legal?: NavigationItem[];
+    /** Defaults to "© {year} <site title>"; {year} becomes the current year. */
+    copyright?: string | null;
+    social?: { network: SocialNetwork; url: string }[];
+}
+
+export interface Appearance {
+    /** The color scheme before a reader chooses one. Defaults to the reader's system setting. */
+    colorScheme?: 'system' | 'light' | 'dark';
+    /** Where the brand in the header links. Defaults to the blog's front page. */
+    brandUrl?: string | null;
+    /** Show the site title next to the logo image. */
+    logoText?: boolean;
+    /** The logo is a light mark drawn for dark backgrounds: invert it in the light scheme. */
+    invertLogoInLight?: boolean;
+    /**
+     * A backdrop behind the header and the top of every page: an image (with an
+     * optional one for phones) and twinkling sparkles. In the light scheme it is
+     * inverted, so a night sky becomes dark specks on white.
+     */
+    backdrop?: { image?: string | null; mobileImage?: string | null; sparkles?: boolean } | null;
+    /** The front page's heading block. Defaults to the site title and description. */
+    hero?: { eyebrow?: string | null; title?: string | null; text?: string | null } | null;
+    /** A button at the end of the header, e.g. "Sign in" to your product. */
+    headerCta?: {
+        label: string;
+        url: string;
+        /** Swaps the button for signed-in readers, detected by a cookie your product sets on the same domain. */
+        signedIn?: { cookie: string; label: string; url: string } | null;
+    } | null;
+    /** Heading and text of the newsletter signup band. */
+    subscribe?: { title?: string | null; text?: string | null } | null;
 }
 
 export interface SiteSettings {
@@ -109,6 +160,8 @@ export interface SiteSettings {
     accentColor?: string | null;
     twitter?: string | null;
     navigation?: NavigationItem[];
+    footer?: FooterSettings | null;
+    appearance?: Appearance | null;
     /** The organization that publishes the blog; defaults to the site origin. */
     publisher?: { name: string; url: string; logo?: string | null; sameAs?: string[] };
 }
@@ -376,8 +429,31 @@ export interface ThemeContext {
     basePath: string;
     cssHref: string;
     rssHref: string;
+    /** Where the theme's own files (from Theme.assets) are served, ending in "/". */
+    assetsHref: string;
+    /** Append as ?v= to theme file URLs; it changes whenever they do. */
+    assetsVersion: string;
+    /** The search page, which also works without JavaScript. */
+    searchHref: string;
+    /** The search index: a JSON array of SearchEntry. */
+    searchIndexHref: string;
     /** Where the newsletter signup form posts. Absent when the site has no newsletter. */
     subscribeUrl?: string;
+    /** Public tags that have posts, most used first. */
+    topics?: { name: string; url: string; slug: string; count: number }[];
+}
+
+/** One post in the search index. */
+export interface SearchEntry {
+    title: string;
+    url: string;
+    excerpt: string;
+    tags: string[];
+    authors: string[];
+    date: string | null;
+    image: string | null;
+    /** The start of the post's text, for matching. */
+    text: string;
 }
 
 export interface PostView {
@@ -408,8 +484,14 @@ export interface ListView {
 export interface Theme {
     name: string;
     css: string;
+    /** Extra files served from ThemeContext.assetsHref, e.g. a small script. Paths are relative to it. */
+    assets?: OutputFile[];
     document(ctx: ThemeContext, meta: PageMeta, main: string): string;
     post(ctx: ThemeContext, view: PostView): string;
     list(ctx: ThemeContext, view: ListView): string;
     notFound(ctx: ThemeContext): string;
+    /** A short page such as "Check your email" after signing up. */
+    message?(ctx: ThemeContext, view: { title: string; html: string }): string;
+    /** Search results, rendered on the server for readers without JavaScript. */
+    search?(ctx: ThemeContext, view: { query: string; results: SearchEntry[] }): string;
 }

@@ -14,7 +14,7 @@ import { checkCsrf, principal } from './auth';
 import { migrate } from './db';
 import type { AppOptions, Ctx, Env } from './env';
 import { processSends } from './newsletter';
-import { legacyRoute, publicRoutes, serveMedia, serveSite } from './public';
+import { legacyRoute, publicRoutes, serveMedia, serveSearch, serveSite } from './public';
 import { basePath, publishSite, releaseScheduled } from './publish';
 import { HttpError, json } from './util';
 
@@ -64,6 +64,7 @@ export function createApp(options: AppOptions) {
 
         if (req.method !== 'GET' && req.method !== 'HEAD') return new Response('Method not allowed', { status: 405 });
         if (path.startsWith(`${base}content/`)) return serveMedia(req, ctx);
+        if (path === `${base}search/` || path === `${base}search`) return serveSearch(req, ctx);
         const legacy = await legacyRoute(req, ctx);
         if (legacy) return legacy;
         return serveSite(req, ctx);

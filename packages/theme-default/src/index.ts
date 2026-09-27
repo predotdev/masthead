@@ -1,9 +1,11 @@
-import type { ListItem, ListView, PageMeta, PostView, Theme, ThemeContext } from '@masthead/core';
+import type { Author, ListItem, ListView, NavigationItem, PageMeta, PostView, SearchEntry, Theme, ThemeContext } from '@masthead/core';
+import { icons, navIcons, socialIcons } from './icons';
+import { script } from './script';
 import { css } from './style';
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-function date(iso: string | null, locale: string): string {
+function date(iso: string | null | undefined, locale: string): string {
     if (!iso) return '';
     try {
         return new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).format(new Date(iso));
@@ -12,71 +14,232 @@ function date(iso: string | null, locale: string): string {
     }
 }
 
-function subscribe(ctx: ThemeContext): string {
-    if (!ctx.subscribeUrl) return '';
-    return `<section class="subscribe" aria-label="Newsletter">
-  <div>
-    <h2 class="subscribe-title">Get new posts by email</h2>
-    <p class="subscribe-text">${esc(ctx.site.description || `The latest from ${ctx.site.title}.`)}</p>
+/** Navigation links like "/" or "/about/" are relative to the blog, the way Ghost treats them. */
+function href(url: string, basePath: string): string {
+    if (/^[a-z][a-z0-9+.-]*:/i.test(url) || url.startsWith('//') || url.startsWith('#')) return url;
+    return url.startsWith('/') ? `${basePath.replace(/\/$/, '')}${url}` : url;
+}
+
+const isExternal = (url: string, ctx: ThemeContext) => /^https?:\/\//i.test(url) && new URL(url).host !== new URL(ctx.site.url).host;
+
+/**
+ * Responsive sources for images stored with the blog. Variants live under
+ * content/images/size/wN/, the way Ghost keeps them; the server answers a
+ * missing variant with the original, so a srcset never breaks an image.
+ */
+function srcset(url: string | null | undefined, ctx: ThemeContext): string {
+    if (!url) return '';
+    const base = `${ctx.basePath}content/images/`;
+    const path = url.startsWith(ctx.site.url) ? url.slice(new URL(ctx.site.url).origin.length) : url;
+    if (!path.startsWith(base) || path.startsWith(`${base}size/`) || /\.(gif|svg)(\?|$)/i.test(path)) return '';
+    const rest = path.slice(base.length);
+    return ` srcset="${[600, 1000, 2000].map(w => `${esc(`${base}size/w${w}/${rest}`)} ${w}w`).join(', ')}"`;
+}
+
+function brand(ctx: ThemeContext, cls = 'brand'): string {
+    const s = ctx.site;
+    const a = s.appearance ?? {};
+    const to = esc(href(a.brandUrl || ctx.basePath, ctx.basePath));
+    if (!s.logo) return `<a class="${cls}" href="${to}">${esc(s.title)}</a>`;
+    const img = `<img class="${a.invertLogoInLight ? 'brand-mark' : ''}" src="${esc(s.logo)}" alt="${a.logoText ? '' : esc(s.title)}" height="24">`;
+    return `<a class="${cls}" href="${to}"${a.logoText ? '' : ` aria-label="${esc(s.title)}"`}>${img}${a.logoText ? `<span>${esc(s.title)}</span>` : ''}</a>`;
+}
+
+function navLink(ctx: ThemeContext, n: NavigationItem): string {
+    const url = href(n.url, ctx.basePath);
+    const ext = isExternal(url, ctx);
+    return `<a class="nav-link" href="${esc(url)}"${ext ? ' target="_blank" rel="noopener"' : ''}>${esc(n.label)}</a>`;
+}
+
+function dropdown(ctx: ThemeContext, n: NavigationItem): string {
+    const groups = new Map<string, NavigationItem[]>();
+    for (const item of n.items ?? []) groups.set(item.group ?? '', [...(groups.get(item.group ?? '') ?? []), item]);
+    const panel = [...groups]
+        .map(
+            ([group, items]) => `<div class="dd-group">${group ? `<p class="dd-heading">${esc(group)}</p>` : ''}${items
+                .map(i => {
+                    const url = href(i.url, ctx.basePath);
+                    const ext = isExternal(url, ctx);
+                    const icon = i.icon && navIcons[i.icon] ? `<span class="dd-icon">${navIcons[i.icon]}</span>` : '';
+                    return `<a class="dd-item" href="${esc(url)}"${ext ? ' target="_blank" rel="noopener"' : ''}>${icon}<span class="dd-text"><span class="dd-label">${esc(i.label)}${i.badge ? ` <span class="badge">${esc(i.badge)}</span>` : ''}${ext ? icons.external() : ''}</span>${i.description ? `<span class="dd-desc">${esc(i.description)}</span>` : ''}</span></a>`;
+                })
+                .join('')}</div>`
+        )
+        .join('');
+    return `<div class="dd"><button class="dd-trigger" type="button" aria-haspopup="true">${esc(n.label)}${icons.chevron()}</button><div class="dd-panel">${panel}</div></div>`;
+}
+
+function cta(ctx: ThemeContext, cls: string): string {
+    const c = ctx.site.appearance?.headerCta;
+    if (!c?.label || !c.url) return '';
+    const signed = c.signedIn?.cookie
+        ? ` data-signed-in-cookie="${esc(c.signedIn.cookie)}" data-signed-in-label="${esc(c.signedIn.label)}" data-signed-in-url="${esc(href(c.signedIn.url, ctx.basePath))}"`
+        : '';
+    return `<a class="btn ${cls}" href="${esc(href(c.url, ctx.basePath))}"${signed}>${esc(c.label)}</a>`;
+}
+
+function header(ctx: ThemeContext): string {
+    const nav = (ctx.site.navigation ?? []).filter(n => n.label);
+    const subscribe = ctx.subscribeUrl ? '<a class="btn btn-primary" href="#subscribe">Subscribe</a>' : '';
+    const mobile = nav
+        .map(n =>
+            n.items?.length
+                ? `<p class="menu-heading">${esc(n.label)}</p>${n.items.map(i => `<a href="${esc(href(i.url, ctx.basePath))}">${esc(i.label)}${isExternal(href(i.url, ctx.basePath), ctx) ? icons.external() : ''}</a>`).join('')}`
+                : `<a href="${esc(href(n.url, ctx.basePath))}">${esc(n.label)}</a>`
+        )
+        .join('');
+    return `<header class="site-header">
+  <div class="wrap bar">
+    ${brand(ctx)}
+    <nav class="nav" aria-label="Main">${nav.map(n => (n.items?.length ? dropdown(ctx, n) : navLink(ctx, n))).join('')}</nav>
+    <div class="actions">
+      <a class="icon-btn search-trigger" href="${esc(ctx.searchHref)}" data-search aria-label="Search">${icons.search()}<span class="kbd-hint">Search <kbd>/</kbd></span></a>
+      <button class="icon-btn theme-toggle" type="button" data-theme-toggle aria-label="Switch between light and dark"><span class="sun">${icons.sun()}</span><span class="moon">${icons.moon()}</span></button>
+      ${cta(ctx, 'btn-pill')}
+      ${subscribe}
+      <details class="menu">
+        <summary class="icon-btn" aria-label="Menu"><span class="menu-open">${icons.menu(20)}</span><span class="menu-close">${icons.close(20)}</span></summary>
+        <div class="menu-panel">${mobile}<div class="menu-actions">${cta(ctx, 'btn-pill')}${subscribe}</div></div>
+      </details>
+    </div>
   </div>
-  <form class="subscribe-form" method="post" action="${esc(ctx.subscribeUrl)}">
-    <label class="sr-only" for="subscribe-email">Email address</label>
-    <input id="subscribe-email" name="email" type="email" required autocomplete="email" placeholder="you@example.com">
+</header>`;
+}
+
+/** The night-sky layer at the top of every page: an image and a canvas of sparkles (drawn by masthead.js). */
+function backdrop(ctx: ThemeContext): string {
+    const b = ctx.site.appearance?.backdrop;
+    if (!b || (!b.image && !b.sparkles)) return '';
+    const vars = [b.image ? `--backdrop:url('${esc(b.image)}')` : '', b.mobileImage ? `--backdrop-m:url('${esc(b.mobileImage)}')` : ''].filter(Boolean).join(';');
+    return `<div class="backdrop${b.image ? ' has-image' : ''}" aria-hidden="true"${vars ? ` style="${vars}"` : ''}>${b.sparkles ? '<canvas class="sparkles" data-sparkles></canvas>' : ''}</div>`;
+}
+
+function footer(ctx: ThemeContext): string {
+    const f = ctx.site.footer ?? {};
+    const cols = (f.columns ?? []).filter(c => c.title && c.links?.length);
+    const link = (n: NavigationItem) => {
+        const url = href(n.url, ctx.basePath);
+        return `<a href="${esc(url)}"${isExternal(url, ctx) ? ' target="_blank" rel="noopener"' : ''}>${esc(n.label)}</a>`;
+    };
+    const social = [...(f.social ?? []), { network: 'rss', url: ctx.rssHref }]
+        .map(s => `<a href="${esc(s.url)}" aria-label="${esc(s.network === 'x' ? 'X' : s.network === 'rss' ? 'RSS feed' : s.network)}"${s.network === 'rss' ? '' : ' target="_blank" rel="noopener"'}>${socialIcons[s.network] ?? icons.link()}</a>`)
+        .join('');
+    return `<footer class="site-footer">
+  <div class="wrap">
+    <div class="foot-top">
+      <div class="foot-brand">${brand(ctx)}${f.tagline ? `<p class="foot-tagline">${esc(f.tagline)}</p>` : ctx.site.description ? `<p class="foot-tagline">${esc(ctx.site.description)}</p>` : ''}</div>
+      ${cols.length ? `<div class="foot-cols">${cols.map(c => `<div class="foot-col"><h2>${esc(c.title)}</h2><ul>${c.links.map(l => `<li>${link(l)}</li>`).join('')}</ul></div>`).join('')}</div>` : ''}
+    </div>
+    <div class="foot-bottom">
+      <div class="foot-legal"><span>${esc((f.copyright || `© {year} ${ctx.site.title}`).replace('{year}', String(new Date().getUTCFullYear())))}</span>${(f.legal ?? []).map(link).join('')}</div>
+      <div class="social">${social}</div>
+    </div>
+  </div>
+</footer>`;
+}
+
+function signup(ctx: ThemeContext): string {
+    if (!ctx.subscribeUrl) return '';
+    const s = ctx.site.appearance?.subscribe ?? {};
+    return `<section class="signup" id="subscribe" aria-labelledby="signup-title">
+  <span class="signup-icon">${icons.mail(20)}</span>
+  <h2 class="signup-title" id="signup-title">${esc(s.title || `Get ${ctx.site.title} in your inbox`)}</h2>
+  <p class="signup-text">${esc(s.text || ctx.site.description || 'New posts by email.')}</p>
+  <form class="signup-form" method="post" action="${esc(ctx.subscribeUrl)}" data-subscribe>
+    <label class="sr-only" for="signup-email">Email address</label>
+    <input id="signup-email" name="email" type="email" required autocomplete="email" placeholder="you@company.com">
     <input class="hp" name="company" tabindex="-1" autocomplete="off" aria-hidden="true">
-    <button type="submit">Subscribe</button>
+    <button class="btn btn-primary" type="submit">Subscribe</button>
   </form>
+  <p class="signup-note" data-subscribe-note role="status" hidden></p>
+  <p class="signup-fine">No spam. Unsubscribe with one click.</p>
 </section>`;
 }
 
-/** Navigation links like "/" or "/about/" are relative to the blog, the way Ghost treats them. */
-function navHref(url: string, basePath: string): string {
-    if (/^[a-z]+:/i.test(url) || url.startsWith('//') || url.startsWith('#')) return url;
-    return url.startsWith('/') ? `${basePath.replace(/\/$/, '')}${url}` : url;
+function meta(ctx: ThemeContext, item: { authors: Author[]; publishedAt: string | null; readingMinutes: number }): string {
+    const parts = [item.authors.map(a => esc(a.name)).join(', '), `<time datetime="${esc(item.publishedAt ?? '')}">${esc(date(item.publishedAt, ctx.site.locale))}</time>`, `${item.readingMinutes} min read`].filter(Boolean);
+    return `<p class="meta">${parts.join('<span class="dot"></span>')}</p>`;
 }
 
 function card(ctx: ThemeContext, item: ListItem): string {
     const p = item.post;
-    return `<li class="card">
-  <a class="card-link" href="${esc(item.url)}">
-    ${p.featureImage ? `<img class="card-image" src="${esc(p.featureImage)}" alt="${esc(p.featureImageAlt ?? '')}" loading="lazy" width="1200" height="675">` : ''}
-    <div class="card-body">
-      ${item.primaryTag ? `<span class="eyebrow">${esc(item.primaryTag.name)}</span>` : ''}
-      <h2 class="card-title">${esc(p.title)}</h2>
-      <p class="card-excerpt">${esc(item.excerpt)}</p>
-      <p class="meta">${esc(item.authors.map(a => a.name).join(', '))}${item.authors.length ? ' · ' : ''}<time datetime="${esc(p.publishedAt ?? '')}">${esc(date(p.publishedAt, ctx.site.locale))}</time> · ${item.readingMinutes} min read</p>
-    </div>
-  </a>
-</li>`;
+    return `<li><a class="card-link" href="${esc(item.url)}">
+  ${p.featureImage ? `<div class="card-image"><img src="${esc(p.featureImage)}"${srcset(p.featureImage, ctx)} sizes="(max-width: 640px) 100vw, (max-width: 960px) 50vw, 400px" alt="${esc(p.featureImageAlt ?? '')}" loading="lazy" decoding="async" width="1200" height="675"></div>` : ''}
+  <div class="card-body">
+    ${item.primaryTag ? `<span class="eyebrow">${esc(item.primaryTag.name)}</span>` : ''}
+    <h3 class="card-title">${esc(p.title)}</h3>
+    <p class="card-excerpt">${esc(item.excerpt)}</p>
+    ${meta(ctx, { authors: item.authors, publishedAt: p.publishedAt, readingMinutes: item.readingMinutes })}
+  </div>
+</a></li>`;
+}
+
+function lead(ctx: ThemeContext, item: ListItem): string {
+    const p = item.post;
+    return `<a class="lead" href="${esc(item.url)}">
+  ${p.featureImage ? `<div class="lead-image"><img src="${esc(p.featureImage)}"${srcset(p.featureImage, ctx)} sizes="(max-width: 960px) 100vw, 680px" alt="${esc(p.featureImageAlt ?? '')}" fetchpriority="high" decoding="async" width="1200" height="675"></div>` : '<div></div>'}
+  <div>
+    ${item.primaryTag ? `<span class="eyebrow">${esc(item.primaryTag.name)}</span>` : ''}
+    <h2 class="lead-title">${esc(p.title)}</h2>
+    <p class="lead-excerpt">${esc(item.excerpt)}</p>
+    ${meta(ctx, { authors: item.authors, publishedAt: p.publishedAt, readingMinutes: item.readingMinutes })}
+  </div>
+</a>`;
+}
+
+function topics(ctx: ThemeContext, current?: string): string {
+    const list = (ctx.topics ?? []).slice(0, 12);
+    if (list.length < 2) return '';
+    return `<nav class="topics" aria-label="Topics"><a class="topic" href="${esc(ctx.basePath)}"${current ? '' : ' aria-current="page"'}>All</a>${list.map(t => `<a class="topic" href="${esc(t.url)}"${t.slug === current ? ' aria-current="page"' : ''}>${esc(t.name)}</a>`).join('')}</nav>`;
+}
+
+function initials(name: string): string {
+    return name
+        .split(/\s+/)
+        .map(w => w[0])
+        .join('')
+        .slice(0, 2)
+        .toUpperCase();
+}
+
+/** Ghost's video card needs Ghost's script for its custom player; use the browser's own controls instead. */
+function ghostCompat(html: string): string {
+    return html.includes('kg-video-card') ? html.replace(/<video(?![^>]*\scontrols)/g, '<video controls') : html;
 }
 
 export const defaultTheme: Theme = {
     name: 'default',
     css,
+    assets: [{ path: 'masthead.js', contents: script, contentType: 'text/javascript; charset=utf-8' }],
 
     document(ctx: ThemeContext, meta: PageMeta, main: string): string {
         const s = ctx.site;
-        const nav = (s.navigation ?? []).filter(n => n.label).map(n => `<a href="${esc(navHref(n.url, ctx.basePath))}">${esc(n.label)}</a>`).join('');
-        const brand = s.logo ? `<img src="${esc(s.logo)}" alt="${esc(s.title)}" height="28">` : esc(s.title);
+        const scheme = s.appearance?.colorScheme ?? 'system';
         return `<!doctype html>
-<html lang="${esc(s.locale)}">
+<html lang="${esc(s.locale)}" data-default-theme="${esc(scheme)}" data-search-index="${esc(ctx.searchIndexHref)}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(meta.title)}</title>
 <meta name="description" content="${esc(meta.description)}">
 <link rel="canonical" href="${esc(meta.canonical)}">
+<meta name="color-scheme" content="light dark">
+<script>(function(d){var t;try{t=localStorage.getItem('mh-theme')}catch(e){}if(t!=='light'&&t!=='dark'){t=d.getAttribute('data-default-theme');if(t!=='light'&&t!=='dark')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'}d.setAttribute('data-theme',t);d.classList.add('js')})(document.documentElement)</script>
 ${s.icon ? `<link rel="icon" href="${esc(s.icon)}">` : ''}
 <link rel="stylesheet" href="${esc(ctx.cssHref)}">
-${s.accentColor ? `<style>:root{--accent:${esc(s.accentColor)}}</style>` : ''}
+<script src="${esc(ctx.assetsHref)}masthead.js?v=${esc(ctx.assetsVersion)}" defer></script>
 ${meta.head}
 </head>
 <body>
+${backdrop(ctx)}
 <a class="skip" href="#main">Skip to content</a>
-<header class="site-header"><div class="wrap bar"><a class="brand" href="${esc(ctx.basePath)}">${brand}</a><nav class="nav">${nav}</nav></div></header>
+${header(ctx)}
+<div class="page">
 <main id="main" class="wrap">
 ${main}
 </main>
-<footer class="site-footer"><div class="wrap bar"><span>© ${new Date().getUTCFullYear()} ${esc(s.title)}</span><a href="${esc(ctx.rssHref)}">RSS</a></div></footer>
+${footer(ctx)}
+</div>
 </body>
 </html>
 `;
@@ -86,6 +249,14 @@ ${main}
         const p = v.post;
         const primary = v.tags[0];
         const isPost = p.type === 'post';
+        const url = new URL(v.url, ctx.site.url).toString();
+        const avatars = v.authors
+            .map(a => (a.profileImage ? `<img src="${esc(a.profileImage)}" alt="" width="36" height="36" loading="lazy">` : `<span aria-hidden="true">${esc(initials(a.name))}</span>`))
+            .join('');
+        const share = `<div class="share"><span class="share-label">Share</span>
+      <a class="icon-btn" href="https://x.com/intent/post?url=${encodeURIComponent(url)}&amp;text=${encodeURIComponent(p.title)}" target="_blank" rel="noopener" aria-label="Share on X">${socialIcons.x}</a>
+      <a class="icon-btn" href="https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}" target="_blank" rel="noopener" aria-label="Share on LinkedIn">${socialIcons.linkedin}</a>
+      <a class="icon-btn" href="${esc(url)}" data-copy-link aria-label="Copy link">${icons.link()}</a></div>`;
         return `<article class="post">
   <header class="post-header">
     ${isPost && primary ? `<a class="eyebrow" href="${esc(primary.url)}">${esc(primary.name)}</a>` : ''}
@@ -93,43 +264,92 @@ ${main}
     ${p.customExcerpt ? `<p class="dek">${esc(p.customExcerpt)}</p>` : ''}
     ${
         isPost
-            ? `<p class="meta">${v.authors.map(a => `<a href="${esc(a.url)}">${esc(a.name)}</a>`).join(', ')}${v.authors.length ? ' · ' : ''}<time datetime="${esc(p.publishedAt ?? '')}">${esc(date(p.publishedAt, ctx.site.locale))}</time> · ${v.readingMinutes} min read</p>`
+            ? `<div class="byline">${avatars ? `<span class="avatars">${avatars}</span>` : ''}<span class="byline-text"><span class="byline-names">${v.authors.map(a => `<a href="${esc(a.url)}">${esc(a.name)}</a>`).join(', ')}</span><span><time datetime="${esc(p.publishedAt ?? '')}">${esc(date(p.publishedAt, ctx.site.locale))}</time> · ${v.readingMinutes} min read</span></span></div>`
             : ''
     }
   </header>
   ${
       p.featureImage
-          ? `<figure class="feature"><img src="${esc(p.featureImage)}" alt="${esc(p.featureImageAlt ?? '')}" width="1200" height="675">${p.featureImageCaption ? `<figcaption>${p.featureImageCaption}</figcaption>` : ''}</figure>`
+          ? `<figure class="feature"><img src="${esc(p.featureImage)}"${srcset(p.featureImage, ctx)} sizes="(max-width: 1100px) 100vw, 1024px" alt="${esc(p.featureImageAlt ?? '')}" fetchpriority="high" decoding="async" width="1200" height="675">${p.featureImageCaption ? `<figcaption>${p.featureImageCaption}</figcaption>` : ''}</figure>`
           : ''
   }
   <div class="content">
-${v.html}
+${ghostCompat(v.html)}
   </div>
-  ${isPost && v.tags.length ? `<footer class="post-footer">${v.tags.map(t => `<a class="chip" href="${esc(t.url)}">${esc(t.name)}</a>`).join('')}</footer>` : ''}
+  ${isPost ? `<footer class="post-foot"><div class="chips">${v.tags.map(t => `<a class="chip" href="${esc(t.url)}">${esc(t.name)}</a>`).join('')}</div>${share}</footer>` : ''}
 </article>
-${isPost ? subscribe(ctx) : ''}
-${v.related.length ? `<section class="related" aria-label="More posts"><h2 class="section-title">Keep reading</h2><ul class="cards">${v.related.map(r => card(ctx, r)).join('\n')}</ul></section>` : ''}`;
+${isPost ? signup(ctx) : ''}
+${v.related.length ? `<section class="related" aria-labelledby="related-title"><h2 class="section-title" id="related-title">Keep reading</h2><ul class="cards">${v.related.map(r => card(ctx, r)).join('\n')}</ul></section>` : ''}`;
     },
 
     list(ctx: ThemeContext, v: ListView): string {
-        const head =
-            v.kind === 'index'
-                ? `<header class="list-header"><h1 class="list-title">${esc(v.heading)}</h1>${ctx.site.description ? `<p class="dek">${esc(ctx.site.description)}</p>` : ''}</header>`
-                : `<header class="list-header">${v.author?.profileImage ? `<img class="avatar" src="${esc(v.author.profileImage)}" alt="" width="64" height="64">` : ''}<span class="eyebrow">${v.kind === 'tag' ? 'Topic' : 'Author'}</span><h1 class="list-title">${esc(v.heading)}</h1>${v.description ? `<p class="dek">${esc(v.description)}</p>` : ''}</header>`;
         const pager =
             v.pages > 1
-                ? `<nav class="pager" aria-label="Pages">${v.prevUrl ? `<a href="${esc(v.prevUrl)}">Newer posts</a>` : '<span></span>'}<span>Page ${v.page} of ${v.pages}</span>${v.nextUrl ? `<a href="${esc(v.nextUrl)}">Older posts</a>` : '<span></span>'}</nav>`
+                ? `<nav class="pager" aria-label="Pages">${v.prevUrl ? `<a href="${esc(v.prevUrl)}">← Newer posts</a>` : '<span></span>'}<span>Page ${v.page} of ${v.pages}</span>${v.nextUrl ? `<a href="${esc(v.nextUrl)}">Older posts →</a>` : '<span></span>'}</nav>`
                 : '';
-        return `${head}
+        if (v.kind === 'index' && v.page === 1) {
+            const h = ctx.site.appearance?.hero ?? {};
+            const [first, ...rest] = v.items;
+            return `<section class="hero">
+  ${h.eyebrow ? `<span class="hero-eyebrow">${esc(h.eyebrow)}</span>` : ''}
+  <h1 class="hero-title">${esc(h.title || ctx.site.title)}</h1>
+  ${h.text || ctx.site.description ? `<p class="hero-text">${esc(h.text || ctx.site.description)}</p>` : ''}
+  ${topics(ctx)}
+</section>
+${first ? lead(ctx, first) : ''}
+<ul class="cards">
+${rest.map(i => card(ctx, i)).join('\n')}
+</ul>
+${pager}
+${signup(ctx)}`;
+        }
+        const kind = v.kind === 'tag' ? 'Topic' : v.kind === 'author' ? 'Author' : '';
+        const count = v.kind === 'index' ? '' : `<p class="list-count">${(ctx.topics ?? []).find(t => t.slug === v.tag?.slug)?.count ?? v.items.length} posts</p>`;
+        return `<header class="list-header">
+  ${v.author?.profileImage ? `<img class="avatar" src="${esc(v.author.profileImage)}" alt="" width="72" height="72">` : ''}
+  ${kind ? `<span class="list-kind">${kind}</span>` : ''}
+  <h1 class="list-title">${esc(v.heading)}</h1>
+  ${v.description ? `<p class="list-text">${esc(v.description)}</p>` : ''}
+  ${v.kind === 'tag' ? count : ''}
+  ${v.kind === 'tag' ? topics(ctx, v.tag?.slug) : ''}
+</header>
 <ul class="cards">
 ${v.items.map(i => card(ctx, i)).join('\n')}
 </ul>
 ${pager}
-${v.kind === 'index' && v.page === 1 ? subscribe(ctx) : ''}`;
+${signup(ctx)}`;
     },
 
     notFound(ctx: ThemeContext): string {
-        return `<header class="list-header"><h1 class="list-title">Page not found</h1><p class="dek">This page moved or never existed. <a href="${esc(ctx.basePath)}">Go to the latest posts</a>.</p></header>`;
+        return `<section class="message">
+  <p class="not-found-code">404</p>
+  <h1>This page doesn't exist</h1>
+  <p class="dek">It may have moved, or the link may be wrong. Search the blog, or start from the latest posts.</p>
+  <p><a class="btn btn-primary" href="${esc(ctx.basePath)}">Latest posts</a> <a class="btn btn-pill" href="${esc(ctx.searchHref)}" data-search>Search</a></p>
+</section>`;
+    },
+
+    message(ctx: ThemeContext, view: { title: string; html: string }): string {
+        return `<section class="message"><h1>${esc(view.title)}</h1>${view.html}<a class="btn btn-pill" href="${esc(ctx.basePath)}">Back to the blog</a></section>`;
+    },
+
+    search(ctx: ThemeContext, view: { query: string; results: SearchEntry[] }): string {
+        const q = view.query.trim();
+        return `<section class="search-page">
+  <h1 class="list-title">Search</h1>
+  <form method="get" action="${esc(ctx.searchHref)}" role="search">
+    <label class="sr-only" for="q">Search posts</label>
+    <input id="q" name="q" type="search" value="${esc(q)}" placeholder="Search posts" autofocus>
+    <button class="btn btn-primary" type="submit">Search</button>
+  </form>
+  ${
+      q
+          ? view.results.length
+              ? `<ul class="results">${view.results.map(r => `<li><a class="search-hit" href="${esc(r.url)}"><span class="search-hit-title">${esc(r.title)}</span><span class="search-hit-excerpt">${esc(r.excerpt)}</span><span class="search-hit-meta">${esc([r.tags[0], date(r.date, ctx.site.locale)].filter(Boolean).join(' · '))}</span></a></li>`).join('')}</ul>`
+              : `<p class="search-empty">No posts match “${esc(q)}”.</p>`
+          : ''
+  }
+</section>`;
     }
 };
 

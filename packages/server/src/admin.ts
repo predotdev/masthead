@@ -24,7 +24,7 @@ import {
 import { signInEmail } from './email';
 import type { Ctx, Principal } from './env';
 import { importAudience, importContent, importMedia, rewriteUrls } from './importer';
-import { addMember, deleteMember, getMember, listMembers, memberEvents, memberStats, restoreOptOuts, setStatus, type MemberStatus } from './members';
+import { addMember, deleteMember, getMember, getMemberByEmail, listMembers, memberEvents, memberStats, restoreOptOuts, setStatus, type MemberStatus } from './members';
 import { appUrl, buildEmail, cancelSend, countSegment, createSend, getSend, listSends, processSends, sendTest, testMode, unsubscribeUrl, type Segment } from './newsletter';
 import { linkTag, publishSite } from './publish';
 import { MEDIA_PREFIX } from './public';
@@ -303,6 +303,17 @@ export function adminRoutes(): Router<A> {
         const input = await body(req);
         const res = await addMember(ctx.db, { email: String(input.email ?? ''), name: input.name ?? null, labels: Array.isArray(input.labels) ? input.labels.map(String) : [], note: input.note ?? null }, p.via === 'api-key' ? 'api' : 'admin');
         return json(res, res.created ? 201 : 200);
+    });
+
+    /** Removes someone by address, e.g. when your product deletes their account. */
+    r.delete('/members', async (_req, ctx) => {
+        atLeast(ctx.principal, 'admin');
+        const email = (ctx.url.searchParams.get('email') ?? '').trim().toLowerCase();
+        if (!email) throw new HttpError(400, 'Pass the address as ?email=.');
+        const member = await getMemberByEmail(ctx.db, email);
+        if (!member) return json({ ok: true, deleted: false });
+        await deleteMember(ctx.db, member.id);
+        return json({ ok: true, deleted: true });
     });
 
     r.post('/members/restore-opt-outs', async (_req, ctx) => {

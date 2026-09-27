@@ -1,3 +1,4 @@
+import type { OutputFile } from '@masthead/core';
 import { buildSite } from '@masthead/render';
 import { getSetting, loadSnapshot, setSetting } from './content';
 import { batched } from './db';
@@ -54,25 +55,29 @@ export async function publishSite(env: Env, db: D1Database, options: AppOptions)
     let written = 0;
     const t = now();
 
-    const queue = [...result.files];
     // A handful of parallel writes keeps a full first publish fast without flooding R2.
-    await Promise.all(
-        Array.from({ length: 8 }, async () => {
-            for (let f = queue.shift(); f; f = queue.shift()) {
-                keep.add(f.path);
-                const hash = await sha256(typeof f.contents === 'string' ? f.contents : f.contents);
-                if (previous.get(f.path) === hash) continue;
-                await env.BUCKET.put(`${SITE_PREFIX}${f.path}`, f.contents, { httpMetadata: { contentType: f.contentType } });
-                changed.push(f.path);
-                rows.push(
-                    db
-                        .prepare('INSERT INTO site_files (path, hash, content_type, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(path) DO UPDATE SET hash = excluded.hash, content_type = excluded.content_type, updated_at = excluded.updated_at')
-                        .bind(f.path, hash, f.contentType, t)
-                );
-                written++;
-            }
-        })
-    );
+    const writeAll = (queue: OutputFile[]) =>
+        Promise.all(
+            Array.from({ length: 8 }, async () => {
+                for (let f = queue.shift(); f; f = queue.shift()) {
+                    keep.add(f.path);
+                    const hash = await sha256(typeof f.contents === 'string' ? f.contents : f.contents);
+                    if (previous.get(f.path) === hash) continue;
+                    await env.BUCKET.put(`${SITE_PREFIX}${f.path}`, f.contents, { httpMetadata: { contentType: f.contentType } });
+                    changed.push(f.path);
+                    rows.push(
+                        db
+                            .prepare('INSERT INTO site_files (path, hash, content_type, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(path) DO UPDATE SET hash = excluded.hash, content_type = excluded.content_type, updated_at = excluded.updated_at')
+                            .bind(f.path, hash, f.contentType, t)
+                    );
+                    written++;
+                }
+            })
+        );
+    // Theme files first: no page may reach readers before the stylesheet version it names.
+    const isAsset = (f: OutputFile) => f.path.startsWith(`${base.slice(1)}assets/`);
+    await writeAll(result.files.filter(isAsset));
+    await writeAll(result.files.filter(f => !isAsset(f)));
 
     const stale = [...previous.keys()].filter(p => !keep.has(p));
     for (let i = 0; i < stale.length; i += 500) await env.BUCKET.delete(stale.slice(i, i + 500).map(p => `${SITE_PREFIX}${p}`));

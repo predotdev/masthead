@@ -33,6 +33,12 @@ export async function push(options: PushOptions): Promise<void> {
             const found = collectMedia(snap);
             console.log(`media      ${found.files.length} files referenced`);
             const failed = await copyMedia(call, found.files);
+            // Resized copies of cover and share images, for srcset. Optional: the server falls back to the original.
+            const variants = sizeVariants(snap, found.files);
+            if (variants.length) {
+                const missing = await copyMedia(call, variants, 'variants');
+                if (missing.length) console.log(`variants   ${missing.length} not available; those images are served at full size`);
+            }
             if (failed.length) {
                 console.log(`media      ${failed.length} files could not be copied; content still points at the old host:`);
                 for (const f of failed.slice(0, 20)) console.log(`           ${f.url}  ${f.error}`);
@@ -131,7 +137,23 @@ export function collectMedia(snap: Snapshot): { files: { url: string; path: stri
     return { files: [...byPath].map(([path, url]) => ({ url, path })), prefixes: [...prefixes] };
 }
 
-async function copyMedia(call: Call, files: { url: string; path: string }[]) {
+/** Ghost serves resized copies at content/images/size/wN/...; these widths are the ones themes use. */
+const VARIANT_WIDTHS = [600, 1000, 2000];
+
+function sizeVariants(snap: Snapshot, files: { url: string; path: string }[]): { url: string; path: string }[] {
+    const covers = new Set<string>();
+    for (const p of snap.posts) for (const u of [p.featureImage, p.ogImage, p.twitterImage]) if (u) covers.add(u.split(/[?#]/)[0]);
+    const out: { url: string; path: string }[] = [];
+    for (const f of files) {
+        if (!covers.has(f.url) || !f.path.startsWith('content/images/') || f.path.startsWith('content/images/size/') || /\.(gif|svg)$/i.test(f.path)) continue;
+        const rest = f.path.slice('content/images/'.length);
+        const at = f.url.indexOf('/content/images/');
+        for (const w of VARIANT_WIDTHS) out.push({ url: `${f.url.slice(0, at)}/content/images/size/w${w}/${f.url.slice(at + '/content/images/'.length)}`, path: `content/images/size/w${w}/${rest}` });
+    }
+    return out;
+}
+
+async function copyMedia(call: Call, files: { url: string; path: string }[], label = 'media') {
     let pending = files;
     let failed: { url: string; path: string; error: string }[] = [];
     let copied = 0;
@@ -146,12 +168,12 @@ async function copyMedia(call: Call, files: { url: string; path: string }[]) {
                     bytes += r.size ?? 0;
                 } else failed.push({ ...chunk.find(c => c.path === r.path)!, error: r.error ?? 'failed' });
             }
-            progress('media', copied, files.length);
+            progress(label, copied, files.length);
         });
         pending = failed.map(({ url, path }) => ({ url, path }));
     }
     progressDone();
-    console.log(`media      ${copied} copied (${(bytes / 1024 / 1024).toFixed(1)} MB)`);
+    console.log(`${label.padEnd(10)} ${copied} copied (${(bytes / 1024 / 1024).toFixed(1)} MB)`);
     return failed;
 }
 

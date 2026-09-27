@@ -32,6 +32,8 @@ const HELP = `masthead <command>
                                    Check a build or a running server against the live
                                    site, page by page
   serve [--dir <dir>] [--port <n>] Preview a build locally
+  settings --server <url> --file <settings.json>
+                                   Apply site, newsletter and AI settings, then rebuild
   studio signals [--days 14]       Show what the configured sources see
   studio ideas [--days 14] [--count 8] [--server <url>] [--dry-run] [--model <id>]
                                    Suggest posts from the sources and save them to the
@@ -179,6 +181,23 @@ async function main() {
                 return;
             }
             throw new Error('Usage: masthead studio signals|ideas');
+        }
+        case 'settings': {
+            const server = str(flags.server);
+            const token = str(flags.token) ?? process.env.MASTHEAD_TOKEN;
+            const file = str(flags.file);
+            if (!server || !token || !file) throw new Error('Usage: masthead settings --server <url> --file <settings.json>, with MASTHEAD_TOKEN set');
+            const input = JSON.parse(await readFile(file, 'utf8'));
+            const base = server.replace(/\/?$/, '/');
+            const res = await fetch(`${base}admin/api/settings`, {
+                method: 'PUT',
+                headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+                body: JSON.stringify({ site: input.site, newsletter: input.newsletter, ai: input.ai })
+            });
+            if (!res.ok) throw new Error(`Settings were not saved: HTTP ${res.status} ${(await res.text()).slice(0, 200)}`);
+            const pub = await fetch(`${base}admin/api/publish`, { method: 'POST', headers: { authorization: `Bearer ${token}` } }).then(r => r.json());
+            console.log(`settings saved; site rebuilt: ${pub.written} of ${pub.total} files in ${pub.ms} ms`);
+            return;
         }
         case 'serve': {
             await serve({ dir: str(flags.dir) ?? 'dist', port: Number(str(flags.port) ?? 4321) });

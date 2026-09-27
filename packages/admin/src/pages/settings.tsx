@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { api, fmtDate } from '../api';
 import { Button, Dialog, ErrorNote, Field, Loading, PageHead, Pill, errorToast, toast, useLoad } from '../ui';
+import { AppearanceEditor, FooterEditor, HeaderMenu } from './site-design';
 
 interface SettingsData {
     site: Record<string, any>;
@@ -109,7 +110,22 @@ function SettingsForm({ data, reload }: { data: SettingsData; reload: () => void
                         <input {...s('twitter')} placeholder="@handle" />
                     </Field>
                 </div>
-                <Navigation items={site.navigation ?? []} onChange={navigation => setSite({ ...site, navigation })} />
+            </section>
+
+            <section class="panel">
+                <h2>Header menu</h2>
+                <p class="muted small">Links across the top of every page. Turn any item into a dropdown of described links.</p>
+                <HeaderMenu items={site.navigation ?? []} onChange={navigation => setSite({ ...site, navigation })} />
+            </section>
+
+            <section class="panel">
+                <h2>Footer</h2>
+                <FooterEditor value={site.footer ?? {}} onChange={footer => setSite({ ...site, footer })} />
+            </section>
+
+            <section class="panel">
+                <h2>Appearance</h2>
+                <AppearanceEditor value={site.appearance ?? {}} onChange={appearance => setSite({ ...site, appearance })} />
             </section>
 
             <section class="panel">
@@ -198,26 +214,6 @@ function SettingsForm({ data, reload }: { data: SettingsData; reload: () => void
                     </div>
                 </Dialog>
             ) : null}
-        </div>
-    );
-}
-
-function Navigation({ items, onChange }: { items: { label: string; url: string }[]; onChange: (v: { label: string; url: string }[]) => void }) {
-    return (
-        <div class="stack">
-            <span class="field-label">Navigation</span>
-            {items.map((it, i) => (
-                <div class="row" key={i}>
-                    <input value={it.label} placeholder="Label" onInput={e => onChange(items.map((x, j) => (j === i ? { ...x, label: e.currentTarget.value } : x)))} />
-                    <input value={it.url} placeholder="https:// or /path/" onInput={e => onChange(items.map((x, j) => (j === i ? { ...x, url: e.currentTarget.value } : x)))} />
-                    <Button tone="plain" onClick={() => onChange(items.filter((_, j) => j !== i))}>
-                        Remove
-                    </Button>
-                </div>
-            ))}
-            <div>
-                <Button onClick={() => onChange([...items, { label: '', url: '' }])}>Add link</Button>
-            </div>
         </div>
     );
 }

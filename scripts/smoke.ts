@@ -270,19 +270,24 @@ await check('image upload', async () => {
 
 // ------------------------------------------------------------------ subscribers
 console.log('\nSubscribers');
-const email = `smoke-${stamp}@example.com`;
+// Resend's test inbox: real delivery, nothing bounces, nobody receives it.
+const email = `delivered+smoke-${stamp}@resend.dev`;
 let memberId = '';
 let confirmUrl = '';
 await check('bots filling the hidden field are ignored', async () => {
-    const res = await fetch(`${server}api/subscribe`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: `bot-${stamp}@example.com`, company: 'x' }) });
+    const res = await fetch(`${server}api/subscribe`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: `delivered+bot-${stamp}@resend.dev`, company: 'x' }) });
     assert(res.status === 200, `status ${res.status}`);
     const list = await admin('GET', `/members?q=bot-${stamp}`);
     assert(list.total === 0, 'bot was added');
 });
 await check('sign-up needs confirming (double opt-in)', async () => {
-    const res = await fetch(`${server}api/subscribe`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email }) });
+    const anonymous = await fetch(`${server}api/subscribe`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email }) });
+    const first = await anonymous.json();
+    assert(anonymous.status === 200 && first.status === 'pending', `status ${anonymous.status} ${JSON.stringify(first)}`);
+    assert(!first.confirmUrl, 'the confirm link was handed to an anonymous caller');
+    // Signed in as the owner, the test-mode response carries the link so this check needs no inbox.
+    const res = await fetch(`${server}api/subscribe`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: JSON.stringify({ email }) });
     const data = await res.json();
-    assert(res.status === 200 && data.status === 'pending', `status ${res.status} ${JSON.stringify(data)}`);
     confirmUrl = data.confirmUrl;
     assert(confirmUrl, 'no confirm link (is the server in email test mode?)');
     const list = await admin('GET', `/members?q=${encodeURIComponent(email)}`);
