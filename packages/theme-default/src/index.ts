@@ -187,6 +187,25 @@ function lead(ctx: ThemeContext, item: ListItem): string {
 </a>`;
 }
 
+/** The newest post as the front page's hero: headline, summary, and its cover in a glowing frame. */
+function featured(ctx: ThemeContext, item: ListItem): string {
+    const p = item.post;
+    const kicker = [item.primaryTag?.name, date(p.publishedAt, ctx.site.locale)].filter(Boolean).map(x => esc(x!)).join('<span class="dot"></span>');
+    const avatars = item.authors
+        .map(a => (a.profileImage ? `<img src="${esc(a.profileImage)}" alt="" width="28" height="28">` : `<span aria-hidden="true">${esc(initials(a.name))}</span>`))
+        .join('');
+    return `<section class="feature-hero">
+  <p class="feature-kicker"><span class="spark" aria-hidden="true"></span>${kicker}</p>
+  <h2 class="hero-title feature-title"><a href="${esc(item.url)}">${esc(p.title)}</a></h2>
+  <p class="hero-text">${esc(item.excerpt)}</p>
+  <div class="feature-meta">
+    <span class="feature-by">${avatars ? `<span class="avatars small">${avatars}</span>` : ''}<span>${esc(item.authors.map(a => a.name).join(', '))}${item.authors.length ? ' · ' : ''}${item.readingMinutes} min read</span></span>
+    <a class="btn btn-primary" href="${esc(item.url)}">Read the post ${icons.arrowRight(15)}</a>
+  </div>
+  ${p.featureImage ? `<a class="feature-frame" href="${esc(item.url)}" tabindex="-1" aria-hidden="true"><img src="${esc(p.featureImage)}"${srcset(p.featureImage, ctx)} sizes="(max-width: 1100px) 100vw, 1040px" alt="" fetchpriority="high" decoding="async" width="1200" height="675"></a>` : ''}
+</section>`;
+}
+
 function topics(ctx: ThemeContext, current?: string): string {
     const list = (ctx.topics ?? []).slice(0, 12);
     if (list.length < 2) return '';
@@ -288,11 +307,13 @@ ${v.related.length ? `<section class="related" aria-labelledby="related-title"><
                 ? `<nav class="pager" aria-label="Pages">${v.prevUrl ? `<a href="${esc(v.prevUrl)}">← Newer posts</a>` : '<span></span>'}<span>Page ${v.page} of ${v.pages}</span>${v.nextUrl ? `<a href="${esc(v.nextUrl)}">Older posts →</a>` : '<span></span>'}</nav>`
                 : '';
         if (v.kind === 'index' && v.page === 1) {
-            const h = ctx.site.appearance?.hero ?? {};
+            const h = ctx.site.appearance?.hero;
             const [first, ...rest] = v.items;
-            return `<section class="hero">
+            // With a configured heading, the classic layout; otherwise the newest post is the hero.
+            if (h?.title) {
+                return `<section class="hero">
   ${h.eyebrow ? `<span class="hero-eyebrow">${esc(h.eyebrow)}</span>` : ''}
-  <h1 class="hero-title">${esc(h.title || ctx.site.title)}</h1>
+  <h1 class="hero-title">${esc(h.title)}</h1>
   ${h.text || ctx.site.description ? `<p class="hero-text">${esc(h.text || ctx.site.description)}</p>` : ''}
   ${topics(ctx)}
 </section>
@@ -300,6 +321,17 @@ ${first ? lead(ctx, first) : ''}
 <ul class="cards">
 ${rest.map(i => card(ctx, i)).join('\n')}
 </ul>
+${pager}
+${signup(ctx)}`;
+            }
+            return `<h1 class="sr-only">${esc(ctx.site.title)}</h1>
+${first ? featured(ctx, first) : ''}
+<section class="latest" aria-labelledby="latest-title">
+  <div class="latest-head"><h2 class="section-title" id="latest-title">Latest</h2>${topics(ctx)}</div>
+  <ul class="cards">
+${rest.map(i => card(ctx, i)).join('\n')}
+  </ul>
+</section>
 ${pager}
 ${signup(ctx)}`;
         }

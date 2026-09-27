@@ -1,7 +1,7 @@
 import type { AspectRatio, ModelKind, Post, StaffRole } from '@masthead/core';
 import { buildSite, renderBody, tagLinks } from '@masthead/render';
 import { addIdeas, draft, draftIdea, edit, image, listIdeas, listModels, meta } from './ai';
-import { atLeast, clearSessionCookie, consumeLoginToken, createApiKey, createLoginToken, createSession, endSession, sessionCookie } from './auth';
+import { atLeast, clearSessionCookie, consumeLoginToken, createApiKey, createLoginToken, createSession, endSession, peekLoginToken, sessionCookie } from './auth';
 import {
     aiSettings,
     deletePost,
@@ -57,18 +57,31 @@ export function adminRoutes(): Router<A> {
         const transport = ctx.options.email?.(ctx.env);
         if (login && transport && ctx.env.EMAIL_FROM) {
             const site = await siteSettings(ctx.env, ctx.db);
-            const mail = signInEmail(site, `${appUrl(ctx.env)}admin/api/auth/verify?token=${login.token}`, false);
+            const mail = signInEmail(site, `${appUrl(ctx.env)}admin/#/verify/${login.token}`, false);
             ctx.exec.waitUntil(transport.send([{ to: login.staff.email, from: ctx.env.EMAIL_FROM, subject: mail.subject, html: mail.html, text: mail.text, idempotencyKey: `login:${login.token.slice(0, 16)}` }]));
         }
         // Same answer whether or not the address belongs to staff.
         return json({ ok: true });
     });
 
-    r.get('/auth/verify', async (req, ctx) => {
-        const staffId = await consumeLoginToken(ctx.db, ctx.url.searchParams.get('token') ?? '');
-        if (!staffId) return html('<p style="font-family:system-ui;padding:40px">This sign-in link has expired or was already used. <a href="../../">Request a new one</a>.</p>', 400);
-        const token = await createSession(ctx.db, staffId);
-        return redirect(`${ctx.basePath}admin/`, 302, { 'set-cookie': sessionCookie(token) });
+    // Sign-in links open the admin at #/verify/<token>: the token never reaches a server log, and
+    // only a person's click uses it up, never a mail scanner fetching the link. Older links land here.
+    r.get('/auth/verify', async (_req, ctx) => redirect(`${ctx.basePath}admin/#/verify/${encodeURIComponent(ctx.url.searchParams.get('token') ?? '')}`, 302));
+
+    r.get('/auth/link', async (_req, ctx) => json(await peekLoginToken(ctx.db, ctx.url.searchParams.get('token') ?? '')));
+
+    r.post('/auth/verify', async (req, ctx) => {
+        const { token } = await body(req);
+        const staffId = await consumeLoginToken(ctx.db, String(token ?? ''));
+        if (!staffId) throw new HttpError(400, 'This sign-in link was already used or has expired.');
+        const session = await createSession(ctx.db, staffId);
+        return json({ ok: true }, 200, { 'set-cookie': sessionCookie(session) });
+    });
+
+    /** The login screen's branding. Public: the same title and logo the site shows everyone. */
+    r.get('/auth/brand', async (_req, ctx) => {
+        const site = await siteSettings(ctx.env, ctx.db);
+        return json({ title: site.title, logo: site.logo ?? null, invertLogoInLight: Boolean(site.appearance?.invertLogoInLight) });
     });
 
     r.post('/auth/bootstrap', async (req, ctx) => {
@@ -218,7 +231,7 @@ export function adminRoutes(): Router<A> {
         let invited = false;
         if (login && transport && ctx.env.EMAIL_FROM) {
             const site = await siteSettings(ctx.env, ctx.db);
-            const mail = signInEmail(site, `${appUrl(ctx.env)}admin/api/auth/verify?token=${login.token}`, true);
+            const mail = signInEmail(site, `${appUrl(ctx.env)}admin/#/verify/${login.token}`, true);
             const [res] = await transport.send([{ to: staff.email, from: ctx.env.EMAIL_FROM, subject: mail.subject, html: mail.html, text: mail.text, idempotencyKey: `invite:${staff.id}:${Date.now()}` }]);
             invited = Boolean(res?.ok);
         }

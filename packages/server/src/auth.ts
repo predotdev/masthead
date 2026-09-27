@@ -5,7 +5,7 @@ import { HttpError, cookies, newId, now, randomToken, safeEqual, sha256 } from '
 
 export const SESSION_COOKIE = 'mh_session';
 const SESSION_DAYS = 30;
-const LOGIN_MINUTES = 20;
+const LOGIN_MINUTES = 60;
 
 const RANK: Record<StaffRole, number> = { contributor: 0, author: 1, editor: 2, admin: 3, owner: 4 };
 
@@ -86,6 +86,17 @@ export async function createLoginToken(db: D1Database, email: string): Promise<{
     const expires = new Date(Date.now() + LOGIN_MINUTES * 60_000).toISOString();
     await db.prepare('INSERT INTO login_tokens (token_hash, staff_id, expires_at) VALUES (?, ?, ?)').bind(await sha256(token), staff.id, expires).run();
     return { token, staff: { id: staff.id, name: staff.name, email: staff.email } };
+}
+
+/** Who a sign-in link belongs to and whether it still works, without using it up. */
+export async function peekLoginToken(db: D1Database, token: string): Promise<{ state: 'valid' | 'used' | 'expired' | 'unknown'; email?: string; name?: string }> {
+    const row = await db
+        .prepare('SELECT lt.expires_at, lt.used_at, st.email, st.name FROM login_tokens lt JOIN staff st ON st.id = lt.staff_id WHERE lt.token_hash = ?')
+        .bind(await sha256(token))
+        .first<{ expires_at: string; used_at: string | null; email: string; name: string }>();
+    if (!row) return { state: 'unknown' };
+    const state = row.used_at ? 'used' : row.expires_at < now() ? 'expired' : 'valid';
+    return { state, email: row.email, name: row.name };
 }
 
 export async function consumeLoginToken(db: D1Database, token: string): Promise<string | null> {

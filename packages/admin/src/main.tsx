@@ -3,7 +3,7 @@ import { render } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { api, base, session, type Me } from './api';
 import { Ideas } from './pages/ideas';
-import { Login } from './pages/login';
+import { Login, Verify } from './pages/login';
 import { Members } from './pages/members';
 import { Newsletters, SendDetail } from './pages/newsletters';
 import { Posts } from './pages/posts';
@@ -72,6 +72,15 @@ function App() {
         idle(() => loadEditor().catch(() => {}));
     }, []);
 
+    const [, first, second] = route.value.split('/');
+    // Sign-in links land on #/verify/<token>, signed in or not.
+    if (first === 'verify' && second)
+        return (
+            <>
+                <Verify token={decodeURIComponent(second.split('?')[0])} />
+                <Toasts />
+            </>
+        );
     if (session.value === undefined) return <Loading />;
     if (session.value === null)
         return (

@@ -25,6 +25,7 @@ export const css = `:root {
   --glow: radial-gradient(60rem 28rem at 50% -8rem, rgba(10, 10, 10, 0.05), transparent 70%);
   --card: linear-gradient(180deg, rgba(10, 10, 10, 0.012), rgba(10, 10, 10, 0)), #ffffff;
   --title-fade: rgba(10, 10, 10, 0.72);
+  --frame-glow: rgba(10, 10, 10, 0.18);
   --radius: 14px;
   --measure: 44rem;
   --wide: 76rem;
@@ -55,6 +56,7 @@ export const css = `:root {
   --glow: radial-gradient(60rem 28rem at 50% -8rem, rgba(255, 255, 255, 0.09), transparent 70%);
   --card: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.012)), #050505;
   --title-fade: rgba(255, 255, 255, 0.7);
+  --frame-glow: rgba(255, 255, 255, 0.14);
   color-scheme: dark;
 }
 @media (prefers-color-scheme: dark) {
@@ -64,7 +66,7 @@ export const css = `:root {
     --btn: #fafafa; --btn-ink: #000000; --pill: linear-gradient(to top, rgba(250, 250, 250, 0.05), rgba(250, 250, 250, 0.1));
     --header: rgba(0, 0, 0, 0.78); --code: #0e0e10; --callout: rgba(59, 130, 246, 0.1); --callout-line: rgba(96, 165, 250, 0.3);
     --glow: radial-gradient(60rem 28rem at 50% -8rem, rgba(255, 255, 255, 0.09), transparent 70%);
-    --card: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.012)), #050505; --title-fade: rgba(255, 255, 255, 0.7);
+    --card: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.012)), #050505; --title-fade: rgba(255, 255, 255, 0.7); --frame-glow: rgba(255, 255, 255, 0.14);
     color-scheme: dark;
   }
 }
@@ -204,6 +206,26 @@ a.eyebrow:hover { color: var(--fg); }
 .pager a { text-decoration: none; }
 @media (max-width: 960px) { .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } .lead { grid-template-columns: 1fr; gap: 20px; } }
 @media (max-width: 640px) { .cards { grid-template-columns: 1fr; gap: 18px; } .hero { padding-top: 64px; } .wrap { padding: 0 18px; } .lead { padding: 10px; } .lead > div:last-child { padding: 4px 10px 12px; } }
+
+/* The newest post as the front page's hero. */
+.feature-hero { padding: 88px 0 12px; text-align: center; }
+.feature-kicker { display: inline-flex; align-items: center; gap: 10px; margin: 0; font-size: 12px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.feature-kicker .dot::before { content: "\\00b7"; margin: 0 -2px; }
+.spark { width: 6px; height: 6px; border-radius: 999px; background: var(--fg); box-shadow: 0 0 12px 2px var(--fg); opacity: 0.9; }
+.feature-title { max-width: 21ch; font-size: clamp(38px, 5.6vw, 60px); }
+.feature-title a { text-decoration: none; background: inherit; -webkit-background-clip: text; background-clip: text; }
+.feature-hero .hero-text { max-width: 44rem; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.feature-meta { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 14px 22px; margin-top: 28px; font-size: 14px; color: var(--muted); }
+.feature-by { display: inline-flex; align-items: center; gap: 10px; }
+.avatars.small img, .avatars.small span { width: 28px; height: 28px; font-size: 12px; }
+.feature-frame { display: block; max-width: 1040px; margin: 56px auto 0; padding: 8px; border-radius: 24px; border: 1px solid var(--line-2); background: var(--card); box-shadow: 0 0 0 1px var(--line), 0 40px 120px -40px var(--frame-glow); transition: transform 0.35s cubic-bezier(0.2, 0.7, 0.2, 1), box-shadow 0.35s; }
+.feature-frame:hover { transform: translateY(-4px); }
+.feature-frame img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 17px; }
+.latest { margin-top: 88px; }
+.latest-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+.latest-head .section-title { margin: 0; }
+.latest-head .topics { margin: 0; justify-content: flex-end; }
+@media (max-width: 640px) { .feature-hero { padding-top: 56px; } .feature-frame { margin-top: 36px; padding: 5px; border-radius: 18px; } .feature-frame img { border-radius: 13px; } .latest { margin-top: 56px; } .latest-head .topics { justify-content: flex-start; } }
 
 /* ------------------------------------------------------------ post */
 .post { padding: 88px 0 24px; }
