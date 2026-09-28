@@ -4,11 +4,13 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { api, base, session, type Me } from './api';
 import { Icon, type IconName } from './icons';
 import { Analytics } from './pages/analytics';
+import { Calendar } from './pages/calendar';
 import { Ideas } from './pages/ideas';
 import { Login, Verify } from './pages/login';
 import { Members } from './pages/members';
 import { Newsletters, SendDetail } from './pages/newsletters';
 import { WelcomeSeries } from './pages/welcome-series';
+import { NotificationsButton, useNotificationsPoll } from './pages/notifications';
 import { Posts, createPost } from './pages/posts';
 import { Settings } from './pages/settings';
 import { StaffPage } from './pages/staff';
@@ -62,6 +64,7 @@ const NAV: { label: string; items: NavItem[] }[] = [
         label: 'Content',
         items: [
             { path: '/posts', label: 'Posts', icon: 'posts' },
+            { path: '/calendar', label: 'Calendar', icon: 'calendar' },
             { path: '/ideas', label: 'Ideas', icon: 'ideas' },
             { path: '/tags', label: 'Tags', icon: 'tags' }
         ]
@@ -82,7 +85,7 @@ const NAV: { label: string; items: NavItem[] }[] = [
         ]
     }
 ];
-const TITLES: Record<string, string> = { pages: 'Pages', edit: 'Editor', ideas: 'Ideas', analytics: 'Analytics', members: 'Members', newsletters: 'Newsletters', tags: 'Tags', staff: 'Staff', settings: 'Settings' };
+const TITLES: Record<string, string> = { pages: 'Pages', edit: 'Editor', calendar: 'Calendar', ideas: 'Ideas', analytics: 'Analytics', members: 'Members', newsletters: 'Newsletters', tags: 'Tags', staff: 'Staff', settings: 'Settings' };
 const ROLE_LABEL: Record<Role, string> = { owner: 'Owner', admin: 'Admin', editor: 'Editor', author: 'Author', contributor: 'Contributor' };
 
 /** The nav item a route belongs to: pages and the editor live under Posts. */
@@ -108,6 +111,8 @@ function Page() {
             return <Posts type="page" />;
         case 'edit':
             return <LazyEditor id={arg} />;
+        case 'calendar':
+            return <Calendar />;
         case 'ideas':
             return <Ideas />;
         case 'analytics':
@@ -264,6 +269,7 @@ function Sidebar({ me, head, rail }: { me: Me; head: string; rail: boolean }) {
                     <span class="brand-name">{me.site.title}</span>
                     <Icon name="arrowUpRight" size={13} class="brand-out" />
                 </a>
+                <NotificationsButton rail={rail} />
                 <ComposeButton rail={rail} />
             </div>
             <div class="nav">
@@ -304,6 +310,7 @@ function App() {
 
     const [, first, second] = route.value.split('/');
     const me = session.value;
+    useNotificationsPoll(!!me);
 
     // A new screen starts at the top, with the phone menu closed.
     useEffect(() => {
@@ -380,6 +387,7 @@ function App() {
                         Test mode
                     </span>
                 ) : null}
+                <NotificationsButton phone />
                 <button ref={menuButton} type="button" class="icon-btn menu-btn" aria-label={menuOpen ? 'Close menu' : 'Menu'} aria-expanded={menuOpen} aria-controls="sidebar" onClick={() => setMenuOpen(!menuOpen)}>
                     <Icon name={menuOpen ? 'x' : 'menu'} size={18} />
                 </button>

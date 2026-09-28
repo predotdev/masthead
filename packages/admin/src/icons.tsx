@@ -299,6 +299,38 @@ const PATHS = {
             <path d="M12 18h.01" />
         </>
     ),
+    calendar: (
+        <>
+            <path d="M8 2v4" />
+            <path d="M16 2v4" />
+            <rect width="18" height="18" x="3" y="4" rx="2" />
+            <path d="M3 10h18" />
+        </>
+    ),
+    calendarPlus: (
+        <>
+            <path d="M8 2v4" />
+            <path d="M16 2v4" />
+            <path d="M21 13V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8" />
+            <path d="M3 10h18" />
+            <path d="M16 19h6" />
+            <path d="M19 16v6" />
+        </>
+    ),
+    bell: (
+        <>
+            <path d="M10.268 21a2 2 0 0 0 3.464 0" />
+            <path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326" />
+        </>
+    ),
+    message: <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />,
+    messagePlus: (
+        <>
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            <path d="M12 7v6" />
+            <path d="M9 10h6" />
+        </>
+    ),
     clock: (
         <>
             <circle cx="12" cy="12" r="10" />
@@ -315,6 +347,55 @@ const PATHS = {
         <>
             <path d="M12 5v14" />
             <path d="m19 12-7 7-7-7" />
+        </>
+    ),
+    chevronLeft: <path d="m15 18-6-6 6-6" />,
+    more: (
+        <>
+            <circle cx="12" cy="12" r="1" />
+            <circle cx="19" cy="12" r="1" />
+            <circle cx="5" cy="12" r="1" />
+        </>
+    ),
+    pencil: (
+        <>
+            <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" />
+            <path d="m15 5 4 4" />
+        </>
+    ),
+    rotateCcw: (
+        <>
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+            <path d="M3 3v5h5" />
+        </>
+    ),
+    userCheck: (
+        <>
+            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+            <circle cx="9" cy="7" r="4" />
+            <path d="m16 11 2 2 4-4" />
+        </>
+    ),
+    atSign: (
+        <>
+            <circle cx="12" cy="12" r="4" />
+            <path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8" />
+        </>
+    ),
+    reply: (
+        <>
+            <path d="m9 17-5-5 5-5" />
+            <path d="M20 18v-2a4 4 0 0 0-4-4H4" />
+        </>
+    ),
+    grip: (
+        <>
+            <circle cx="9" cy="12" r="1" />
+            <circle cx="9" cy="5" r="1" />
+            <circle cx="9" cy="19" r="1" />
+            <circle cx="15" cy="12" r="1" />
+            <circle cx="15" cy="5" r="1" />
+            <circle cx="15" cy="19" r="1" />
         </>
     )
 };

@@ -17,6 +17,7 @@ interface SettingsData {
     knowledge: { passages: number; pending: number; sources: number; refreshedAt: string | null };
     ideas: IdeaSettings;
     style: StyleSettings;
+    workflow?: { requireApproval: boolean };
     keys: { id: string; name: string; prefix: string; role: string; created_at: string; last_used_at: string | null }[];
     environment: { siteUrl: string; appUrl: string; testMode: boolean; emailFrom: string | null; email: boolean; emailDryRun?: boolean; ai: boolean; webhooks: boolean; linkTag: string | null };
 }
@@ -39,6 +40,7 @@ function SettingsForm({ data, reload, section }: { data: SettingsData; reload: (
     const [sources, setSources] = useState(data.ai.knowledgeSources.join('\n'));
     const [ideas, setIdeas] = useState(data.ideas);
     const [style, setStyle] = useState(data.style);
+    const [workflow, setWorkflow] = useState(data.workflow ?? { requireApproval: false });
     const [busy, setBusy] = useState(false);
     const [newKey, setNewKey] = useState<string | null>(null);
     const env = data.environment;
@@ -53,7 +55,7 @@ function SettingsForm({ data, reload, section }: { data: SettingsData; reload: (
                 .split('\n')
                 .map(s => s.trim())
                 .filter(s => /^https?:\/\//.test(s));
-            await api('/settings', { method: 'PUT', body: { site, newsletter, ai: { ...ai, knowledgeSources }, ideas, style } });
+            await api('/settings', { method: 'PUT', body: { site, newsletter, ai: { ...ai, knowledgeSources }, ideas, style, workflow } });
             toast('Saved');
             reload();
             // Pickers mark the site's defaults; they may have moved.
@@ -169,6 +171,16 @@ function SettingsForm({ data, reload, section }: { data: SettingsData; reload: (
                         <input {...n('postalAddress')} />
                     </Field>
                 </div>
+            </section>
+
+            <section class="panel" id="settings-review">
+                <h2>Review</h2>
+                <p class="muted small">Anyone writing can send a post for review. Reviewers approve it or ask for changes, and the people involved hear about it in the admin and by email.</p>
+                <label class="check">
+                    <input type="checkbox" checked={workflow.requireApproval} onChange={e => setWorkflow({ ...workflow, requireApproval: e.currentTarget.checked })} />
+                    <span>Require approval before publishing</span>
+                </label>
+                <p class="field-hint settings-review-hint">A draft needs a reviewer’s approval before anyone can publish or schedule it. The owner can always publish.</p>
             </section>
 
             <section class="panel" id="settings-ai">

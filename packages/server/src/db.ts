@@ -129,7 +129,35 @@ const MIGRATIONS: string[][] = [
     ],
     // v9: related posts by meaning: each post's closest posts (JSON [id, similarity] pairs), and the
     // fingerprint of the post's vector they were found for.
-    [`CREATE TABLE related_posts (post_id TEXT PRIMARY KEY, vector_key TEXT NOT NULL, related TEXT NOT NULL, updated_at TEXT NOT NULL)`]
+    [`CREATE TABLE related_posts (post_id TEXT PRIMARY KEY, vector_key TEXT NOT NULL, related TEXT NOT NULL, updated_at TEXT NOT NULL)`],
+    // v10: review before publishing, staff comments and the content calendar: a draft's planned day; review
+    // requests and each reviewer's answer (with a hash of what they approved); comment threads, anchored
+    // to text by position and quote (the post body never holds them); the admin's notifications.
+    [
+        `ALTER TABLE posts ADD COLUMN target_date TEXT`,
+        `CREATE INDEX posts_target ON posts (target_date) WHERE target_date IS NOT NULL`,
+        `CREATE TABLE post_reviews (
+            post_id TEXT PRIMARY KEY, status TEXT NOT NULL CHECK (status IN ('in_review','approved','changes_requested')),
+            requested_by TEXT, requested_by_name TEXT, note TEXT, requested_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
+        `CREATE INDEX post_reviews_status ON post_reviews (status)`,
+        `CREATE TABLE post_reviewers (
+            post_id TEXT NOT NULL, staff_id TEXT NOT NULL,
+            state TEXT NOT NULL DEFAULT 'pending' CHECK (state IN ('pending','approved','changes_requested')),
+            note TEXT, decided_at TEXT, content_hash TEXT, PRIMARY KEY (post_id, staff_id))`,
+        `CREATE TABLE comment_threads (
+            id TEXT PRIMARY KEY, post_id TEXT NOT NULL, quote TEXT, anchor_from INTEGER, anchor_to INTEGER, anchor_prefix TEXT, anchor_suffix TEXT,
+            status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','resolved')), resolved_by TEXT, resolved_at TEXT,
+            created_by TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
+        `CREATE INDEX comment_threads_post ON comment_threads (post_id, status)`,
+        `CREATE TABLE comments (
+            id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, post_id TEXT NOT NULL, author_id TEXT, author_name TEXT NOT NULL,
+            body TEXT NOT NULL, mentions TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL, edited_at TEXT)`,
+        `CREATE INDEX comments_thread ON comments (thread_id, created_at)`,
+        `CREATE TABLE notifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, staff_id TEXT NOT NULL, kind TEXT NOT NULL, post_id TEXT, thread_id TEXT,
+            actor_id TEXT, actor_name TEXT, text TEXT, created_at TEXT NOT NULL, read_at TEXT)`,
+        `CREATE INDEX notifications_staff ON notifications (staff_id, id)`
+    ]
 ];
 
 let migrated: Promise<void> | null = null;

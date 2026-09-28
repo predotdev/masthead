@@ -1,18 +1,22 @@
 import { useEffect, useState } from 'preact/hooks';
-import { api, fmtDate, fmtNum, type Post, type Staff } from '../api';
+import { api, fmtDate, fmtNum, fromDayKey, type Post, type Staff } from '../api';
 import { Icon } from '../icons';
 import { Avatar, Button, Empty, ErrorNote, PageHead, Pill, Segmented, TableSkeleton, errorToast, useLoad } from '../ui';
+import { REVIEW_LABEL, REVIEW_TONE } from './review-status';
 
 const STATUS_TONE = { draft: 'neutral', scheduled: 'amber', published: 'green' } as const;
 const FILTERS = [
     ['', 'All'],
     ['draft', 'Drafts'],
+    ['in_review', 'In review'],
     ['scheduled', 'Scheduled'],
     ['published', 'Published']
 ] as const;
 
 /** "drafts", "scheduled pages", "posts": what a filter shows, for empty states. */
-const phrase = (status: string, noun: string) => (status === 'draft' ? 'drafts' : status ? `${status} ${noun}s` : `${noun}s`);
+const phrase = (status: string, noun: string) => (status === 'draft' ? 'drafts' : status === 'in_review' ? `${noun}s in review` : status ? `${status} ${noun}s` : `${noun}s`);
+/** The filter as a query: "In review" is a review status, the rest are post statuses. */
+const filterQuery = (status: string) => (status === 'in_review' ? '&review=in_review' : status ? `&status=${status}` : '');
 
 /** Creates an empty post or page and opens it in the editor. */
 export async function createPost(type: 'post' | 'page') {
@@ -40,7 +44,7 @@ export function Posts({ type }: { type: 'post' | 'page' }) {
     }, [search]);
 
     const { data, error, loading } = useLoad(
-        () => api<{ items: Post[]; total: number }>(`/posts?type=${type}&limit=200${status ? `&status=${status}` : ''}${q ? `&q=${encodeURIComponent(q)}` : ''}`),
+        () => api<{ items: Post[]; total: number }>(`/posts?type=${type}&limit=200${filterQuery(status)}${q ? `&q=${encodeURIComponent(q)}` : ''}`),
         [type, status, q]
     );
     const people = useLoad(() => api<Staff[]>('/staff'), []);
@@ -144,9 +148,16 @@ export function Posts({ type }: { type: 'post' | 'page' }) {
                                                 </span>
                                             </td>
                                             <td class="col-status">
-                                                <Pill tone={STATUS_TONE[p.status]} dot>
-                                                    {p.status}
-                                                </Pill>
+                                                <span class="status-pills">
+                                                    <Pill tone={STATUS_TONE[p.status]} dot>
+                                                        {p.status}
+                                                    </Pill>
+                                                    {p.review && p.status !== 'published' ? (
+                                                        <span class={`pill ${REVIEW_TONE[p.review.status]} review-pill`} title={p.review.status === 'in_review' ? `${p.review.approved} of ${p.review.reviewers} approved` : undefined}>
+                                                            {REVIEW_LABEL[p.review.status]}
+                                                        </span>
+                                                    ) : null}
+                                                </span>
                                             </td>
                                             <td class="col-author">
                                                 {authors.length ? (
@@ -161,9 +172,18 @@ export function Posts({ type }: { type: 'post' | 'page' }) {
                                                     <span class="faint">None</span>
                                                 )}
                                             </td>
-                                            <td class="col-date nowrap muted" title={`${p.status === 'published' ? 'Published' : p.status === 'scheduled' ? 'Scheduled for' : p.publishedAt ? 'Publish date' : 'Updated'} ${new Date(when).toLocaleString()}`}>
-                                                {fmtDate(when)}
-                                            </td>
+                                            {p.status === 'draft' && p.targetDate ? (
+                                                <td class="col-date nowrap muted" title={`Planned for ${fromDayKey(p.targetDate).toLocaleDateString(undefined, { dateStyle: 'full' })}`}>
+                                                    <span class="planned-date">
+                                                        <Icon name="calendar" size={13} />
+                                                        {fmtDate(fromDayKey(p.targetDate).toISOString())}
+                                                    </span>
+                                                </td>
+                                            ) : (
+                                                <td class="col-date nowrap muted" title={`${p.status === 'published' ? 'Published' : p.status === 'scheduled' ? 'Scheduled for' : p.publishedAt ? 'Publish date' : 'Updated'} ${new Date(when).toLocaleString()}`}>
+                                                    {fmtDate(when)}
+                                                </td>
+                                            )}
                                             {views ? <td class="num">{p.status === 'published' ? fmtNum(views.get(p.slug) ?? 0) : <span class="faint">–</span>}</td> : null}
                                             {type === 'post' ? <td class="num muted">{p.newsletter ? fmtNum(p.newsletter.recipients) : <span class="faint">–</span>}</td> : null}
                                             {type === 'post' ? (

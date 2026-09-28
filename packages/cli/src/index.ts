@@ -35,7 +35,7 @@ const HELP = `masthead <command>
                                    site, page by page
   serve [--dir <dir>] [--port <n>] Preview a build locally
   settings --server <url> --file <settings.json>
-                                   Apply site, newsletter, AI, style-check and email
+                                   Apply site, newsletter, AI, style-check, review and email
                                    sequence (welcome series) settings and add AI memory
                                    entries, then rebuild
   studio signals [--days 14]       Show what the configured sources see
@@ -260,7 +260,7 @@ async function main() {
             const res = await fetch(`${base}admin/api/settings`, {
                 method: 'PUT',
                 headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-                body: JSON.stringify({ site: input.site, newsletter: input.newsletter, ai: input.ai, style: input.style, sequences: input.sequences })
+                body: JSON.stringify({ site: input.site, newsletter: input.newsletter, ai: input.ai, style: input.style, sequences: input.sequences, workflow: input.workflow })
             });
             if (!res.ok) throw new Error(`Settings were not saved: HTTP ${res.status} ${(await res.text()).slice(0, 200)}`);
             // AI memory: add the file's entries that aren't there yet; entries added in the editor stay.

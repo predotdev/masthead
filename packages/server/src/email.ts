@@ -274,20 +274,24 @@ export function newsletterEmail(o: {
     return { subject: post.title, html, text };
 }
 
-function notice(site: SiteSettings, heading: string, paragraph: string, action: { label: string; url: string }, fine: string) {
+function notice(site: SiteSettings, heading: string, paragraph: string, action: { label: string; url: string }, fine: string, quote?: string | null) {
     const origin = new URL(site.url).origin;
     const b = brand(site, origin);
     const url = esc(action.url);
+    // Someone's own words (a comment, a review note), set apart from ours.
+    const quoted = quote
+        ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 28px"><tr><td class="ln2 txt" style="border-left:3px solid #d8d8dc;padding:3px 0 3px 16px;font-size:16px;line-height:1.6;color:${TEXT};word-wrap:break-word">${esc(quote).replace(/\n/g, '<br>')}</td></tr></table>`
+        : '';
     const card = `${masthead(b)}<tr><td class="px" style="padding:${b.dark ? 40 : 30}px 40px 40px;text-align:left">
 <h1 class="ink" style="margin:0;font-size:26px;line-height:1.25;font-weight:650;letter-spacing:-0.02em;color:${INK}">${esc(heading)}</h1>
-<p class="txt" style="margin:12px 0 28px;font-size:16.5px;line-height:1.6;color:${TEXT}">${esc(paragraph)}</p>
-${button(url, esc(action.label), { align: 'left' })}
+<p class="txt" style="margin:12px 0 ${quoted ? 20 : 28}px;font-size:16.5px;line-height:1.6;color:${TEXT}">${esc(paragraph)}</p>
+${quoted}${button(url, esc(action.label), { align: 'left' })}
 <p class="fnt" style="margin:28px 0 0;font-size:13px;line-height:1.6;color:${FAINT}">${esc(fine)}</p>
 <p class="fnt" style="margin:14px 0 0;font-size:12.5px;line-height:1.6;color:${FAINT};word-break:break-all">Button not working? Paste this link into your browser:<br><a href="${url}" class="fnt" style="color:${FAINT};text-decoration:underline">${url}</a></p>
 </td></tr>`;
     return {
-        html: frame({ title: heading, preheader: paragraph, lang: site.locale, card, footer: footer(site, origin) }),
-        text: `${heading}\n\n${paragraph}\n\n${action.label}: ${action.url}\n\n${fine}\n`
+        html: frame({ title: heading, preheader: quote ? `${paragraph} ${quote}` : paragraph, lang: site.locale, card, footer: footer(site, origin) }),
+        text: `${heading}\n\n${paragraph}\n\n${quote ? `${quote.replace(/^/gm, '> ')}\n\n` : ''}${action.label}: ${action.url}\n\n${fine}\n`
     };
 }
 
@@ -308,6 +312,12 @@ export function signInEmail(site: SiteSettings, url: string, invite: boolean) {
               subject: `Sign in to ${site.title}`,
               ...notice(site, 'Sign in', 'Use the link below to sign in to the blog admin.', { label: 'Sign in', url }, "The link works once and expires in 20 minutes. If you didn't ask for it, ignore this email.")
           };
+}
+
+/** A note to someone on the team: a review request or answer, or a mention in a comment. Staff only. */
+export function teamEmail(site: SiteSettings, o: { subject: string; heading: string; paragraph: string; quote?: string | null; action: { label: string; url: string } }) {
+    const fine = `You get this because you're on the ${site.title} team. To stop these emails, open Notifications in the admin.`;
+    return { subject: o.subject, ...notice(site, o.heading, o.paragraph, o.action, fine, o.quote) };
 }
 
 /** A small standalone page for signup, confirmation and unsubscribe results. */

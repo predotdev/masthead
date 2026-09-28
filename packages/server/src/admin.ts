@@ -4,6 +4,7 @@ import { addIdeas, assist, draft, draftIdea, draftIdeaStream, draftStream, edit,
 import { autoTag, tagUntagged, wantsAutoTags } from './autotag';
 import { backupRoutes } from './backup';
 import { atLeast, clearSessionCookie, consumeLoginToken, createApiKey, createLoginToken, createSession, endSession, peekLoginToken, sessionCookie } from './auth';
+import { forgetPost, saveAnchors, stripCommentAnchors } from './comments';
 import {
     aiSettings,
     deletePost,
@@ -38,12 +39,14 @@ import { addMember, deleteMember, getMember, getMemberByEmail, listMembers, memb
 import { appUrl, buildEmail, cancelSend, countSegment, createSend, getSend, listSends, processSends, sendTest, testMode, unsubscribeUrl, type Segment } from './newsletter';
 import { linkTag, publishSite } from './publish';
 import { MEDIA_PREFIX } from './public';
+import { checkApproval, reviewSummaries, saveWorkflowSettings, workflowSettings } from './review';
 import { Router } from './router';
 import { importSequences, sequenceRoutes } from './sequences';
 import { share, shareStream } from './share';
 import { wantsEvents } from './sse';
 import { saveStyleSettings, styleSettings } from './style';
 import { HttpError, body, csvEscape, html, json, newId, now, parseCsv, redirect, safeEqual, sleep } from './util';
+import { workflowRoutes } from './workflow';
 
 type A = Ctx & { principal?: Principal };
 const me = (ctx: A) => atLeast(ctx.principal, 'contributor');
@@ -146,16 +149,17 @@ export function adminRoutes(): Router<A> {
         const p = me(ctx);
         const s = ctx.url.searchParams;
         const own = p.role === 'author' || p.role === 'contributor';
-        return json(
-            await listPosts(ctx.db, {
-                type: (s.get('type') as 'post' | 'page') || undefined,
-                status: s.get('status') || undefined,
-                q: s.get('q') || undefined,
-                authorId: own ? p.staffId : undefined,
-                limit: Number(s.get('limit') ?? 50),
-                offset: Number(s.get('offset') ?? 0)
-            })
-        );
+        const page = await listPosts(ctx.db, {
+            type: (s.get('type') as 'post' | 'page') || undefined,
+            status: s.get('status') || undefined,
+            q: s.get('q') || undefined,
+            authorId: own ? p.staffId : undefined,
+            review: s.get('review') || undefined,
+            limit: Number(s.get('limit') ?? 50),
+            offset: Number(s.get('offset') ?? 0)
+        });
+        const reviews = await reviewSummaries(ctx.db, page.items.map(x => x.id));
+        return json({ ...page, items: page.items.map(x => ({ ...x, review: reviews.get(x.id) ?? null })) });
     });
 
     r.get('/posts/:id', async (_req, ctx, { id }) => {
@@ -179,8 +183,13 @@ export function adminRoutes(): Router<A> {
         const input = await body(req);
         delete input.status;
         if ((p.role === 'author' || p.role === 'contributor') && input.authors) delete input.authors;
+        // Comment anchors come with the text they sit on and are kept with the comments, never in the post.
+        const anchors = input.commentAnchors;
+        delete input.commentAnchors;
+        if (typeof input.html === 'string') input.html = await stripCommentAnchors(input.html);
         await keepRevision(ctx.db, existing, input, p.name, 'edited');
         const post = await savePost(ctx.db, { ...input, id });
+        await saveAnchors(ctx.db, id, anchors);
         // A post without a topic gets tags picked after the response (autotag.ts); the editor fetches them.
         const tagging = await wantsAutoTags(ctx, post);
         if (post.status === 'published') republish(ctx, tagging ? autoTag(ctx, id) : undefined);
@@ -221,7 +230,7 @@ export function adminRoutes(): Router<A> {
     r.post('/posts/:id/publish', async (req, ctx, { id }) => {
         const existing = await getPost(ctx.db, id);
         if (!existing) throw new HttpError(404, 'Post not found.');
-        await canEdit(ctx, existing, true);
+        await checkApproval(ctx.db, existing, await canEdit(ctx, existing, true));
         if (!existing.title.trim()) throw new HttpError(400, 'Add a title before publishing.');
         const { publishedAt } = await body(req);
         const when = publishedAt ? new Date(publishedAt) : existing.publishedAt && existing.status === 'published' ? new Date(existing.publishedAt) : new Date();
@@ -265,6 +274,7 @@ export function adminRoutes(): Router<A> {
         if (!existing) throw new HttpError(404, 'Post not found.');
         await canEdit(ctx, existing, existing.status !== 'draft');
         await deletePost(ctx.db, id);
+        await forgetPost(ctx.db, id);
         if (existing.status !== 'draft') republish(ctx);
         return json({ ok: true });
     });
@@ -548,14 +558,15 @@ export function adminRoutes(): Router<A> {
     // ---------------------------------------------------------- settings
     r.get('/settings', async (_req, ctx) => {
         atLeast(ctx.principal, 'admin');
-        const [site, newsletter, ai, memory, knowledge, ideas, style] = await Promise.all([
+        const [site, newsletter, ai, memory, knowledge, ideas, style, workflow] = await Promise.all([
             siteSettings(ctx.env, ctx.db),
             newsletterSettings(ctx.env, ctx.db),
             aiSettings(ctx.env, ctx.db),
             listMemory(ctx.db),
             knowledgeStats(ctx.db),
             ideaSettings(ctx.db),
-            styleSettings(ctx.db)
+            styleSettings(ctx.db),
+            workflowSettings(ctx.db)
         ]);
         const { results: keys } = await ctx.db.prepare('SELECT id, name, prefix, role, created_at, last_used_at FROM api_keys ORDER BY created_at DESC').all();
         return json({
@@ -566,6 +577,7 @@ export function adminRoutes(): Router<A> {
             // The DENYLIST variable's terms stay out of the response; only how many there are.
             ideas: { ...ideas, envDenylist: envDenylist(ctx.env).length },
             style,
+            workflow,
             keys,
             environment: {
                 siteUrl: ctx.env.SITE_URL,
@@ -592,6 +604,7 @@ export function adminRoutes(): Router<A> {
         if (input.newsletter) await setSetting(ctx.db, 'newsletter', { ...(await getSetting(ctx.db, 'newsletter', {})), ...input.newsletter });
         if (input.ideas) await saveIdeaSettings(ctx.db, input.ideas);
         if (input.style) await saveStyleSettings(ctx.db, input.style);
+        if (input.workflow) await saveWorkflowSettings(ctx.db, input.workflow);
         if (input.ai) await saveAiSettings(ctx, input.ai);
         // Email sequences from a settings file: copy and steps, and the switch only when the file sets it.
         if (input.sequences) await importSequences(ctx.db, input.sequences);
@@ -859,6 +872,7 @@ export function adminRoutes(): Router<A> {
         return json({ ...row, members: await memberStats(ctx.db) });
     });
 
+    workflowRoutes(r, canEdit);
     return r;
 }
 

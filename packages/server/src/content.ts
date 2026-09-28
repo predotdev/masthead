@@ -104,6 +104,7 @@ interface PostRow {
     created_at: string;
     updated_at: string;
     auto_tags?: string | null;
+    target_date?: string | null;
 }
 
 function toPost(r: PostRow, tags: string[], authors: string[]): Post {
@@ -136,7 +137,8 @@ function toPost(r: PostRow, tags: string[], authors: string[]): Post {
         updatedAt: r.updated_at,
         tags,
         authors,
-        autoTags: r.auto_tags ? JSON.parse(r.auto_tags) : null
+        autoTags: r.auto_tags ? JSON.parse(r.auto_tags) : null,
+        targetDate: r.target_date ?? null
     };
 }
 
@@ -161,6 +163,8 @@ export interface PostQuery {
     status?: string;
     q?: string;
     authorId?: string;
+    /** Posts whose review has this status (in_review, approved, changes_requested). */
+    review?: string;
     limit?: number;
     offset?: number;
 }
@@ -172,6 +176,7 @@ export async function listPosts(db: D1Database, q: PostQuery): Promise<{ items: 
     if (q.status) (where.push('status = ?'), args.push(q.status));
     if (q.q) (where.push('(title LIKE ? OR slug LIKE ?)'), args.push(`%${q.q}%`, `%${q.q}%`));
     if (q.authorId) (where.push('id IN (SELECT post_id FROM post_authors WHERE staff_id = ?)'), args.push(q.authorId));
+    if (q.review) (where.push('id IN (SELECT post_id FROM post_reviews WHERE status = ?)'), args.push(q.review));
     const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const limit = Math.min(q.limit ?? 50, 200);
     const [rows, count] = await db.batch([
@@ -179,7 +184,7 @@ export async function listPosts(db: D1Database, q: PostQuery): Promise<{ items: 
             .prepare(
                 `SELECT id, type, slug, title, status, body_format, NULL AS markdown, NULL AS html, custom_excerpt, feature_image, feature_image_alt, feature_image_caption,
                  meta_title, meta_description, og_title, og_description, og_image, twitter_title, twitter_description, twitter_image, canonical_url,
-                 featured, newsletter, published_at, created_at, updated_at
+                 featured, newsletter, published_at, created_at, updated_at, target_date
                  FROM posts ${clause} ORDER BY CASE status WHEN 'draft' THEN 0 WHEN 'scheduled' THEN 1 ELSE 2 END, COALESCE(published_at, updated_at) DESC LIMIT ? OFFSET ?`
             )
             .bind(...args, limit, q.offset ?? 0),
@@ -226,7 +231,8 @@ const POST_FIELDS: [keyof Post, string][] = [
     ['twitterDescription', 'twitter_description'],
     ['twitterImage', 'twitter_image'],
     ['canonicalUrl', 'canonical_url'],
-    ['publishedAt', 'published_at']
+    ['publishedAt', 'published_at'],
+    ['targetDate', 'target_date']
 ];
 
 /** Creates or updates a post. Tags and authors are replaced when given. */
@@ -255,6 +261,8 @@ export async function savePost(db: D1Database, input: PostInput, opts: { default
     merged.type = merged.type ?? 'post';
     merged.status = merged.status ?? 'draft';
     merged.body_format = merged.body_format ?? 'markdown';
+    if (merged.target_date === '') merged.target_date = null;
+    if (merged.target_date != null && !/^\d{4}-\d{2}-\d{2}$/.test(String(merged.target_date))) throw new HttpError(400, 'A target date is a day, like 2026-10-06.');
     const featured = input.featured !== undefined ? Number(Boolean(input.featured)) : existing ? Number(existing.featured) : 0;
     const t = now();
     const createdAt = opts.keepTimestamps?.createdAt ?? existing?.createdAt ?? t;

@@ -69,6 +69,8 @@ export interface Post {
     autoTags?: string[] | null;
     /** Stats from when the post went out as a newsletter, if it did. */
     newsletter?: { sentAt: string | null; recipients: number; delivered: number; opened: number } | null;
+    /** The day a draft is planned for (YYYY-MM-DD), on the admin's content calendar. Never shown to readers. */
+    targetDate?: string | null;
 }
 
 export type StaffRole = 'owner' | 'admin' | 'editor' | 'author' | 'contributor';
