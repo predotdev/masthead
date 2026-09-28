@@ -10,7 +10,7 @@
  */
 import type { AIProvider } from '@masthead/core';
 import { plainText } from '@masthead/render';
-import { aiSettings, getSetting, setSetting } from './content';
+import { aiSettings, getSetting, setSetting, siteSettings } from './content';
 import type { Ctx, Env } from './env';
 import { HttpError, now, sha256 } from './util';
 
@@ -89,7 +89,7 @@ export function chunkText(text: string, size = CHUNK): string[] {
 }
 
 /** HTML as text that keeps its paragraph breaks, so passages split between paragraphs. */
-function blockText(html: string): string {
+export function blockText(html: string): string {
     return html
         // Comments first: page source notes are not the page's content.
         .replace(/<!--[\s\S]*?-->/g, ' ')
@@ -298,6 +298,94 @@ export async function retrieve(ctx: Ctx, ai: AIProvider, query: string, k = 6): 
         if (out.length >= k) break;
     }
     return out;
+}
+
+// ------------------------------------------------------------------ posts to link
+
+let postPassages: { version: string; posts: Map<number, string> } | null = null;
+
+/** The post each indexed post passage comes from, by passage id; kept per index version. */
+async function passagePosts(db: D1Database, version: string): Promise<Map<number, string>> {
+    if (postPassages?.version === version) return postPassages.posts;
+    const { results } = await db.prepare("SELECT id, source FROM knowledge WHERE source LIKE 'post:%'").all<{ id: number; source: string }>();
+    postPassages = { version, posts: new Map(results.map(r => [r.id, r.source.slice('post:'.length)])) };
+    return postPassages.posts;
+}
+
+// The same paragraph is looked up again as the cursor comes back to it: its vector is kept.
+const queryVectors = new Map<string, Float32Array>();
+
+/**
+ * Published posts nearest in meaning to a piece of writing, best first: one row
+ * per post, with its closest passage. `ready` is false until the blog has been
+ * read, when there is nothing to compare with yet.
+ */
+export async function relatedPosts(ctx: Ctx, ai: AIProvider, text: string, opts: { exclude?: string[]; limit?: number } = {}): Promise<{ ready: boolean; posts: { postId: string; score: number; passage: string }[] }> {
+    const index = await loadIndex(ctx.env, ctx.db);
+    if (!ai.embed || !index?.dims) return { ready: false, posts: [] };
+    const query = text.trim().slice(0, 4000);
+    if (!query) return { ready: true, posts: [] };
+    const { embeddingModel } = await aiSettings(ctx.env, ctx.db);
+    const key = `${embeddingModel}\u0000${query}`;
+    let q = queryVectors.get(key);
+    if (!q) {
+        q = normalize((await ai.embed([query], embeddingModel ?? undefined)).vectors[0]);
+        if (queryVectors.size >= 200) queryVectors.delete(queryVectors.keys().next().value!);
+        queryVectors.set(key, q);
+    }
+    if (q.length !== index.dims) return { ready: false, posts: [] };
+    const posts = await passagePosts(ctx.db, index.version);
+    const skip = new Set(opts.exclude ?? []);
+    const best = new Map<string, { id: number; s: number }>();
+    for (let i = 0; i < index.ids.length; i++) {
+        const post = posts.get(index.ids[i]);
+        if (!post || skip.has(post)) continue;
+        let s = 0;
+        const off = i * index.dims;
+        for (let d = 0; d < index.dims; d++) s += q[d] * index.matrix[off + d];
+        const seen = best.get(post);
+        if (!seen || s > seen.s) best.set(post, { id: index.ids[i], s });
+    }
+    const top = [...best].sort((a, b) => b[1].s - a[1].s).slice(0, opts.limit ?? 6);
+    if (!top.length) return { ready: true, posts: [] };
+    const { results } = await ctx.db
+        .prepare(`SELECT id, chunk FROM knowledge WHERE id IN (${top.map(() => '?').join(',')})`)
+        .bind(...top.map(([, b]) => b.id))
+        .all<{ id: number; chunk: string }>();
+    const chunks = new Map(results.map(r => [r.id, r.chunk]));
+    return { ready: true, posts: top.map(([postId, b]) => ({ postId, score: b.s, passage: chunks.get(b.id) ?? '' })) };
+}
+
+export interface LinkSuggestion {
+    id: string;
+    title: string;
+    /** The post's address as it stands now (its slug may have changed since it was read). */
+    url: string;
+    excerpt: string | null;
+    publishedAt: string | null;
+    /** The part of the post closest to the text. */
+    passage: string;
+    score: number;
+}
+
+/** Posts worth linking from a paragraph: published posts only, never the ones in `exclude` (e.g. the post itself). */
+export async function suggestLinks(ctx: Ctx, ai: AIProvider, text: string, exclude: string[], limit = 5): Promise<{ ready: boolean; posts: LinkSuggestion[] }> {
+    const found = await relatedPosts(ctx, ai, text, { exclude, limit: limit + 3 });
+    if (!found.posts.length) return { ready: found.ready, posts: [] };
+    const ids = found.posts.map(p => p.postId);
+    const [{ results }, site] = await Promise.all([
+        ctx.db
+            .prepare(`SELECT id, slug, title, custom_excerpt, published_at FROM posts WHERE status = 'published' AND type = 'post' AND id IN (${ids.map(() => '?').join(',')})`)
+            .bind(...ids)
+            .all<{ id: string; slug: string; title: string; custom_excerpt: string | null; published_at: string | null }>(),
+        siteSettings(ctx.env, ctx.db)
+    ]);
+    const byId = new Map(results.map(r => [r.id, r]));
+    const posts = found.posts.flatMap(p => {
+        const r = byId.get(p.postId);
+        return r ? [{ id: r.id, title: r.title, url: `${site.url}${r.slug}/`, excerpt: r.custom_excerpt, publishedAt: r.published_at, passage: p.passage, score: p.score }] : [];
+    });
+    return { ready: true, posts: posts.slice(0, limit) };
 }
 
 /** Forgets every vector, e.g. after the embedding model changes; the cron embeds them again. */
