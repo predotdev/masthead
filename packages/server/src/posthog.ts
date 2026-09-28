@@ -478,3 +478,26 @@ LIMIT 300`
         };
     });
 }
+
+// ---------------------------------------------------------------- for the welcome series
+
+/**
+ * Readers per post (by slug) from the last traffic answer Analytics kept, widest range first.
+ * PostHog is not asked: the welcome series ranks posts with whatever the admin last loaded,
+ * and gets an empty map when Analytics is not connected or was never opened.
+ */
+export async function cachedPostReaders(env: Env, db: D1Database): Promise<Map<string, number>> {
+    const out = new Map<string, number>();
+    if (!env.POSTHOG_PROJECT_ID) return out;
+    for (const range of ['all', '90', '30', '7']) {
+        const row = await db.prepare('SELECT data FROM analytics_cache WHERE key = ?').bind(cacheKey(env, 'web', range)).first<{ data: string }>();
+        if (!row) continue;
+        try {
+            for (const p of (JSON.parse(row.data) as WebData).posts ?? []) if (p.slug && p.readers > 0) out.set(p.slug, p.readers);
+        } catch {
+            // A row from an older shape: try the next range.
+        }
+        if (out.size) break;
+    }
+    return out;
+}

@@ -10,6 +10,7 @@ import { confirmEmail } from './email';
 import type { Ctx } from './env';
 import { checkMemberToken, getMember, getMemberByExternalUuid, memberToken, requestSubscription, setStatus, type Attribution } from './members';
 import { appUrl, mayEmail, recordEmailEvents, testMode } from './newsletter';
+import { sequenceUnsubscribe } from './sequences';
 import { SITE_PREFIX, edgeCache, edgeKey } from './publish';
 import { Router } from './router';
 import { HttpError, body, escapeHtml as esc, html, json, redirect } from './util';
@@ -365,7 +366,9 @@ export function publicRoutes(): Router<Ctx> {
                           .run()
                   ).meta.changes > 0
                 : false;
-        await setStatus(ctx.db, member, 'unsubscribed', 'member', counted ? { send: sendId } : undefined);
+        // Or against the welcome series email it came from.
+        const series = member.status !== 'unsubscribed' && sendId && !counted ? await sequenceUnsubscribe(ctx.db, sendId, member.id) : null;
+        await setStatus(ctx.db, member, 'unsubscribed', 'member', counted ? { send: sendId } : (series ?? undefined));
         if (!wantsHtml(req)) return new Response('Unsubscribed', { status: 200 });
         return resultPage(ctx, "You're unsubscribed", '<p class="dek">You won\'t get any more emails.</p>');
     });

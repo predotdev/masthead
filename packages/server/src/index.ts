@@ -15,6 +15,7 @@ import { migrate } from './db';
 import type { AppOptions, Ctx, Env } from './env';
 import { appUrl, processSends } from './newsletter';
 import { legacyRoute, publicRoutes, serveMedia, serveSearch, serveSite } from './public';
+import { processSequences } from './sequences';
 import { basePath, publishSite, publishUnfinished, releaseScheduled } from './publish';
 import { embedPending, refreshKnowledge } from './knowledge';
 import { IDEAS_MINUTE, scheduledIdeas } from './ideas';
@@ -111,11 +112,12 @@ export function createApp(options: AppOptions) {
             }
         },
 
-        /** Every minute: publish scheduled posts, then work through newsletter batches. */
+        /** Every minute: publish scheduled posts, then work through newsletter batches and welcome series emails. */
         async scheduled(event: ScheduledController, env: Env, exec: ExecutionContext): Promise<void> {
             await migrate(env.DB);
             if ((await releaseScheduled(env.DB)) || (await publishUnfinished(env.DB))) await publishSite(env, env.DB, options);
             exec.waitUntil(processSends(env, env.DB, options, 50_000));
+            exec.waitUntil(processSequences(env, env.DB, options, 40_000).catch(err => console.error('welcome series failed', err)));
             // The writing assistant's knowledge: embed what is queued; re-read every source once a day.
             const ai = options.ai?.(env) ?? null;
             const at = new Date(event.scheduledTime);

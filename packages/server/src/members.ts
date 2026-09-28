@@ -311,7 +311,12 @@ export async function importMembers(db: D1Database, records: MemberRecord[], eve
 }
 
 export async function deleteMember(db: D1Database, id: string): Promise<void> {
-    await db.batch([db.prepare('DELETE FROM member_events WHERE member_id = ?').bind(id), db.prepare('DELETE FROM members WHERE id = ?').bind(id)]);
+    await db.batch([
+        db.prepare('DELETE FROM member_events WHERE member_id = ?').bind(id),
+        db.prepare('DELETE FROM sequence_members WHERE member_id = ?').bind(id),
+        db.prepare('DELETE FROM sequence_sends WHERE member_id = ?').bind(id),
+        db.prepare('DELETE FROM members WHERE id = ?').bind(id)
+    ]);
 }
 
 /** Restores the opt-out of members an old integration re-subscribed. */

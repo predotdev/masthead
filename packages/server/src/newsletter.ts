@@ -67,7 +67,7 @@ export async function unsubscribeUrl(env: Env, memberId: string, sendId?: string
     return `${appUrl(env)}api/unsubscribe?m=${memberId}&t=${await memberToken(env.SECRET, 'unsubscribe', memberId)}${sendId ? `&s=${sendId}` : ''}`;
 }
 
-async function sender(env: Env, db: D1Database) {
+export async function sender(env: Env, db: D1Database) {
     const n = await newsletterSettings(env, db);
     const site = await siteSettings(env, db);
     const fromAddress = env.EMAIL_FROM || (n.senderEmail ? `${n.senderName || site.title} <${n.senderEmail}>` : null);
@@ -127,7 +127,7 @@ async function storedSizes(db: D1Database, srcs: string[]): Promise<Record<strin
 }
 
 /** Sizes for the cover and logo: stored ones from the media table, others read from the first bytes of the file. */
-async function imageSizes(db: D1Database, srcs: (string | null | undefined)[]): Promise<Record<string, Size>> {
+export async function imageSizes(db: D1Database, srcs: (string | null | undefined)[]): Promise<Record<string, Size>> {
     const wanted = srcs.filter((s): s is string => !!s);
     const out = await storedSizes(db, wanted).catch(() => ({}) as Record<string, Size>);
     await Promise.all(
@@ -385,13 +385,16 @@ export async function recordEmailEvents(db: D1Database, events: EmailEvent[]): P
         const r = e.providerId
             ? await db.prepare('SELECT send_id, member_id FROM send_recipients WHERE provider_id = ?').bind(e.providerId).first<{ send_id: string; member_id: string }>()
             : null;
-        // Provider webhooks cover every email on the account. Keep only newsletter events,
+        // A welcome series email: its events are kept under its own row's id (sequences.ts).
+        const series = !r && e.providerId ? await db.prepare('SELECT id AS send_id, member_id FROM sequence_sends WHERE provider_id = ?').bind(e.providerId).first<{ send_id: string; member_id: string }>() : null;
+        // Provider webhooks cover every email on the account. Keep only newsletter and welcome series events,
         // plus bounces and complaints, which protect the list whatever email caused them.
-        if (!r && e.type !== 'bounced' && e.type !== 'complained') continue;
+        if (!r && !series && e.type !== 'bounced' && e.type !== 'complained') continue;
+        const mail = r ?? series;
         const stmts: D1PreparedStatement[] = [
             db
                 .prepare('INSERT INTO email_events (send_id, member_id, type, provider_id, at, url) VALUES (?, ?, ?, ?, ?, ?)')
-                .bind(r?.send_id ?? null, r?.member_id ?? null, e.type, e.providerId ?? null, e.at, e.type === 'clicked' ? cleanLink(e.url) : null)
+                .bind(mail?.send_id ?? null, mail?.member_id ?? null, e.type, e.providerId ?? null, e.at, e.type === 'clicked' ? cleanLink(e.url) : null)
         ];
         if (r) stmts.push(db.prepare(`UPDATE sends SET ${COUNTER[e.type]} = ${COUNTER[e.type]} + 1 WHERE id = ?`).bind(r.send_id));
         // People, not events: a send's first open (or click) by someone counts once however often they come back.
@@ -403,10 +406,10 @@ export async function recordEmailEvents(db: D1Database, events: EmailEvent[]): P
                     .bind(r.send_id, r.send_id, r.member_id, e.type)
             );
         }
-        if (r && e.type === 'opened') stmts.push(db.prepare('UPDATE members SET opened_count = opened_count + 1 WHERE id = ?').bind(r.member_id));
+        if (mail && e.type === 'opened') stmts.push(db.prepare('UPDATE members SET opened_count = opened_count + 1 WHERE id = ?').bind(mail.member_id));
         await db.batch(stmts);
         if (e.type === 'bounced' || e.type === 'complained') {
-            const email = r ? (await db.prepare('SELECT email FROM members WHERE id = ?').bind(r.member_id).first<{ email: string }>())?.email : e.email;
+            const email = mail ? (await db.prepare('SELECT email FROM members WHERE id = ?').bind(mail.member_id).first<{ email: string }>())?.email : e.email;
             if (email) await suppress(db, email, e.type);
         }
         n++;
@@ -445,7 +448,7 @@ export function utmLinks(html: string, params: Record<string, string>): string {
 }
 
 /** Header templates with {name} filled in; a header whose value comes out empty is left off. */
-function fillHeaders(templates: Record<string, string>, values: Record<string, string>): Record<string, string> {
+export function fillHeaders(templates: Record<string, string>, values: Record<string, string>): Record<string, string> {
     const out: Record<string, string> = {};
     for (const [name, template] of Object.entries(templates)) {
         if (!/^[A-Za-z0-9-]{1,64}$/.test(name) || typeof template !== 'string') continue;

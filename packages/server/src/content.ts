@@ -40,7 +40,8 @@ export interface NewsletterConfig extends NewsletterSettings {
     /**
      * Extra headers on every newsletter email, e.g. for an email-events webhook that
      * attributes opens and clicks. Values may use {distinct_id} (the reader's analytics id, else email:<address>),
-     * {analytics_id} (empty unless they subscribed on the blog), {member_id}, {post_slug}, {send_id}.
+     * {analytics_id} (empty unless they subscribed on the blog), {member_id}, {post_slug}, {send_id}. Welcome series
+     * emails use them too (no post slug; the send id is the email's own), plus {sequence} and {step}.
      */
     emailHeaders?: Record<string, string> | null;
 }
