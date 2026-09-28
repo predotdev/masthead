@@ -1,6 +1,6 @@
 import type { EmailEvent, EmailMessage, Post } from '@masthead/core';
 import { renderBody, tagLinks } from '@masthead/render';
-import { getPost, listStaff, newsletterSettings, setPostNewsletter, siteSettings } from './content';
+import { getPost, listStaff, listTags, newsletterSettings, setPostNewsletter, siteSettings } from './content';
 import { batched } from './db';
 import { UNSUBSCRIBE_PLACEHOLDER, newsletterEmail, type NewsletterEmail } from './email';
 import type { AppOptions, Env, Principal } from './env';
@@ -76,18 +76,23 @@ async function sender(env: Env, db: D1Database) {
 export async function buildEmail(env: Env, db: D1Database, post: Post): Promise<NewsletterEmail> {
     const site = await siteSettings(env, db);
     const staff = await listStaff(db);
-    const names = post.authors.map(id => staff.find(s => s.id === id)?.name).filter((n): n is string => !!n);
+    const authors = post.authors.flatMap(id => staff.filter(s => s.id === id).map(s => ({ name: s.name, image: s.profileImage })));
     const { postalAddress } = await sender(env, db);
     const settings = await newsletterSettings(env, db);
-    const body = tagLinks(renderBody(post), site.url, linkTag(env));
+    const tagged = tagLinks(renderBody(post), site.url, linkTag(env));
+    const body = settings.utm === false ? tagged : utmLinks(tagged, { utm_source: 'email', utm_medium: 'newsletter', utm_campaign: post.slug });
+    const tags = post.tags.length ? await listTags(db) : [];
+    const tag = post.tags.map(id => tags.find(t => t.id === id && t.visibility === 'public')?.name).find(Boolean) ?? null;
     const email = newsletterEmail({
         site,
         post,
-        body: settings.utm === false ? body : utmLinks(body, { utm_source: 'email', utm_medium: 'newsletter', utm_campaign: post.slug }),
+        body,
         markdown: post.markdown ?? '',
         postUrl: settings.utm === false ? `${site.url}${post.slug}/` : `${site.url}${post.slug}/?utm_source=email&utm_medium=newsletter&utm_campaign=${encodeURIComponent(post.slug)}`,
+        shareUrl: `${site.url}${post.slug}/`,
         origin: new URL(appUrl(env)).origin,
-        authors: names,
+        authors,
+        tag,
         postalAddress
     });
     return { ...email, slug: post.slug };
