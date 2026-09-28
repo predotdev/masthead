@@ -163,7 +163,8 @@ function meta(ctx: ThemeContext, item: { authors: Author[]; publishedAt: string 
 
 function card(ctx: ThemeContext, item: ListItem): string {
     const p = item.post;
-    return `<li><a class="card-link" href="${esc(item.url)}">
+    const topics = (item.tags ?? (item.primaryTag ? [item.primaryTag] : [])).map(t => t.slug).join(' ');
+    return `<li data-topics="${esc(topics)}"><a class="card-link" href="${esc(item.url)}">
   ${p.featureImage ? `<div class="card-image"><img src="${esc(p.featureImage)}"${srcset(p.featureImage, ctx)} sizes="(max-width: 640px) 100vw, (max-width: 960px) 50vw, 400px" alt="${esc(p.featureImageAlt ?? '')}" loading="lazy" decoding="async" width="1200" height="675"></div>` : ''}
   <div class="card-body">
     ${item.primaryTag ? `<span class="eyebrow">${esc(item.primaryTag.name)}</span>` : ''}
@@ -206,10 +207,29 @@ function featured(ctx: ThemeContext, item: ListItem): string {
 </section>`;
 }
 
-function topics(ctx: ThemeContext, current?: string): string {
+function topics(ctx: ThemeContext, current?: string, filter = false): string {
     const list = (ctx.topics ?? []).slice(0, 12);
     if (list.length < 2) return '';
-    return `<nav class="topics" aria-label="Topics"><a class="topic" href="${esc(ctx.basePath)}"${current ? '' : ' aria-current="page"'}>All</a>${list.map(t => `<a class="topic" href="${esc(t.url)}"${t.slug === current ? ' aria-current="page"' : ''}>${esc(t.name)}</a>`).join('')}</nav>`;
+    const chip = (label: string, href: string, slug: string, count: number | null, on: boolean) =>
+        `<a class="topic" href="${esc(href)}"${filter ? ` data-topic="${esc(slug)}" data-count="${count ?? ''}"` : ''}${on ? ' aria-current="page"' : ''}>${esc(label)}${count ? `<span class="topic-count">${count}</span>` : ''}</a>`;
+    return `<nav class="topics"${filter ? ' data-filter' : ''} aria-label="Topics">${chip('All', ctx.basePath, '', null, !current)}${list.map(t => chip(t.name, t.url, t.slug, t.count, t.slug === current)).join('')}</nav>`;
+}
+
+/** The three most-read posts, as a ranked row. */
+function mostRead(ctx: ThemeContext, items: ListItem[] | undefined): string {
+    if (!items?.length) return '';
+    return `<section class="most-read" aria-labelledby="most-read-title">
+  <h2 class="section-title" id="most-read-title">Most read</h2>
+  <ol class="ranked">${items
+      .map(
+          (i, n) => `<li><a class="ranked-link" href="${esc(i.url)}">
+    <span class="rank" aria-hidden="true">${String(n + 1).padStart(2, '0')}</span>
+    <span class="ranked-body">${i.primaryTag ? `<span class="eyebrow">${esc(i.primaryTag.name)}</span>` : ''}<span class="ranked-title">${esc(i.post.title)}</span><span class="meta">${esc(date(i.post.publishedAt, ctx.site.locale))} · ${i.readingMinutes} min read</span></span>
+    ${i.post.featureImage ? `<span class="ranked-image"><img src="${esc(i.post.featureImage)}"${srcset(i.post.featureImage, ctx)} sizes="160px" alt="" loading="lazy" decoding="async" width="160" height="90"></span>` : ''}
+  </a></li>`
+      )
+      .join('')}</ol>
+</section>`;
 }
 
 function initials(name: string): string {
@@ -326,11 +346,13 @@ ${signup(ctx)}`;
             }
             return `<h1 class="sr-only">${esc(ctx.site.title)}</h1>
 ${first ? featured(ctx, first) : ''}
+${mostRead(ctx, v.highlights)}
 <section class="latest" aria-labelledby="latest-title">
-  <div class="latest-head"><h2 class="section-title" id="latest-title">Latest</h2>${topics(ctx)}</div>
-  <ul class="cards">
+  <div class="latest-head"><h2 class="section-title" id="latest-title">Latest</h2>${topics(ctx, undefined, true)}</div>
+  <ul class="cards" data-filterable>
 ${rest.map(i => card(ctx, i)).join('\n')}
   </ul>
+  <p class="filter-more" data-filter-more hidden><a class="btn btn-pill" href="#"></a></p>
 </section>
 ${pager}
 ${signup(ctx)}`;

@@ -81,7 +81,8 @@ export async function importContent(ctx: Ctx, snap: Snapshot) {
                     p.updatedAt
                 )
         );
-        postStmts.push(db.prepare('DELETE FROM post_tags WHERE post_id = ?').bind(p.id));
+        // Replace only the links to tags the snapshot knows; tags added here (say, a new topic) stay.
+        postStmts.push(db.prepare(`DELETE FROM post_tags WHERE post_id = ? AND tag_id IN (SELECT value FROM json_each(?))`).bind(p.id, JSON.stringify(snap.tags.map(t => t.id))));
         p.tags.forEach((tagId, i) => postStmts.push(db.prepare('INSERT OR IGNORE INTO post_tags (post_id, tag_id, sort) VALUES (?, ?, ?)').bind(p.id, tagId, i)));
         postStmts.push(db.prepare('DELETE FROM post_authors WHERE post_id = ?').bind(p.id));
         p.authors.forEach((a, i) => postStmts.push(db.prepare('INSERT OR IGNORE INTO post_authors (post_id, staff_id, sort) VALUES (?, ?, ?)').bind(p.id, staffIds.get(a) ?? a, i)));

@@ -92,7 +92,8 @@ export async function buildSite(snapshot: Snapshot, options: BuildOptions): Prom
     const postAuthors = (p: Post) => p.authors.map(id => authorsById.get(id)).filter((a): a is Author => !!a);
     const listItem = (p: Post): ListItem => {
         const r = rendered.get(p.id)!;
-        return { post: p, url: urls.post(p), excerpt: r.excerpt, readingMinutes: r.minutes, authors: postAuthors(p), primaryTag: publicTags(p)[0] };
+        const tags = publicTags(p);
+        return { post: p, url: urls.post(p), excerpt: r.excerpt, readingMinutes: r.minutes, authors: postAuthors(p), primaryTag: tags[0], tags };
     };
 
     const files: OutputFile[] = [];
@@ -180,6 +181,7 @@ export async function buildSite(snapshot: Snapshot, options: BuildOptions): Prom
             jsonLd: object[];
             tag?: Tag;
             author?: Author;
+            highlights?: ListItem[];
         }
     ) => {
         const count = Math.max(1, Math.ceil(items.length / perPage));
@@ -199,7 +201,8 @@ export async function buildSite(snapshot: Snapshot, options: BuildOptions): Prom
                 prevUrl,
                 nextUrl,
                 tag: extra.tag,
-                author: extra.author
+                author: extra.author,
+                highlights: n === 1 ? extra.highlights : undefined
             };
             addHtml(path, {
                 title,
@@ -221,7 +224,15 @@ export async function buildSite(snapshot: Snapshot, options: BuildOptions): Prom
         }
     };
 
+    // Most read: newsletter opens, among posts other than the newest (which leads the page).
+    const mostRead = posts
+        .slice(1)
+        .filter(p => (p.newsletter?.opened ?? 0) > 0)
+        .sort((a, b) => (b.newsletter?.opened ?? 0) - (a.newsletter?.opened ?? 0))
+        .slice(0, 3)
+        .map(listItem);
     listing('index', basePath, posts, {
+        highlights: mostRead.length === 3 ? mostRead : undefined,
         heading: site.title,
         title: site.metaTitle || site.title,
         pagedTitle: site.title,

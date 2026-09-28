@@ -58,6 +58,44 @@ export const script = `(function () {
     });
   });
 
+  // Topic filter on the front page: switches in place, keeps ?topic= in the address.
+  var filterNav = d.querySelector('.topics[data-filter]'), grid = d.querySelector('[data-filterable]'), more = d.querySelector('[data-filter-more]');
+  function applyTopic(slug) {
+    if (!filterNav || !grid) return;
+    var chips = filterNav.querySelectorAll('[data-topic]'), chosen = null;
+    for (var i = 0; i < chips.length; i++) {
+      var on = chips[i].getAttribute('data-topic') === slug;
+      if (on) { chips[i].setAttribute('aria-current', 'page'); chosen = chips[i]; } else chips[i].removeAttribute('aria-current');
+    }
+    var cards = grid.children, shown = 0;
+    for (var j = 0; j < cards.length; j++) {
+      var match = !slug || (' ' + cards[j].getAttribute('data-topics') + ' ').indexOf(' ' + slug + ' ') >= 0;
+      cards[j].hidden = !match;
+      if (match) shown++;
+    }
+    if (more) {
+      var total = chosen ? Number(chosen.getAttribute('data-count') || 0) : 0;
+      if (slug && chosen && total > shown) {
+        var a = more.querySelector('a');
+        a.setAttribute('href', chosen.getAttribute('href'));
+        a.textContent = (shown ? 'All ' : 'See all ') + total + ' ' + chosen.firstChild.textContent + ' posts';
+        more.hidden = false;
+      } else more.hidden = true;
+    }
+  }
+  if (filterNav && grid) {
+    filterNav.addEventListener('click', function (e) {
+      var chip = e.target.closest && e.target.closest('[data-topic]');
+      if (!chip || e.metaKey || e.ctrlKey || e.shiftKey) return;
+      e.preventDefault();
+      var slug = chip.getAttribute('data-topic');
+      applyTopic(slug);
+      history.replaceState(null, '', slug ? '?topic=' + encodeURIComponent(slug) : location.pathname);
+    });
+    var initial = new URLSearchParams(location.search).get('topic');
+    if (initial) applyTopic(initial);
+  }
+
   // Search: a dialog over the page, with the index loaded on first use.
   var indexUrl = root.getAttribute('data-search-index'), index = null, dialog, input, list, items = [], active = 0;
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
