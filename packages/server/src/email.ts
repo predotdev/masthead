@@ -317,3 +317,109 @@ export function page(site: SiteSettings, cssHref: string, title: string, body: s
 <body><header class="site-header"><div class="wrap bar"><a class="brand" href="${esc(new URL(site.url).pathname)}">${esc(site.title)}</a></div></header>
 <main id="main" class="wrap"><section class="list-header"><h1 class="list-title">${esc(title)}</h1>${body}</section></main></body></html>`;
 }
+
+// ------------------------------------------------------------------ welcome series
+
+/** A post in a welcome series email. Its link already carries the campaign tags. */
+export interface PostCard {
+    title: string;
+    url: string;
+    excerpt: string;
+    image: string | null;
+    imageAlt?: string | null;
+    /** The cover's size, for the width and height Outlook needs. */
+    size?: { width: number; height: number } | null;
+    tag?: string | null;
+    minutes?: number | null;
+}
+
+const kicker = (card: PostCard) =>
+    [card.tag ?? '', card.minutes ? `${card.minutes} min read` : ''].filter(Boolean).map(esc).join('<span class="fnt" style="color:#b4b4b8">&nbsp;&nbsp;·&nbsp;&nbsp;</span>');
+
+/** The first post: its cover across the column, then the title, the excerpt and a link. */
+function leadCard(card: PostCard, origin: string): string {
+    const url = esc(card.url);
+    const src = card.image ? abs(card.image, origin) : null;
+    const width = card.size ? Math.min(card.size.width, COLUMN) : COLUMN;
+    const height = card.size ? Math.round((width * card.size.height) / card.size.width) : 0;
+    const cover = src
+        ? `<a href="${url}" style="text-decoration:none"><img src="${esc(src)}" width="${width}"${height ? ` height="${height}"` : ''} alt="${esc(card.imageAlt || card.title)}" class="ln" style="display:block;width:100%;max-width:${card.size && card.size.width < COLUMN ? `${card.size.width}px` : '100%'};height:auto;border:1px solid ${LINE};border-radius:12px;box-sizing:border-box"></a>`
+        : '';
+    const top = kicker(card);
+    return `${cover}${top ? `<div class="mut" style="margin:${src ? 20 : 0}px 0 8px;font-size:12px;line-height:16px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:${MUTED}">${top}</div>` : ''}<h2 class="ink" style="margin:${top ? 0 : src ? 20 : 0}px 0 0;font-size:23px;line-height:1.28;font-weight:650;letter-spacing:-0.02em;color:${INK};text-wrap:balance"><a href="${url}" class="ink" style="color:${INK};text-decoration:none">${esc(card.title)}</a></h2>${card.excerpt ? `<p class="mut" style="margin:10px 0 0;font-size:16px;line-height:1.6;color:${MUTED};text-wrap:pretty">${esc(card.excerpt)}</p>` : ''}<p style="margin:16px 0 0;font-size:15px;line-height:20px;font-weight:600"><a href="${url}" class="ink" style="color:${INK};text-decoration:none">Read the post&nbsp;&rarr;</a></p>`;
+}
+
+/** Later posts: the words on the left, a small cover on the right. */
+function compactCard(card: PostCard, origin: string): string {
+    const url = esc(card.url);
+    const src = card.image ? abs(card.image, origin) : null;
+    const height = card.size ? Math.round((136 * card.size.height) / card.size.width) : 0;
+    const top = kicker(card);
+    const words = `${top ? `<div class="mut" style="margin:0 0 6px;font-size:11.5px;line-height:16px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:${MUTED}">${top}</div>` : ''}<div class="ink" style="font-size:17.5px;line-height:1.35;font-weight:650;letter-spacing:-0.01em;color:${INK}"><a href="${url}" class="ink" style="color:${INK};text-decoration:none">${esc(card.title)}</a></div>${card.excerpt ? `<div class="mut" style="margin-top:6px;font-size:14.5px;line-height:1.55;color:${MUTED}">${esc(card.excerpt)}</div>` : ''}`;
+    const thumb = src
+        ? `<td class="bmt" width="148" valign="top" align="right" style="width:148px;padding-left:12px"><a href="${url}" style="text-decoration:none"><img src="${esc(src)}" width="136"${height ? ` height="${height}"` : ''} alt="" class="ln" style="display:block;width:136px;max-width:100%;height:auto;border:1px solid ${LINE};border-radius:9px;box-sizing:border-box"></a></td>`
+        : '';
+    return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td valign="top">${words}</td>${thumb}</tr></table>`;
+}
+
+const hairline = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td class="ln" style="border-top:1px solid ${LINE};font-size:0;line-height:0;height:1px">&nbsp;</td></tr></table>`;
+
+/**
+ * One email of a welcome series: the masthead, an intro, cards for the picked posts, a
+ * closing with an optional button, and the newsletter footer. The unsubscribe placeholder
+ * is swapped per recipient. Intro and closing arrive as HTML (from Markdown), links tagged.
+ */
+export function sequenceEmail(o: {
+    site: SiteSettings;
+    origin: string;
+    subject: string;
+    preheader: string;
+    intro: string;
+    outro: string;
+    /** The same two as plain text, for the text part. */
+    introText: string;
+    outroText: string;
+    heading: string;
+    posts: PostCard[];
+    button: { label: string; url: string } | null;
+    postalAddress?: string | null;
+    assets?: Partial<EmailAssets>;
+}): NewsletterEmail {
+    const b = brand(o.site, o.origin, o.assets);
+    const bodyOptions = { origin: o.origin, postUrl: o.site.url, width: COLUMN, assets: o.assets };
+    const rows: string[] = [masthead(b)];
+    const intro = o.intro.trim() ? emailBody(o.intro, bodyOptions) : '';
+    if (intro) rows.push(`<tr><td class="px txt" style="padding:${b.dark ? 40 : 30}px 40px 0;font-size:17px;line-height:1.7;color:${TEXT};text-align:left;word-wrap:break-word">${intro}</td></tr>`);
+    if (o.posts.length) {
+        const label = o.heading.trim()
+            ? `<div class="mut" style="margin:0 0 18px;font-size:12px;line-height:16px;font-weight:600;letter-spacing:0.09em;text-transform:uppercase;color:${MUTED}">${esc(o.heading.trim())}</div>`
+            : '';
+        const [lead, ...rest] = o.posts;
+        const cards = [leadCard(lead, o.origin), ...rest.map(c => compactCard(c, o.origin))].join(`<div style="height:26px;line-height:26px;font-size:1px">&nbsp;</div>${hairline}<div style="height:26px;line-height:26px;font-size:1px">&nbsp;</div>`);
+        rows.push(`<tr><td class="px" style="padding:${intro ? 34 : b.dark ? 40 : 30}px 40px 0;text-align:left">${label}${cards}</td></tr>`);
+    }
+    const outro = o.outro.trim() ? `<div class="txt" style="font-size:17px;line-height:1.7;color:${TEXT};text-align:left;word-wrap:break-word">${emailBody(o.outro, bodyOptions)}</div>` : '';
+    const action = o.button ? `<div style="margin-top:${outro ? 26 : 0}px">${button(esc(o.button.url), esc(o.button.label), { align: 'left' })}</div>` : '';
+    const close = outro || action ? `${o.posts.length || intro ? `${hairline}<div style="height:30px;line-height:30px;font-size:1px">&nbsp;</div>` : ''}${outro}${action}` : '';
+    rows.push(`<tr><td class="px" style="padding:${close ? 34 : 8}px 40px 40px">${close}</td></tr>`);
+
+    const html = frame({
+        title: o.subject,
+        preheader: o.preheader,
+        lang: o.site.locale,
+        card: rows.join(''),
+        footer: footer(o.site, o.origin, { unsubscribe: UNSUBSCRIBE_PLACEHOLDER, postalAddress: o.postalAddress })
+    });
+    // Markdown reads fine as plain text, headings aside.
+    const plain = (markdown: string) => plainBody(markdown).replace(/^#{1,6}\s+/gm, '');
+    const text = [
+        plain(o.introText),
+        o.posts.length ? [o.heading.trim(), ...o.posts.map(p => [p.title, p.excerpt, p.url].filter(Boolean).join('\n'))].filter(Boolean).join('\n\n') : '',
+        plain(o.outroText),
+        o.button ? `${o.button.label}: ${o.button.url}` : '',
+        `--\n${o.site.title}\nUnsubscribe: ${UNSUBSCRIBE_PLACEHOLDER}${o.postalAddress ? `\n${o.postalAddress}` : ''}`
+    ]
+        .filter(Boolean)
+        .join('\n\n');
+    return { subject: o.subject, html, text: `${text}\n` };
+}

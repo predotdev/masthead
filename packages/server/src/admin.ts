@@ -39,6 +39,7 @@ import { appUrl, buildEmail, cancelSend, countSegment, createSend, getSend, list
 import { linkTag, publishSite } from './publish';
 import { MEDIA_PREFIX } from './public';
 import { Router } from './router';
+import { importSequences, sequenceRoutes } from './sequences';
 import { share, shareStream } from './share';
 import { wantsEvents } from './sse';
 import { saveStyleSettings, styleSettings } from './style';
@@ -493,6 +494,9 @@ export function adminRoutes(): Router<A> {
     r.post('/sends/:id/cancel', async (_req, ctx, { id }) => (atLeast(ctx.principal, 'editor'), json(await cancelSend(ctx.db, id))));
     r.post('/sends/process', async (_req, ctx) => (atLeast(ctx.principal, 'admin'), json(await processSends(ctx.env, ctx.db, ctx.options, 20_000))));
 
+    // ---------------------------------------------------------- welcome series
+    sequenceRoutes(r);
+
     // ---------------------------------------------------------- media
     r.post('/media', async (req, ctx) => {
         me(ctx);
@@ -569,6 +573,8 @@ export function adminRoutes(): Router<A> {
         if (input.ideas) await saveIdeaSettings(ctx.db, input.ideas);
         if (input.style) await saveStyleSettings(ctx.db, input.style);
         if (input.ai) await saveAiSettings(ctx, input.ai);
+        // Email sequences from a settings file: copy and steps, and the switch only when the file sets it.
+        if (input.sequences) await importSequences(ctx.db, input.sequences);
         return json({ ok: true });
     });
 

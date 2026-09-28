@@ -103,6 +103,29 @@ const MIGRATIONS: string[][] = [
             unique_opens = (SELECT COUNT(DISTINCT member_id) FROM email_events e WHERE e.send_id = sends.id AND e.type = 'opened'),
             unique_clicks = (SELECT COUNT(DISTINCT member_id) FROM email_events e WHERE e.send_id = sends.id AND e.type = 'clicked')`,
         `CREATE TABLE analytics_cache (key TEXT PRIMARY KEY, data TEXT NOT NULL, fetched_at TEXT NOT NULL)`
+    ],
+    // v8: the welcome series. Email sequences (steps as JSON; `cursor` is the last member_events id looked at
+    // for new subscribers), who is in each one, and every email a sequence sent, one row per person and step.
+    [
+        `CREATE TABLE sequences (
+            id TEXT PRIMARY KEY, name TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 0, enabled_at TEXT,
+            steps TEXT NOT NULL DEFAULT '[]', cursor INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
+        `CREATE TABLE sequence_members (
+            sequence_id TEXT NOT NULL, member_id TEXT NOT NULL,
+            status TEXT NOT NULL CHECK (status IN ('active','done','stopped')), reason TEXT,
+            enrolled_at TEXT NOT NULL, next_at TEXT, updated_at TEXT NOT NULL, PRIMARY KEY (sequence_id, member_id))`,
+        `CREATE INDEX sequence_members_due ON sequence_members (status, next_at)`,
+        `CREATE INDEX sequence_members_member ON sequence_members (member_id)`,
+        `CREATE TABLE sequence_sends (
+            id TEXT PRIMARY KEY, sequence_id TEXT NOT NULL, step_id TEXT NOT NULL, member_id TEXT NOT NULL, email TEXT NOT NULL,
+            subject TEXT NOT NULL, posts TEXT NOT NULL DEFAULT '[]',
+            status TEXT NOT NULL CHECK (status IN ('sending','sent','failed','skipped')),
+            batch TEXT, provider_id TEXT, error TEXT, test_mode INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL, tried_at TEXT, sent_at TEXT, unsubscribed_at TEXT,
+            UNIQUE (sequence_id, step_id, member_id))`,
+        `CREATE INDEX sequence_sends_member ON sequence_sends (member_id)`,
+        `CREATE INDEX sequence_sends_provider ON sequence_sends (provider_id)`,
+        `CREATE INDEX sequence_sends_pending ON sequence_sends (status, tried_at)`
     ]
 ];
 
