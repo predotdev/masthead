@@ -161,7 +161,7 @@ function explain(status: number, text: string, project: string | undefined): Sea
         const named = String(info?.metadata?.consumer ?? '').replace(/^projects\//, '') || message.match(/in project (\d+)/)?.[1] || project;
         return { kind: 'api', message, project: named, enableUrl: named ? enableUrl(named) : undefined };
     }
-    if (status === 429 || reasons.some(r => /rate|quota/i.test(r))) return { kind: 'quota', message };
+    if (status === 429 || reasons.some(r => /rate|quota/i.test(r))) return { kind: 'quota', message: `It is limiting requests for a few minutes (${message.replace(/\.$/, '')}).` };
     if (status === 401) return { kind: 'token', message };
     // 403 "User does not have sufficient permission for site": not a user yet, or no such property.
     if (status === 403 || status === 404 || (status === 400 && /site|property|url/i.test(message))) return { kind: 'access', message };
