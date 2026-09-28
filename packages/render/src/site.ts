@@ -53,6 +53,13 @@ const CHUNK = 50;
 const KEEP_RENDERED = 400;
 /** llms-full.txt carries the full text of this many of the newest posts. */
 const LLMS_FULL_POSTS = 100;
+/**
+ * "Keep reading" adds these to a candidate's similarity in meaning (a cosine; the closest posts on
+ * one blog sit within a few hundredths of each other, so these settle near ties and no more): for
+ * the share of tags the two posts have in common, and for being new (halving each year).
+ */
+const RELATED_TAG_WEIGHT = 0.03;
+const RELATED_RECENCY_WEIGHT = 0.02;
 
 /** The whole site in memory: for static builds and small sites. */
 export async function buildSite(snapshot: Snapshot, options: BuildOptions): Promise<BuildResult> {
@@ -203,12 +210,36 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
         const tags = publicTags(p);
         return { post: p, url: urls.post(p), excerpt: f.excerpt, readingMinutes: f.minutes, authors: postAuthors(p), primaryTag: tags[0], tags };
     };
-    /** Up to three other posts, the newest of the same primary tag first. */
-    const related = (post: Post, primary?: Tag): Post[] => {
+    const livePosts = new Map(posts.map(p => [p.id, p]));
+    const newestAt = posts.length ? Date.parse(posts[0].publishedAt!) : 0;
+    /**
+     * Up to three other posts to read next. The posts closest in meaning come first, nudged toward
+     * shared tags and newer posts (years counted back from the newest post, so a rebuild changes
+     * nothing by itself). A post without embeddings, and any places left, take the newest of the
+     * same primary tag, then the newest overall.
+     */
+    const related = (post: Post, tags: Tag[]): Post[] => {
         const out: Post[] = [];
+        const near = snapshot.related?.[post.id];
+        if (near?.length) {
+            const mine = new Set(tags.map(t => t.id));
+            const scored: { p: Post; s: number }[] = [];
+            for (const { id, score } of near) {
+                const p = livePosts.get(id);
+                if (!p || p.id === post.id) continue;
+                const theirs = publicTags(p);
+                const shared = theirs.reduce((n, t) => n + (mine.has(t.id) ? 1 : 0), 0);
+                const overlap = shared ? shared / (mine.size + theirs.length - shared) : 0;
+                const years = (newestAt - Date.parse(p.publishedAt!)) / 31_557_600_000;
+                scored.push({ p, s: score + RELATED_TAG_WEIGHT * overlap + RELATED_RECENCY_WEIGHT * 0.5 ** years });
+            }
+            scored.sort((a, b) => b.s - a.s);
+            for (const { p } of scored.slice(0, 3)) out.push(p);
+        }
+        const primary = tags[0];
         for (const p of primary ? (byTag.get(primary.id) ?? []) : []) {
             if (out.length === 3) return out;
-            if (p.id !== post.id) out.push(p);
+            if (p.id !== post.id && !out.includes(p)) out.push(p);
         }
         for (const p of posts) {
             if (out.length === 3) break;
@@ -238,7 +269,7 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
             readingMinutes: f.minutes,
             authors: authors.map(a => ({ ...a, url: urls.author(a) })),
             tags: tags.map(t => ({ ...t, url: urls.tag(t) })),
-            related: p.type === 'post' ? related(p, tags[0]).map(listItem) : [],
+            related: p.type === 'post' ? related(p, tags).map(listItem) : [],
             featureImageSize: coverSize ?? undefined
         };
         const jsonLd =

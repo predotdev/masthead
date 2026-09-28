@@ -16,7 +16,7 @@ import type { AppOptions, Ctx, Env } from './env';
 import { appUrl, processSends } from './newsletter';
 import { legacyRoute, publicRoutes, serveMedia, serveSearch, serveSite } from './public';
 import { basePath, publishSite, publishUnfinished, releaseScheduled } from './publish';
-import { embedPending, refreshKnowledge } from './knowledge';
+import { embedPending, refreshKnowledge, relatedChanged } from './knowledge';
 import { IDEAS_MINUTE, scheduledIdeas } from './ideas';
 import { HttpError, json, redirect } from './util';
 
@@ -114,7 +114,8 @@ export function createApp(options: AppOptions) {
         /** Every minute: publish scheduled posts, then work through newsletter batches. */
         async scheduled(event: ScheduledController, env: Env, exec: ExecutionContext): Promise<void> {
             await migrate(env.DB);
-            if ((await releaseScheduled(env.DB)) || (await publishUnfinished(env.DB))) await publishSite(env, env.DB, options);
+            // Related posts found after the last publish (a new post's embeddings land a little later) rebuild the site too.
+            if ((await releaseScheduled(env.DB)) || (await publishUnfinished(env.DB)) || (await relatedChanged(env.DB))) await publishSite(env, env.DB, options);
             exec.waitUntil(processSends(env, env.DB, options, 50_000));
             // The writing assistant's knowledge: embed what is queued; re-read every source once a day.
             const ai = options.ai?.(env) ?? null;

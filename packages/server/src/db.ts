@@ -103,7 +103,10 @@ const MIGRATIONS: string[][] = [
             unique_opens = (SELECT COUNT(DISTINCT member_id) FROM email_events e WHERE e.send_id = sends.id AND e.type = 'opened'),
             unique_clicks = (SELECT COUNT(DISTINCT member_id) FROM email_events e WHERE e.send_id = sends.id AND e.type = 'clicked')`,
         `CREATE TABLE analytics_cache (key TEXT PRIMARY KEY, data TEXT NOT NULL, fetched_at TEXT NOT NULL)`
-    ]
+    ],
+    // Related posts by meaning: each post's closest posts (JSON [id, similarity] pairs), and the
+    // fingerprint of the post's vector they were found for.
+    [`CREATE TABLE related_posts (post_id TEXT PRIMARY KEY, vector_key TEXT NOT NULL, related TEXT NOT NULL, updated_at TEXT NOT NULL)`]
 ];
 
 let migrated: Promise<void> | null = null;

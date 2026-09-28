@@ -188,6 +188,12 @@ export interface Snapshot {
     staff?: StaffRecord[];
     /** Known image sizes by URL path (e.g. /blog/content/images/x.png), for layout and share cards. */
     imageSizes?: Record<string, { width: number; height: number }>;
+    /**
+     * Posts close in meaning to each post, by post id: the most similar first, with the cosine
+     * similarity of their embeddings. "Keep reading" blends it with shared tags and recency;
+     * without it (or for a post not embedded yet) related posts come from tags.
+     */
+    related?: Record<string, { id: string; score: number }[]>;
     newsletter?: NewsletterSettings;
 }
 
