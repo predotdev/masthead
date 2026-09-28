@@ -89,7 +89,7 @@ export function AiPreview({ editor, job, title, onClose }: { editor: Editor; job
                 {writing ? (
                     <>
                         <Working label={stageLabel(run.stage, run.text)} since={run.startedAt} />
-                        <StopButton onClick={run.stop} hint="Stop (Esc)" />
+                        <StopButton onClick={run.stop} hint="Stop (Esc)" size="sm" />
                     </>
                 ) : null}
                 <button class="icon-btn" onClick={() => (run.stop(), onClose())} aria-label="Discard" title="Discard">

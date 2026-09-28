@@ -191,9 +191,9 @@ export function Working({ label, since }: { label: string; since: number }) {
     );
 }
 
-export function StopButton({ onClick, hint }: { onClick: () => void; hint?: string }) {
+export function StopButton({ onClick, hint, size }: { onClick: () => void; hint?: string; size?: 'sm' | 'md' }) {
     return (
-        <Button class="ai-stop" onClick={onClick} title={hint}>
+        <Button class="ai-stop" size={size} onClick={onClick} title={hint}>
             <span class="ai-stop-icon" aria-hidden="true" />
             Stop
         </Button>

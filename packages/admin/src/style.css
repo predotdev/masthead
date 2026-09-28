@@ -820,7 +820,6 @@ img.avatar { box-shadow: 0 0 0 1px var(--line-2); }
 .btn.ai-stop { color: var(--ai); border-color: color-mix(in srgb, var(--ai) 45%, var(--line-2)); background: var(--ai-bg); }
 .btn.ai-stop:hover:not(:disabled) { background: color-mix(in srgb, var(--ai) 16%, var(--bg)); }
 .ai-stop-icon { width: 8px; height: 8px; border-radius: 1.5px; background: currentColor; }
-.ai-card-head .ai-stop { padding: 3px 10px; font-size: 12.5px; }
 .ai-note { margin: 8px 16px 0; color: var(--muted); font-size: 12.5px; }
 .ai-credits { margin-right: auto; color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; }
 .dialog-actions .ai-working { margin-right: auto; }
