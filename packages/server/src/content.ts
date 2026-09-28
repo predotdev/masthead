@@ -102,6 +102,7 @@ interface PostRow {
     published_at: string | null;
     created_at: string;
     updated_at: string;
+    auto_tags?: string | null;
 }
 
 function toPost(r: PostRow, tags: string[], authors: string[]): Post {
@@ -133,7 +134,8 @@ function toPost(r: PostRow, tags: string[], authors: string[]): Post {
         createdAt: r.created_at,
         updatedAt: r.updated_at,
         tags,
-        authors
+        authors,
+        autoTags: r.auto_tags ? JSON.parse(r.auto_tags) : null
     };
 }
 

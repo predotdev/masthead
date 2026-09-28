@@ -85,7 +85,9 @@ const MIGRATIONS: string[][] = [
         `CREATE INDEX post_revisions_post ON post_revisions (post_id, id)`,
         `ALTER TABLE media ADD COLUMN width INTEGER`,
         `ALTER TABLE media ADD COLUMN height INTEGER`
-    ]
+    ],
+    // v6: tags the server picked for a post by itself (JSON ids; NULL when it never tried).
+    [`ALTER TABLE posts ADD COLUMN auto_tags TEXT`]
 ];
 
 let migrated: Promise<void> | null = null;

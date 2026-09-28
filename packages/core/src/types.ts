@@ -65,6 +65,8 @@ export interface Post {
     authors: string[];
     /** Tag ids in order; the first public tag is the primary tag. */
     tags: string[];
+    /** Tag ids the server picked for the post by itself; null when it never tried. */
+    autoTags?: string[] | null;
     /** Stats from when the post went out as a newsletter, if it did. */
     newsletter?: { sentAt: string | null; recipients: number; delivered: number; opened: number } | null;
 }

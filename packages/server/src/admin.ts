@@ -1,6 +1,7 @@
 import type { AspectRatio, ModelKind, Post, StaffRole } from '@masthead/core';
 import { renderBody, renderSite, tagLinks } from '@masthead/render';
 import { addIdeas, assist, draft, draftIdea, edit, image, listIdeas, listModels, meta, startVideo, unfurl, videoStatus } from './ai';
+import { autoTag, wantsAutoTags } from './autotag';
 import { atLeast, clearSessionCookie, consumeLoginToken, createApiKey, createLoginToken, createSession, endSession, peekLoginToken, sessionCookie } from './auth';
 import {
     aiSettings,
@@ -34,7 +35,7 @@ import { appUrl, buildEmail, cancelSend, countSegment, createSend, getSend, list
 import { linkTag, publishSite } from './publish';
 import { MEDIA_PREFIX } from './public';
 import { Router } from './router';
-import { HttpError, body, csvEscape, html, json, newId, now, parseCsv, redirect, safeEqual } from './util';
+import { HttpError, body, csvEscape, html, json, newId, now, parseCsv, redirect, safeEqual, sleep } from './util';
 
 type A = Ctx & { principal?: Principal };
 const me = (ctx: A) => atLeast(ctx.principal, 'contributor');
@@ -48,8 +49,10 @@ async function canEdit(ctx: A, post: Post | null, publishing = false) {
     return p;
 }
 
-function republish(ctx: A) {
-    ctx.exec.waitUntil(publishSite(ctx.env, ctx.db, ctx.options).catch(err => console.error('publish failed', err)));
+/** Rebuilds the site after the response; `after` (e.g. tagging) lands first so the rebuild includes it. */
+function republish(ctx: A, after?: Promise<unknown>) {
+    const ready = after ? after.catch(() => null) : Promise.resolve();
+    ctx.exec.waitUntil(ready.then(() => publishSite(ctx.env, ctx.db, ctx.options)).catch(err => console.error('publish failed', err)));
 }
 
 export function adminRoutes(): Router<A> {
@@ -152,8 +155,11 @@ export function adminRoutes(): Router<A> {
         if ((p.role === 'author' || p.role === 'contributor') && input.authors) delete input.authors;
         await keepRevision(ctx.db, existing, input, p.name, 'edited');
         const post = await savePost(ctx.db, { ...input, id });
-        if (post.status === 'published') republish(ctx);
-        return json(post);
+        // A post without a topic gets tags picked after the response (autotag.ts); the editor fetches them.
+        const tagging = await wantsAutoTags(ctx, post);
+        if (post.status === 'published') republish(ctx, tagging ? autoTag(ctx, id) : undefined);
+        else if (tagging) ctx.exec.waitUntil(autoTag(ctx, id).catch(err => console.error('auto-tagging failed', err)));
+        return json(tagging ? { ...post, autoTagging: true } : post);
     });
 
     // ---------------------------------------------------------- history
@@ -197,10 +203,17 @@ export function adminRoutes(): Router<A> {
         const status = when.getTime() > Date.now() + 60_000 ? 'scheduled' : 'published';
         await keepRevision(ctx.db, existing, {}, (await canEdit(ctx, existing, true)).name, 'published');
         const post = await savePost(ctx.db, { id, status, publishedAt: when.toISOString() });
+        // A post going out without a topic gets its tags first, so the rebuild includes them. A slow model
+        // finishes after the response and the site is rebuilt again; a scheduled post is tagged meanwhile.
+        const tagging = (await wantsAutoTags(ctx, post, true)) ? autoTag(ctx, id, true).catch(() => null) : null;
+        const tagged = tagging && status === 'published' ? await Promise.race([tagging, sleep(8000).then(() => undefined)]) : undefined;
         const result = status === 'published' ? await publishSite(ctx.env, ctx.db, ctx.options) : null;
+        const pending = !!tagging && tagged === undefined;
+        if (pending) ctx.exec.waitUntil(tagging!.then(ids => (ids?.length && status === 'published' ? publishSite(ctx.env, ctx.db, ctx.options) : null)).catch(err => console.error('publish failed', err)));
         // The writing assistant learns the new post.
         if (status === 'published') ctx.exec.waitUntil(refreshKnowledge(ctx, { postsOnly: true }).then(() => embedPending(ctx.env, ctx.db, ctx.options.ai?.(ctx.env) ?? null, 20_000)).catch(() => {}));
-        return json({ post, publish: result });
+        const out = tagging ? ((await getPost(ctx.db, id)) ?? post) : post;
+        return json({ post: pending ? { ...out, autoTagging: true } : out, publish: result });
     });
 
     r.post('/posts/:id/unpublish', async (_req, ctx, { id }) => {
