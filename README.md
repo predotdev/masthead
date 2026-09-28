@@ -32,9 +32,9 @@ About ten minutes. You need a Cloudflare account on the Workers Paid plan ($5 a 
 
 ```bash
 cd apps/worker
-npx wrangler login
-npx wrangler d1 create masthead                 # prints the database_id
-npx wrangler r2 bucket create masthead
+bunx wrangler login
+bunx wrangler d1 create masthead                 # prints the database_id
+bunx wrangler r2 bucket create masthead
 cp wrangler.example.toml wrangler.toml          # paste the database_id; set SITE_URL and EMAIL_FROM
 ```
 
@@ -45,7 +45,7 @@ Two secrets are required. Keep them in a file git ignores; `BOOTSTRAP_TOKEN` is 
 ```bash
 printf 'SECRET=%s\nBOOTSTRAP_TOKEN=%s\n' "$(openssl rand -hex 32)" "$(openssl rand -hex 32)" > .env.production
 bun run --cwd ../.. build
-npx wrangler deploy --secrets-file .env.production
+bunx wrangler deploy --secrets-file .env.production
 ```
 
 Open `/blog/admin/` on your Worker, choose **Use the owner token**, and publish your first post. Later deploys are `bun run deploy` from the repository root; secrets stay in place.

@@ -69,7 +69,7 @@ Masthead reads two kinds of configuration:
 
 ### Scheduled work
 
-`[triggers] crons = ["* * * * *"]` in `wrangler.toml` runs the Worker every minute: it publishes scheduled posts, works through newsletter batches, embeds new knowledge, re-reads knowledge sources once a day at 03:17 UTC, and checks hourly whether the daily ideas refresh is due. Remove it and scheduling and sending stop. Local `wrangler dev` does not run crons; trigger one with `curl "http://localhost:8787/cdn-cgi/handler/scheduled"`.
+`[triggers] crons = ["* * * * *"]` in `wrangler.toml` runs the Worker every minute: it publishes scheduled posts, works through newsletter batches, embeds new knowledge, re-reads knowledge sources once a day at 03:17 UTC, and checks hourly whether the daily ideas refresh is due. Remove it and scheduling and sending stop. Local `wrangler dev` does not run crons; trigger one with `curl "http://localhost:8787/cdn-cgi/local/scheduled"`.
 
 ## Site settings
 

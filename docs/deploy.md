@@ -14,9 +14,9 @@ You need:
 git clone https://github.com/predotdev/masthead && cd masthead
 bun install
 cd apps/worker
-npx wrangler login
-npx wrangler d1 create masthead
-npx wrangler r2 bucket create masthead
+bunx wrangler login
+bunx wrangler d1 create masthead
+bunx wrangler r2 bucket create masthead
 cp wrangler.example.toml wrangler.toml
 ```
 
@@ -33,7 +33,7 @@ cp wrangler.example.toml wrangler.toml
 ```bash
 printf 'SECRET=%s\nBOOTSTRAP_TOKEN=%s\n' "$(openssl rand -hex 32)" "$(openssl rand -hex 32)" > .env.production
 bun run --cwd ../.. build
-npx wrangler deploy --secrets-file .env.production
+bunx wrangler deploy --secrets-file .env.production
 ```
 
 `.env.production` is ignored by git. `SECRET` signs subscriber links, so never change it casually: links in emails already sent would stop working. `BOOTSTRAP_TOKEN` is the owner token; store it in your password manager.
@@ -43,8 +43,8 @@ Open `<SITE_URL>admin/`, choose **Use the owner token**, and give your name and 
 ## 3. Email
 
 1. Verify your sending domain in Resend, and set `EMAIL_FROM` (for example `Acme <news@acme.com>`) and `POSTAL_ADDRESS` in `wrangler.toml`.
-2. `npx wrangler secret put RESEND_API_KEY`
-3. In Resend, add a webhook to `<SITE_URL>api/webhooks/email` for delivery, open, click, bounce and complaint events, then `npx wrangler secret put RESEND_WEBHOOK_SECRET` with its signing secret.
+2. `bunx wrangler secret put RESEND_API_KEY`
+3. In Resend, add a webhook to `<SITE_URL>api/webhooks/email` for delivery, open, click, bounce and complaint events, then `bunx wrangler secret put RESEND_WEBHOOK_SECRET` with its signing secret.
 
 While `EMAIL_TEST_MODE` is `"true"`, newsletters reach only your team: staff plus anyone matching `EMAIL_TEST_ALLOW` (for example `@acme.com`). Sign-in links and invites always work.
 
@@ -58,7 +58,7 @@ It is written for a working blog: on an empty one, the import and link-tagging c
 
 ## 4. AI
 
-`npx wrangler secret put PREDEV_API_KEY` turns on drafting, editing, the assistant, covers, video, auto tags and ideas. Choose default models in Settings, AI (or with `TEXT_MODEL`, `IMAGE_MODEL`, `VIDEO_MODEL`), and set `EMBEDDING_MODEL` so the AI can search your posts and the knowledge sources you add. To use another provider, implement `AIProvider` from `@masthead/core` and pass it in `apps/worker/src/index.ts`.
+`bunx wrangler secret put PREDEV_API_KEY` turns on drafting, editing, the assistant, covers, video, auto tags and ideas. Choose default models in Settings, AI (or with `TEXT_MODEL`, `IMAGE_MODEL`, `VIDEO_MODEL`), and set `EMBEDDING_MODEL` so the AI can search your posts and the knowledge sources you add. To use another provider, implement `AIProvider` from `@masthead/core` and pass it in `apps/worker/src/index.ts`.
 
 ## 5. Images
 
@@ -68,7 +68,7 @@ Uncomment `[images]` in `wrangler.toml` to bind Cloudflare Images. Uploads then 
 
 Pick one:
 
-- **A whole host**, such as `blog.example.com`, on a zone in your Cloudflare account. Cloudflare creates the DNS record and certificate:
+- **A whole host**, such as `blog.example.com`, on a zone in your Cloudflare account. Cloudflare creates the DNS record and certificate. The blog can sit at the root (`SITE_URL = "https://blog.example.com/"`) or keep a path:
 
   ```toml
   [[routes]]
@@ -99,14 +99,14 @@ When the blog is ready:
 
 ## Analytics
 
-Set `POSTHOG_KEY` (and `POSTHOG_HOST` for the EU cloud or a proxy) to load PostHog on every page after it settles and record signups on the server. For traffic in the admin's Analytics page, add a personal API key with query read access: `npx wrangler secret put POSTHOG_PERSONAL_API_KEY` and `POSTHOG_PROJECT_ID = "<id>"`. Newsletter and growth numbers work without PostHog.
+Set `POSTHOG_KEY` (and `POSTHOG_HOST` for the EU cloud or a proxy) to load PostHog on every page after it settles and record signups on the server. For traffic in the admin's Analytics page, add a personal API key with query read access: `bunx wrangler secret put POSTHOG_PERSONAL_API_KEY` and `POSTHOG_PROJECT_ID = "<id>"`. Newsletter and growth numbers work without PostHog.
 
 ## Backups
 
 D1 and R2 are durable, and D1 keeps 30 days of point-in-time history ([Time Travel](https://developers.cloudflare.com/d1/reference/time-travel/)). For a copy of your own:
 
 ```bash
-npx wrangler d1 export masthead --remote --output masthead.sql
+bunx wrangler d1 export masthead --remote --output masthead.sql
 ```
 
 The published site can always be rebuilt from D1 with one click (Settings) or `POST <SITE_URL>admin/api/publish`; media lives only in R2.
