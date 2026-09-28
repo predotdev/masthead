@@ -9,6 +9,10 @@ export interface HeadInput {
     type: 'website' | 'article' | 'profile';
     image?: string | null;
     imageAlt?: string | null;
+    /** The share image's size, when known (for og:image:width and og:image:height). */
+    imageSize?: { width: number; height: number } | null;
+    /** Author names, shown as "Written by" in link previews on Slack and X. */
+    authors?: string[];
     publishedAt?: string | null;
     updatedAt?: string | null;
     tags?: Tag[];
@@ -32,6 +36,8 @@ export function headTags(h: HeadInput): string {
         meta('property', 'og:locale', h.site.locale.replace('-', '_')),
         image ? meta('property', 'og:image', image) : '',
         image && h.imageAlt ? meta('property', 'og:image:alt', h.imageAlt) : '',
+        image && h.imageSize ? meta('property', 'og:image:width', String(h.imageSize.width)) : '',
+        image && h.imageSize ? meta('property', 'og:image:height', String(h.imageSize.height)) : '',
         h.publishedAt ? meta('property', 'article:published_time', h.publishedAt) : '',
         h.updatedAt ? meta('property', 'article:modified_time', h.updatedAt) : '',
         ...(h.tags ?? []).map(t => meta('property', 'article:tag', t.name)),
@@ -40,6 +46,10 @@ export function headTags(h: HeadInput): string {
         meta('name', 'twitter:description', h.description),
         image ? meta('name', 'twitter:image', image) : '',
         handle ? meta('name', 'twitter:site', handle) : '',
+        h.authors?.length ? meta('name', 'twitter:label1', 'Written by') : '',
+        h.authors?.length ? meta('name', 'twitter:data1', h.authors.join(', ')) : '',
+        h.tags?.length ? meta('name', 'twitter:label2', 'Filed under') : '',
+        h.tags?.length ? meta('name', 'twitter:data2', h.tags.map(t => t.name).join(', ')) : '',
         `<link rel="alternate" type="application/rss+xml" title="${escapeHtml(h.site.title)}" href="${escapeHtml(h.rss)}">`,
         h.markdown ? `<link rel="alternate" type="text/markdown" href="${escapeHtml(h.markdown)}">` : '',
         h.prev ? `<link rel="prev" href="${escapeHtml(h.prev)}">` : '',
@@ -90,6 +100,7 @@ export function blogPostingLd(p: {
     url: string;
     description: string;
     image?: string | null;
+    imageSize?: { width: number; height: number } | null;
     authors: { author: Author; url: string }[];
     tags: Tag[];
     words: number;
@@ -102,7 +113,7 @@ export function blogPostingLd(p: {
         description: p.description,
         url: p.url,
         mainEntityOfPage: { '@type': 'WebPage', '@id': p.url },
-        ...(p.image ? { image: { '@type': 'ImageObject', url: p.image } } : {}),
+        ...(p.image ? { image: { '@type': 'ImageObject', url: p.image, ...(p.imageSize ? { width: p.imageSize.width, height: p.imageSize.height } : {}) } } : {}),
         datePublished: p.post.publishedAt,
         dateModified: p.post.updatedAt,
         author: p.authors.map(a => personLd(a.author, a.url)),

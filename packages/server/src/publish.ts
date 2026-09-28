@@ -1,6 +1,8 @@
 import type { OutputFile } from '@masthead/core';
-import { buildSite } from '@masthead/render';
-import { getSetting, loadSnapshot, setSetting } from './content';
+import { renderSite } from '@masthead/render';
+import { getSetting, loadBodies, loadSnapshot, setSetting } from './content';
+import { analyticsConfig } from './analytics';
+import { notifyIndexNow } from './indexnow';
 import { batched } from './db';
 import type { AppOptions, Env } from './env';
 import { now, sha256 } from './util';
@@ -34,60 +36,82 @@ export interface PublishResult {
 }
 
 /**
- * Renders the whole site from the database and writes only the files that
- * changed. A full render of a few hundred posts takes well under a second.
+ * Renders the site from the database and writes only the files that changed.
+ * Files stream from the renderer and bodies load a few posts at a time, so
+ * memory stays flat as the blog grows (10,000 posts render in one pass).
  */
 export async function publishSite(env: Env, db: D1Database, options: AppOptions): Promise<PublishResult> {
     const t0 = Date.now();
-    const snapshot = await loadSnapshot(env, db);
+    await setSetting(db, 'site_publish_started_at', now());
+    const snapshot = await loadSnapshot(env, db, { bodies: false });
     const base = basePath(env);
-    const result = await buildSite(snapshot, {
-        theme: options.theme,
-        render: { linkTag: linkTag(env), postsPerPage: 25 },
-        features: { subscribeUrl: `${base}api/subscribe` }
-    });
+    const files = renderSite(
+        snapshot,
+        { theme: options.theme, render: { linkTag: linkTag(env), postsPerPage: 25 }, features: { subscribeUrl: `${base}api/subscribe`, analytics: analyticsConfig(env) } },
+        { load: ids => loadBodies(db, ids) }
+    );
 
     const { results } = await db.prepare('SELECT path, hash FROM site_files').all<{ path: string; hash: string }>();
     const previous = new Map(results.map(r => [r.path, r.hash]));
     const keep = new Set<string>();
-    const rows: D1PreparedStatement[] = [];
     const changed: string[] = [];
-    let written = 0;
     const t = now();
+    let rows: D1PreparedStatement[] = [];
+    let written = 0;
+    let total = 0;
 
-    // A handful of parallel writes keeps a full first publish fast without flooding R2.
-    const writeAll = (queue: OutputFile[]) =>
-        Promise.all(
-            Array.from({ length: 8 }, async () => {
-                for (let f = queue.shift(); f; f = queue.shift()) {
-                    keep.add(f.path);
-                    const hash = await sha256(typeof f.contents === 'string' ? f.contents : f.contents);
-                    if (previous.get(f.path) === hash) continue;
-                    await env.BUCKET.put(`${SITE_PREFIX}${f.path}`, f.contents, { httpMetadata: { contentType: f.contentType } });
-                    changed.push(f.path);
-                    rows.push(
-                        db
-                            .prepare('INSERT INTO site_files (path, hash, content_type, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(path) DO UPDATE SET hash = excluded.hash, content_type = excluded.content_type, updated_at = excluded.updated_at')
-                            .bind(f.path, hash, f.contentType, t)
-                    );
-                    written++;
-                }
-            })
+    const write = async (f: OutputFile) => {
+        const hash = await sha256(f.contents);
+        if (previous.get(f.path) === hash) return;
+        await env.BUCKET.put(`${SITE_PREFIX}${f.path}`, f.contents, { httpMetadata: { contentType: f.contentType } });
+        changed.push(f.path);
+        rows.push(
+            db
+                .prepare('INSERT INTO site_files (path, hash, content_type, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(path) DO UPDATE SET hash = excluded.hash, content_type = excluded.content_type, updated_at = excluded.updated_at')
+                .bind(f.path, hash, f.contentType, t)
         );
-    // Theme files first: no page may reach readers before the stylesheet version it names.
+        written++;
+    };
+    // Eight writes in flight at most. Theme files come first and are all written
+    // before any page, so no page reaches readers before the stylesheet it names.
     const isAsset = (f: OutputFile) => f.path.startsWith(`${base.slice(1)}assets/`);
-    await writeAll(result.files.filter(isAsset));
-    await writeAll(result.files.filter(f => !isAsset(f)));
+    let batch: OutputFile[] = [];
+    let assetsDone = false;
+    const flush = async () => {
+        await Promise.all(batch.map(write));
+        batch = [];
+        if (rows.length >= 400) (await batched(db, rows), (rows = []));
+    };
+    for await (const f of files) {
+        total++;
+        keep.add(f.path);
+        if (!assetsDone && !isAsset(f)) (await flush(), (assetsDone = true));
+        batch.push(f);
+        if (batch.length === 8) await flush();
+    }
+    await flush();
 
     const stale = [...previous.keys()].filter(p => !keep.has(p));
     for (let i = 0; i < stale.length; i += 500) await env.BUCKET.delete(stale.slice(i, i + 500).map(p => `${SITE_PREFIX}${p}`));
     for (const p of stale) rows.push(db.prepare('DELETE FROM site_files WHERE path = ?').bind(p));
     await batched(db, rows);
     await setSetting(db, 'site_published_at', t);
+    await notifyIndexNow(env, db, changed);
     // Readers in this data center see the change at once; elsewhere within a minute.
     const cache = edgeCache();
     if (cache) await Promise.all([...changed, ...stale].flatMap(p => [cache.delete(edgeKey(p, true)), cache.delete(edgeKey(p, false))]));
-    return { written, removed: stale.length, total: result.files.length, ms: Date.now() - t0 };
+    return { written, removed: stale.length, total, ms: Date.now() - t0 };
+}
+
+/**
+ * True when the last publish started but never finished (a publish after an
+ * admin request can be cut off with the request's time). The cron then runs
+ * it again; files already written are skipped, so a large first publish
+ * finishes over a few passes.
+ */
+export async function publishUnfinished(db: D1Database): Promise<boolean> {
+    const [started, done] = await Promise.all([getSetting<string | null>(db, 'site_publish_started_at', null), getSetting<string | null>(db, 'site_published_at', null)]);
+    return !!started && (!done || done < started) && Date.now() - Date.parse(started) > 90_000;
 }
 
 /** Publishes scheduled posts whose time has come. Returns true when anything changed. */

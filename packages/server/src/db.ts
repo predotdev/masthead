@@ -77,6 +77,14 @@ const MIGRATIONS: string[][] = [
         `CREATE INDEX knowledge_source ON knowledge (source, hash)`,
         `CREATE INDEX knowledge_pending ON knowledge (id) WHERE vector IS NULL`,
         `CREATE TABLE ai_jobs (id TEXT PRIMARY KEY, kind TEXT NOT NULL, provider_id TEXT, status TEXT NOT NULL, prompt TEXT, model TEXT, url TEXT, error TEXT, created_by TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`
+    ],
+    // v5: the reader's analytics id (server events join their visit); post history; image sizes.
+    [
+        `ALTER TABLE members ADD COLUMN analytics_id TEXT`,
+        `CREATE TABLE post_revisions (id INTEGER PRIMARY KEY AUTOINCREMENT, post_id TEXT NOT NULL, title TEXT NOT NULL, body_format TEXT NOT NULL, markdown TEXT, html TEXT, feature_image TEXT, saved_by TEXT, reason TEXT NOT NULL, created_at TEXT NOT NULL)`,
+        `CREATE INDEX post_revisions_post ON post_revisions (post_id, id)`,
+        `ALTER TABLE media ADD COLUMN width INTEGER`,
+        `ALTER TABLE media ADD COLUMN height INTEGER`
     ]
 ];
 

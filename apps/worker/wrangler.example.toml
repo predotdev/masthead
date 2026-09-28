@@ -17,6 +17,10 @@ binding = "DB"
 database_name = "masthead"
 database_id = "<your D1 database id>"
 
+# Optional: resized copies of uploaded images for srcset (Cloudflare Images binding).
+# [images]
+# binding = "IMAGES"
+
 [[r2_buckets]]
 binding = "BUCKET"
 bucket_name = "masthead"

@@ -3,6 +3,8 @@ import { themeAssetsVersion } from '@masthead/render';
 import { principal } from './auth';
 import { siteSettings } from './content';
 import { migrate } from './db';
+import { analyticsConfig, capture, cleanAnalyticsId, distinctId } from './analytics';
+import { indexNowKey } from './indexnow';
 import { confirmEmail } from './email';
 import type { Ctx } from './env';
 import { checkMemberToken, getMember, getMemberByExternalUuid, memberToken, requestSubscription, setStatus } from './members';
@@ -20,7 +22,19 @@ const SECURITY_HEADERS = {
 
 /** Only the canonical host is indexable; previews and workers.dev answer with noindex. */
 function robots(ctx: Ctx): Record<string, string> {
-    return ctx.url.host === new URL(ctx.env.SITE_URL).host ? {} : { 'x-robots-tag': 'noindex, nofollow' };
+    return ctx.canonical ?? ctx.url.host === new URL(ctx.env.SITE_URL).host ? {} : { 'x-robots-tag': 'noindex, nofollow' };
+}
+
+/** Ghost-era address shapes that links and search engines still use, and where they live now. */
+function legacyShape(path: string, base: string): string | null {
+    if (!path.startsWith(base)) return null;
+    const rest = path.slice(base.length);
+    if (/^(tag|author)\/[^/]+\/rss\/?$/.test(rest)) return `${base}rss/`;
+    const amp = rest.match(/^([^/]+)\/amp\/?$/);
+    if (amp) return `${base}${amp[1]}/`;
+    if (rest.endsWith('/index.html')) return `${base}${rest.slice(0, -'index.html'.length)}`;
+    if (rest.endsWith('/') && /[A-Z]/.test(rest) && !rest.startsWith('assets/') && !rest.startsWith('content/')) return `${base}${rest.toLowerCase()}`;
+    return null;
 }
 
 export async function serveSite(req: Request, ctx: Ctx): Promise<Response> {
@@ -29,6 +43,12 @@ export async function serveSite(req: Request, ctx: Ctx): Promise<Response> {
     if (path === base.replace(/\/$/, '')) return redirect(base, 301);
     if (path === `${base}rss`) return redirect(`${base}rss/`, 301);
     if (path === `${base}page/1/`) return redirect(base, 301);
+    const moved = legacyShape(path, base);
+    if (moved) return redirect(`${moved}${ctx.url.search}`, 301);
+    // The IndexNow key file, which proves this site asked for its pages to be recrawled.
+    if (/^[0-9a-f]{32}\.txt$/.test(path.slice(base.length)) && path.slice(base.length, -4) === (await indexNowKey(ctx.env, ctx.db))) {
+        return new Response(path.slice(base.length, -4), { headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'public, max-age=86400' } });
+    }
 
     let key: string;
     if (path === `${base}rss/`) key = `${base}rss/index.xml`;
@@ -174,7 +194,8 @@ export async function themeContext(ctx: Ctx): Promise<ThemeContext> {
         assetsHref: `${base}assets/`,
         searchHref: `${base}search/`,
         searchIndexHref: `${base}search.json`,
-        subscribeUrl: `${base}api/subscribe`
+        subscribeUrl: `${base}api/subscribe`,
+        analytics: analyticsConfig(ctx.env)
     };
 }
 
@@ -240,6 +261,14 @@ export function publicRoutes(): Router<Ctx> {
         // Bots fill every field, people never see this one.
         if (data.company) return wantsHtml(req) ? resultPage(ctx, 'Check your email', '<p class="dek">We sent you a link to confirm.</p>') : json({ ok: true });
         const { member, needsConfirmation } = await requestSubscription(ctx.db, String(data.email ?? ''), data.name ? String(data.name) : null);
+        // The reader's browser analytics id: server events about this subscription then join their visit.
+        const analyticsId = cleanAnalyticsId(data.analyticsId);
+        if (analyticsId && !member.analyticsId) {
+            await ctx.db.prepare('UPDATE members SET analytics_id = ? WHERE id = ? AND analytics_id IS NULL').bind(analyticsId, member.id).run();
+            member.analyticsId = analyticsId;
+        }
+        const origin = { post_slug: typeof data.post === 'string' ? data.post.slice(0, 200) : null, placement: typeof data.placement === 'string' ? data.placement.slice(0, 40) : null, source: 'blog' };
+        capture(ctx.env, p => ctx.exec.waitUntil(p), needsConfirmation ? 'newsletter_subscribe_requested' : 'newsletter_subscribe_repeated', distinctId(member), origin);
         let confirmUrl: string | undefined;
         if (needsConfirmation) {
             confirmUrl = `${appUrl(ctx.env)}api/confirm?m=${member.id}&t=${await memberToken(ctx.env.SECRET, 'confirm', member.id)}`;
@@ -281,7 +310,10 @@ export function publicRoutes(): Router<Ctx> {
         const t = ctx.url.searchParams.get('t') ?? '';
         const member = m ? await getMember(ctx.db, m) : null;
         if (!member || !(await checkMemberToken(ctx.env.SECRET, 'confirm', member.id, t))) return resultPage(ctx, 'This link is not valid', '<p class="dek">Try subscribing again.</p>', 400);
-        if (member.status !== 'subscribed') await setStatus(ctx.db, member, 'subscribed', 'member');
+        if (member.status !== 'subscribed') {
+            await setStatus(ctx.db, member, 'subscribed', 'member');
+            capture(ctx.env, p => ctx.exec.waitUntil(p), 'newsletter_subscribed', distinctId(member), { source: 'blog' }, { set: { newsletter_subscribed: true }, setOnce: { newsletter_subscribed_at: new Date().toISOString() } });
+        }
         return resultPage(ctx, "You're subscribed", `<p class="dek">New posts will arrive by email. <a href="${esc(ctx.basePath)}">Read the latest</a></p>`);
     });
 
@@ -308,6 +340,7 @@ export function publicRoutes(): Router<Ctx> {
         const t = ctx.url.searchParams.get('t') ?? '';
         const member = m ? await getMember(ctx.db, m) : null;
         if (!member || !(await checkMemberToken(ctx.env.SECRET, 'unsubscribe', member.id, t))) throw new HttpError(400, 'This unsubscribe link is not valid.');
+        if (member.status !== 'unsubscribed') capture(ctx.env, p => ctx.exec.waitUntil(p), 'newsletter_unsubscribed', distinctId(member), { source: 'blog' }, { set: { newsletter_subscribed: false } });
         await setStatus(ctx.db, member, 'unsubscribed', 'member');
         if (!wantsHtml(req)) return new Response('Unsubscribed', { status: 200 });
         return resultPage(ctx, "You're unsubscribed", '<p class="dek">You won\'t get any more emails.</p>');

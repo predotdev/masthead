@@ -2,6 +2,7 @@ import { signal } from '@preact/signals';
 import { render } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { api, base, session, type Me } from './api';
+import { Analytics } from './pages/analytics';
 import { Ideas } from './pages/ideas';
 import { Login, Verify } from './pages/login';
 import { Members } from './pages/members';
@@ -19,6 +20,7 @@ const NAV: { path: string; label: string; roles?: string[] }[] = [
     { path: '/posts', label: 'Posts' },
     { path: '/pages', label: 'Pages' },
     { path: '/ideas', label: 'Ideas' },
+    { path: '/analytics', label: 'Analytics' },
     { path: '/members', label: 'Members', roles: ['owner', 'admin'] },
     { path: '/newsletters', label: 'Newsletters', roles: ['owner', 'admin', 'editor'] },
     { path: '/tags', label: 'Tags' },
@@ -48,6 +50,8 @@ function Page() {
             return <LazyEditor id={arg} />;
         case 'ideas':
             return <Ideas />;
+        case 'analytics':
+            return <Analytics />;
         case 'members':
             return <Members />;
         case 'newsletters':

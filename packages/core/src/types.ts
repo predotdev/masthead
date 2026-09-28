@@ -178,6 +178,8 @@ export interface Snapshot {
     tags: Tag[];
     /** Sign-in accounts for authors and admins. Present when exported from an admin API. */
     staff?: StaffRecord[];
+    /** Known image sizes by URL path (e.g. /blog/content/images/x.png), for layout and share cards. */
+    imageSizes?: Record<string, { width: number; height: number }>;
     newsletter?: NewsletterSettings;
 }
 
@@ -482,6 +484,22 @@ export interface ThemeContext {
     subscribeUrl?: string;
     /** Public tags that have posts, most used first. */
     topics?: { name: string; url: string; slug: string; count: number }[];
+    /** Product analytics the theme loads, when configured. */
+    analytics?: AnalyticsConfig;
+}
+
+/** Analytics the published pages load (PostHog), set from the server's environment. */
+export interface AnalyticsConfig {
+    posthog?: {
+        /** The project's public API key (phc_...). */
+        key: string;
+        /** Where events go: https://us.i.posthog.com, https://eu.i.posthog.com, or your own proxy. */
+        host: string;
+        /** Pages served on this host count as production; any other host is a preview. */
+        canonicalHost: string;
+        /** Track previews too, tagged environment=preview. Off by default. */
+        trackPreview?: boolean;
+    };
 }
 
 /** One post in the search index. */
@@ -506,6 +524,8 @@ export interface PostView {
     authors: (Author & { url: string })[];
     tags: (Tag & { url: string })[];
     related: ListItem[];
+    /** The feature image's real size, when known. */
+    featureImageSize?: { width: number; height: number };
 }
 
 export interface ListView {

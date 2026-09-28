@@ -1,6 +1,7 @@
 import type { AIProvider, AspectRatio, ModelInfo, ModelKind, TextMessage } from '@masthead/core';
 import { aiSettings, savePost, siteSettings } from './content';
 import type { Ctx, Principal } from './env';
+import { storeImage } from './images';
 import { MEDIA_PREFIX } from './public';
 import { listMemory, retrieve, type Passage } from './knowledge';
 import { HttpError, newId, now } from './util';
@@ -124,8 +125,7 @@ export async function image(ctx: Ctx, input: { prompt: string; aspectRatio?: Asp
     const ext = res.mimeType === 'image/png' ? 'png' : res.mimeType === 'image/webp' ? 'webp' : 'jpg';
     const d = new Date();
     const rel = `content/images/ai/${d.getUTCFullYear()}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${newId()}.${ext}`;
-    await ctx.env.BUCKET.put(`${MEDIA_PREFIX}${rel}`, res.bytes, { httpMetadata: { contentType: res.mimeType } });
-    await ctx.db.prepare('INSERT INTO media (key, content_type, size, source_url, created_at) VALUES (?, ?, ?, ?, ?)').bind(rel, res.mimeType, res.bytes.length, `ai:${res.model}`, now()).run();
+    await storeImage(ctx.env, ctx.db, rel, res.bytes, res.mimeType, `ai:${res.model}`);
     return { url: `${ctx.basePath}${rel}`, model: res.model, usage: res.usage };
 }
 

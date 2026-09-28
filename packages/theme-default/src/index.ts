@@ -4,6 +4,8 @@ import { script } from './script';
 import { css } from './style';
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+/** JSON that is safe inside a <script> element. */
+const jsonScript = (v: unknown) => JSON.stringify(v).replace(/</g, '\\u003c');
 
 function date(iso: string | null | undefined, locale: string): string {
     if (!iso) return '';
@@ -255,7 +257,7 @@ export const defaultTheme: Theme = {
         const s = ctx.site;
         const scheme = s.appearance?.colorScheme ?? 'system';
         return `<!doctype html>
-<html lang="${esc(s.locale)}" data-default-theme="${esc(scheme)}" data-search-index="${esc(ctx.searchIndexHref)}">
+<html lang="${esc(s.locale)}" data-default-theme="${esc(scheme)}" data-base="${esc(ctx.basePath)}" data-search-index="${esc(ctx.searchIndexHref)}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -267,6 +269,7 @@ export const defaultTheme: Theme = {
 ${s.icon ? `<link rel="icon" href="${esc(s.icon)}">` : ''}
 <link rel="stylesheet" href="${esc(ctx.cssHref)}">
 <script src="${esc(ctx.assetsHref)}masthead.js?v=${esc(ctx.assetsVersion)}" defer></script>
+${ctx.analytics?.posthog ? `<script type="application/json" id="mh-analytics">${jsonScript(ctx.analytics)}</script>` : ''}
 ${meta.head}
 </head>
 <body>
@@ -293,10 +296,10 @@ ${footer(ctx)}
             .map(a => (a.profileImage ? `<img src="${esc(a.profileImage)}" alt="" width="36" height="36" loading="lazy">` : `<span aria-hidden="true">${esc(initials(a.name))}</span>`))
             .join('');
         const share = `<div class="share"><span class="share-label">Share</span>
-      <a class="icon-btn" href="https://x.com/intent/post?url=${encodeURIComponent(url)}&amp;text=${encodeURIComponent(p.title)}" target="_blank" rel="noopener" aria-label="Share on X">${socialIcons.x}</a>
-      <a class="icon-btn" href="https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}" target="_blank" rel="noopener" aria-label="Share on LinkedIn">${socialIcons.linkedin}</a>
-      <a class="icon-btn" href="${esc(url)}" data-copy-link aria-label="Copy link">${icons.link()}</a></div>`;
-        return `<article class="post">
+      <a class="icon-btn" data-share="x" href="https://x.com/intent/post?url=${encodeURIComponent(url)}&amp;text=${encodeURIComponent(p.title)}" target="_blank" rel="noopener" aria-label="Share on X">${socialIcons.x}</a>
+      <a class="icon-btn" data-share="linkedin" href="https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}" target="_blank" rel="noopener" aria-label="Share on LinkedIn">${socialIcons.linkedin}</a>
+      <a class="icon-btn" data-share="copy" href="${esc(url)}" data-copy-link aria-label="Copy link">${icons.link()}</a></div>`;
+        return `<article class="post" data-post-slug="${esc(p.slug)}" data-post-type="${esc(p.type)}" data-post-tags="${esc(v.tags.map(t => t.slug).join(','))}" data-post-authors="${esc(v.authors.map(a => a.slug).join(','))}" data-post-published="${esc(p.publishedAt ?? '')}">
   <header class="post-header">
     ${isPost && primary ? `<a class="eyebrow" href="${esc(primary.url)}">${esc(primary.name)}</a>` : ''}
     <h1 class="post-title">${esc(p.title)}</h1>
@@ -309,7 +312,7 @@ ${footer(ctx)}
   </header>
   ${
       p.featureImage
-          ? `<figure class="feature"><img src="${esc(p.featureImage)}"${srcset(p.featureImage, ctx)} sizes="(max-width: 1100px) 100vw, 1024px" alt="${esc(p.featureImageAlt ?? '')}" fetchpriority="high" decoding="async" width="1200" height="675">${p.featureImageCaption ? `<figcaption>${p.featureImageCaption}</figcaption>` : ''}</figure>`
+          ? `<figure class="feature"><img src="${esc(p.featureImage)}"${srcset(p.featureImage, ctx)} sizes="(max-width: 1100px) 100vw, 1024px" alt="${esc(p.featureImageAlt ?? '')}" fetchpriority="high" decoding="async" width="${v.featureImageSize?.width || 1200}" height="${v.featureImageSize?.height || 675}">${p.featureImageCaption ? `<figcaption>${p.featureImageCaption}</figcaption>` : ''}</figure>`
           : ''
   }
   <div class="content">

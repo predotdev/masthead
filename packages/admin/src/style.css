@@ -393,3 +393,32 @@ code { font-family: var(--mono); font-size: 12.5px; background: var(--hover); pa
   .send-grid { grid-template-columns: 1fr; }
   .facts { grid-template-columns: 1fr; }
 }
+
+/* analytics */
+.daily { display: flex; align-items: flex-end; gap: 2px; height: 120px; padding: 8px 0 14px; margin-bottom: 14px; border-bottom: 1px solid var(--line); }
+.daily-bar { flex: 1; min-width: 2px; background: var(--fg); opacity: 0.8; border-radius: 3px 3px 0 0; }
+.daily-bar:hover { opacity: 1; }
+.bars { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.bars li { display: grid; grid-template-columns: minmax(120px, 220px) minmax(0, 1fr) 64px; gap: 10px; align-items: center; font-size: 13px; }
+.bar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar { height: 10px; border-radius: 0 4px 4px 0; background: var(--fg); opacity: 0.75; }
+.bar-value { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+
+/* search readiness, share card, history */
+.checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.checks li { display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: 8px; align-items: start; }
+.checks li.ok { color: var(--muted); }
+.checks li.ok > span:first-child { color: var(--green); }
+.checks li.todo > span:first-child { color: var(--amber); }
+.check-hint { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+.share-card { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--bg); }
+.share-card img, .share-card-noimg { display: block; width: 100%; aspect-ratio: 1.91 / 1; object-fit: cover; background: var(--hover); }
+.share-card-noimg { display: flex; align-items: center; justify-content: center; color: var(--faint); font-size: 12px; }
+.share-card-text { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; font-size: 13px; }
+.share-card-text span { color: var(--muted); }
+.share-card-host { font-size: 11.5px; text-transform: lowercase; }
+.link-plain { background: none; border: 0; padding: 0; cursor: pointer; color: inherit; text-align: left; width: 100%; }
+.history { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; max-height: 260px; overflow-y: auto; }
+.history button { display: flex; flex-direction: column; gap: 1px; padding: 6px 8px; border-radius: 6px; font-size: 13px; }
+.history button:hover { background: var(--hover); }
+.revision-view { max-height: 60vh; overflow-y: auto; font-size: 15px; line-height: 1.65; }

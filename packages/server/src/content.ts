@@ -34,6 +34,14 @@ export async function siteSettings(env: Env, db: D1Database): Promise<SiteSettin
 export interface NewsletterConfig extends NewsletterSettings {
     postalAddress?: string | null;
     footer?: string | null;
+    /** Add utm_source=email, utm_medium=newsletter, utm_campaign=<post slug> to links in newsletters. On unless false. */
+    utm?: boolean;
+    /**
+     * Extra headers on every newsletter email, e.g. for an email-events webhook that
+     * attributes opens and clicks. Values may use {distinct_id} (the reader's analytics id, else email:<address>),
+     * {analytics_id} (empty unless they subscribed on the blog), {member_id}, {post_slug}, {send_id}.
+     */
+    emailHeaders?: Record<string, string> | null;
 }
 
 export async function newsletterSettings(env: Env, db: D1Database): Promise<NewsletterConfig> {
@@ -396,10 +404,19 @@ export async function deleteStaff(db: D1Database, id: string): Promise<void> {
 
 // ------------------------------------------------------------------ snapshot for publishing
 
-export async function loadSnapshot(env: Env, db: D1Database): Promise<Snapshot> {
+/** Every column but the bodies, for a snapshot that loads bodies on demand. */
+const POST_META_COLUMNS =
+    'id, type, slug, title, status, body_format, NULL AS markdown, NULL AS html, custom_excerpt, feature_image, feature_image_alt, feature_image_caption, meta_title, meta_description, og_title, og_description, og_image, twitter_title, twitter_description, twitter_image, canonical_url, featured, newsletter, published_at, created_at, updated_at';
+
+/**
+ * Everything the site is built from. With `bodies: false` the posts come
+ * without their text, which `loadBodies` then fetches a few at a time, so a
+ * large site never sits in memory all at once.
+ */
+export async function loadSnapshot(env: Env, db: D1Database, options: { bodies?: boolean } = {}): Promise<Snapshot> {
     const site = await siteSettings(env, db);
     const [posts, tags, staff] = await db.batch([
-        db.prepare("SELECT * FROM posts WHERE status IN ('published','scheduled')"),
+        db.prepare(`SELECT ${options.bodies === false ? POST_META_COLUMNS : '*'} FROM posts WHERE status IN ('published','scheduled')`),
         db.prepare('SELECT * FROM tags'),
         db.prepare("SELECT * FROM staff WHERE status != 'suspended'")
     ]);
@@ -418,15 +435,31 @@ export async function loadSnapshot(env: Env, db: D1Database): Promise<Snapshot> 
         twitter: r.twitter,
         linkedin: r.linkedin
     }));
+    const { results: sized } = await db.prepare('SELECT key, width, height FROM media WHERE width > 0 AND height > 0').all<{ key: string; width: number; height: number }>();
+    const base = new URL(env.SITE_URL.endsWith('/') ? env.SITE_URL : `${env.SITE_URL}/`).pathname;
+    const imageSizes = Object.fromEntries(sized.map(r => [`${base}${r.key}`, { width: r.width, height: r.height }]));
     return {
         format: 'masthead.snapshot/1',
         exportedAt: now(),
         source: 'masthead',
+        imageSizes,
         site,
         posts: rows.map(r => toPost(r, rel.tags.get(r.id) ?? [], rel.authors.get(r.id) ?? [])),
         tags: (tags.results as any[]).map(t => ({ id: t.id, slug: t.slug, name: t.name, description: t.description, visibility: t.visibility })),
         authors
     };
+}
+
+/** The bodies of some posts, by id (see loadSnapshot). */
+export async function loadBodies(db: D1Database, ids: string[]): Promise<Map<string, Pick<Post, 'html' | 'markdown' | 'bodyFormat'>>> {
+    const out = new Map<string, Pick<Post, 'html' | 'markdown' | 'bodyFormat'>>();
+    if (!ids.length) return out;
+    const { results } = await db
+        .prepare(`SELECT id, body_format, markdown, html FROM posts WHERE id IN (${ids.map(() => '?').join(',')})`)
+        .bind(...ids)
+        .all<{ id: string; body_format: Post['bodyFormat']; markdown: string | null; html: string | null }>();
+    for (const r of results) out.set(r.id, { bodyFormat: r.body_format, markdown: r.markdown, html: r.html });
+    return out;
 }
 
 export { batched };

@@ -6,6 +6,7 @@ import { UNSUBSCRIBE_PLACEHOLDER, newsletterEmail, type NewsletterEmail } from '
 import type { AppOptions, Env, Principal } from './env';
 import { memberToken, suppress } from './members';
 import { linkTag } from './publish';
+import { distinctId } from './analytics';
 import { HttpError, isEmail, newId, now, sleep } from './util';
 
 export const BATCH = 100;
@@ -41,16 +42,19 @@ export async function buildEmail(env: Env, db: D1Database, post: Post): Promise<
     const staff = await listStaff(db);
     const names = post.authors.map(id => staff.find(s => s.id === id)?.name).filter((n): n is string => !!n);
     const { postalAddress } = await sender(env, db);
-    return newsletterEmail({
+    const settings = await newsletterSettings(env, db);
+    const body = tagLinks(renderBody(post), site.url, linkTag(env));
+    const email = newsletterEmail({
         site,
         post,
-        body: tagLinks(renderBody(post), site.url, linkTag(env)),
+        body: settings.utm === false ? body : utmLinks(body, { utm_source: 'email', utm_medium: 'newsletter', utm_campaign: post.slug }),
         markdown: post.markdown ?? '',
-        postUrl: `${site.url}${post.slug}/`,
+        postUrl: settings.utm === false ? `${site.url}${post.slug}/` : `${site.url}${post.slug}/?utm_source=email&utm_medium=newsletter&utm_campaign=${encodeURIComponent(post.slug)}`,
         origin: new URL(appUrl(env)).origin,
         authors: names,
         postalAddress
     });
+    return { ...email, slug: post.slug };
 }
 
 export type Segment = 'all' | 'engaged' | `label:${string}`;
@@ -141,9 +145,11 @@ export async function processSends(env: Env, db: D1Database, options: AppOptions
             if (send.status === 'queued') await db.prepare("UPDATE sends SET status = 'sending', started_at = ? WHERE id = ? AND status = 'queued'").bind(now(), send.id).run();
 
             const { results: batch } = await db
-                .prepare("SELECT member_id, email FROM send_recipients WHERE send_id = ? AND status = 'pending' ORDER BY member_id LIMIT ?")
+                .prepare(
+                    "SELECT r.member_id, r.email, m.analytics_id FROM send_recipients r LEFT JOIN members m ON m.id = r.member_id WHERE r.send_id = ? AND r.status = 'pending' ORDER BY r.member_id LIMIT ?"
+                )
                 .bind(send.id, BATCH)
-                .all<{ member_id: string; email: string }>();
+                .all<{ member_id: string; email: string; analytics_id: string | null }>();
             if (!batch.length) {
                 await finishSend(db, send.id);
                 continue;
@@ -160,6 +166,8 @@ export async function processSends(env: Env, db: D1Database, options: AppOptions
                 templates.set(send.id, email);
             }
             const { from, replyTo } = await sender(env, db);
+            const extraHeaders = (await newsletterSettings(env, db)).emailHeaders ?? {};
+            const postSlug = email.slug ?? '';
             const redirect = send.test_mode ? testAddress(env) : null;
             const messages: EmailMessage[] = await Promise.all(
                 batch.map(async r => {
@@ -171,7 +179,11 @@ export async function processSends(env: Env, db: D1Database, options: AppOptions
                         subject: send.subject,
                         html: email!.html.replaceAll(UNSUBSCRIBE_PLACEHOLDER, unsub),
                         text: email!.text.replaceAll(UNSUBSCRIBE_PLACEHOLDER, unsub),
-                        headers: { 'List-Unsubscribe': `<${unsub}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' },
+                        headers: {
+                            ...fillHeaders(extraHeaders, { distinct_id: distinctId({ analytics_id: r.analytics_id, email: r.email }), analytics_id: r.analytics_id ?? '', member_id: r.member_id, post_slug: postSlug, send_id: send.id }),
+                            'List-Unsubscribe': `<${unsub}>`,
+                            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
+                        },
                         idempotencyKey: `${send.id}:${r.member_id}`
                     };
                 })
@@ -254,4 +266,29 @@ export async function recordEmailEvents(db: D1Database, events: EmailEvent[]): P
         n++;
     }
     return n;
+}
+
+/** Adds campaign parameters to every web link in an email, keeping any the link already has. */
+export function utmLinks(html: string, params: Record<string, string>): string {
+    return html.replace(/(<a\b[^>]*?\bhref=")(https?:\/\/[^"]+)(")/gi, (whole, pre: string, href: string, post: string) => {
+        let url: URL;
+        try {
+            url = new URL(href.replace(/&amp;/g, '&'));
+        } catch {
+            return whole;
+        }
+        for (const [k, v] of Object.entries(params)) if (!url.searchParams.has(k)) url.searchParams.set(k, v);
+        return `${pre}${url.toString().replace(/&/g, '&amp;')}${post}`;
+    });
+}
+
+/** Header templates with {name} filled in; a header whose value comes out empty is left off. */
+function fillHeaders(templates: Record<string, string>, values: Record<string, string>): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const [name, template] of Object.entries(templates)) {
+        if (!/^[A-Za-z0-9-]{1,64}$/.test(name) || typeof template !== 'string') continue;
+        const value = template.replace(/\{(\w+)\}/g, (_m, k: string) => values[k] ?? '').replace(/[\r\n]/g, '').slice(0, 500);
+        if (value) out[name] = value;
+    }
+    return out;
 }

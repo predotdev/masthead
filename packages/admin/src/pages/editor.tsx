@@ -6,6 +6,7 @@ import { createEditor, slashItems, snapshot, type SelectionState, type SlashStat
 import { Button, Dialog, ErrorNote, Field, Loading, Pill, errorToast, toast, useLoad } from '../ui';
 import { AiPreview, AiPrompt, AssistantPanel, QUICK_EDITS, type AiJob } from './ai';
 import { EmbedDialog, HtmlDialog, ImageDialog, VideoDialog } from './media';
+import { HistoryPanel, SearchPanel } from './post-tools';
 import { SendDialog } from './newsletters';
 
 type Draft = Omit<Post, 'id' | 'createdAt' | 'updatedAt' | 'newsletter' | 'type'>;
@@ -40,6 +41,7 @@ function PostEditor({ initial, tags: allTags, staff }: { initial: Post; tags: Ta
     const [aiJob, setAiJob] = useState<AiJob | null>(null);
     const [prompt, setPrompt] = useState<{ top: number; left: number; hasSelection: boolean } | null>(null);
     const [source, setSource] = useState(false);
+    const [reloadKey, setReloadKey] = useState(0);
     const editorRef = useRef<Editor | null>(null);
     const rev = useRef(0);
     const [revision, setRevision] = useState(0);
@@ -90,7 +92,7 @@ function PostEditor({ initial, tags: allTags, staff }: { initial: Post; tags: Ta
             editorRef.current = null;
             ed.destroy();
         };
-    }, [source]);
+    }, [source, reloadKey]);
 
     const body = () => (editorRef.current ? { bodyFormat: 'html' as const, ...snapshot(editorRef.current) } : {});
 
@@ -369,7 +371,22 @@ function PostEditor({ initial, tags: allTags, staff }: { initial: Post; tags: Ta
 
                 {side === 'settings' ? (
                     <aside class="settings-panel">
-                        <SettingsPanel post={post} draft={draft} update={update} tags={tags} setTags={setTags} staff={staff} onMeta={() => setModal({ kind: 'meta' })} onCover={() => setModal({ kind: 'image', mode: 'cover' })} />
+                        <SettingsPanel
+                            post={post}
+                            draft={draft}
+                            update={update}
+                            tags={tags}
+                            setTags={setTags}
+                            staff={staff}
+                            onMeta={() => setModal({ kind: 'meta' })}
+                            onCover={() => setModal({ kind: 'image', mode: 'cover' })}
+                            getHtml={() => (editorRef.current ? snapshot(editorRef.current).html : (draft.html ?? ''))}
+                            onRestored={v => {
+                                // The version becomes the editor's text as unsaved changes.
+                                update({ title: v.title, bodyFormat: v.bodyFormat, markdown: v.markdown, html: v.html });
+                                setReloadKey(k => k + 1);
+                            }}
+                        />
                         <div class="panel-actions">
                             <Button
                                 onClick={async () => {
@@ -462,6 +479,8 @@ function SettingsPanel(props: {
     staff: Staff[];
     onMeta: () => void;
     onCover: () => void;
+    getHtml: () => string;
+    onRestored: (v: Pick<Post, 'title' | 'bodyFormat' | 'markdown' | 'html'>) => void;
 }) {
     const { draft, update, tags, staff } = props;
     const [newTag, setNewTag] = useState('');
@@ -559,6 +578,8 @@ function SettingsPanel(props: {
                     <textarea rows={3} value={draft.metaDescription ?? ''} onInput={e => update({ metaDescription: e.currentTarget.value || null })} />
                 </Field>
             </div>
+            <SearchPanel draft={draft} getHtml={props.getHtml} />
+            <HistoryPanel post={props.post} onRestored={props.onRestored} />
             <label class="check">
                 <input type="checkbox" checked={draft.featured} onChange={e => update({ featured: e.currentTarget.checked })} /> Featured
             </label>

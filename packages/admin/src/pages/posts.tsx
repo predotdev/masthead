@@ -12,11 +12,13 @@ export function Posts({ type }: { type: 'post' | 'page' }) {
         () =>
             Promise.all([
                 api<{ items: Post[]; total: number }>(`/posts?type=${type}&limit=200${status ? `&status=${status}` : ''}${q ? `&q=${encodeURIComponent(q)}` : ''}`),
-                api<Staff[]>('/staff')
+                api<Staff[]>('/staff'),
+                type === 'post' ? api<{ configured: boolean; posts: { slug: string; views: number }[] }>('/analytics?days=30').catch(() => null) : Promise.resolve(null)
             ]),
         [type, status, q]
     );
     const staff = new Map((data?.[1] ?? []).map(s => [s.id, s.name]));
+    const views = data?.[2]?.configured ? new Map(data[2].posts.map(p => [p.slug, p.views])) : null;
 
     const create = async () => {
         setCreating(true);
@@ -65,6 +67,7 @@ export function Posts({ type }: { type: 'post' | 'page' }) {
                                 <th>Status</th>
                                 <th>Author</th>
                                 <th>Date</th>
+                                {views ? <th class="num">Views, 30 days</th> : null}
                                 {type === 'post' ? <th class="num">Emailed to</th> : null}
                             </tr>
                         </thead>
@@ -82,6 +85,7 @@ export function Posts({ type }: { type: 'post' | 'page' }) {
                                     </td>
                                     <td class="muted">{p.authors.map(a => staff.get(a) ?? '').filter(Boolean).join(', ')}</td>
                                     <td class="muted nowrap">{fmtDate(p.publishedAt ?? p.updatedAt)}</td>
+                                    {views ? <td class="num">{p.status === 'published' ? fmtNum(views.get(p.slug) ?? 0) : ''}</td> : null}
                                     {type === 'post' ? <td class="num muted">{p.newsletter ? fmtNum(p.newsletter.recipients) : ''}</td> : null}
                                 </tr>
                             ))}

@@ -43,6 +43,8 @@ export interface NewsletterEmail {
     subject: string;
     html: string;
     text: string;
+    /** The post it was made from. */
+    slug?: string;
 }
 
 export const UNSUBSCRIBE_PLACEHOLDER = '%%MASTHEAD_UNSUBSCRIBE%%';

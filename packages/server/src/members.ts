@@ -22,6 +22,8 @@ export interface Member {
     createdAt: string;
     updatedAt: string;
     lastEmailedAt: string | null;
+    /** The reader's browser analytics id from their signup, so server events join their visit. */
+    analyticsId: string | null;
 }
 
 function toMember(r: any): Member {
@@ -41,7 +43,8 @@ function toMember(r: any): Member {
         openedCount: r.opened_count,
         createdAt: r.created_at,
         updatedAt: r.updated_at,
-        lastEmailedAt: r.last_emailed_at
+        lastEmailedAt: r.last_emailed_at,
+        analyticsId: r.analytics_id ?? null
     };
 }
 

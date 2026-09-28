@@ -6,6 +6,8 @@ export interface Env {
     BUCKET: R2Bucket;
     /** The admin app's static files. */
     ASSETS?: Fetcher;
+    /** Cloudflare Images binding: makes resized copies of uploaded images for srcset. Optional. */
+    IMAGES?: ImagesBinding;
     /** Canonical public URL of the blog, e.g. https://example.com/blog/ */
     SITE_URL: string;
     /**
@@ -33,6 +35,19 @@ export interface Env {
     EMBEDDING_MODEL?: string;
     /** "param=value" added to outbound links in posts, e.g. "ref=example.com". */
     LINK_TAG?: string;
+    /** PostHog project key (phc_...). Set it and pages load PostHog and the server records subscriptions. */
+    POSTHOG_KEY?: string;
+    /** PostHog host. Default https://us.i.posthog.com (EU: https://eu.i.posthog.com, or your own proxy). */
+    POSTHOG_HOST?: string;
+    /** "true": also track previews (hosts other than SITE_URL's), tagged environment=preview. */
+    POSTHOG_TRACK_PREVIEW?: string;
+    /** "true": tell search engines (IndexNow: Bing, Yandex and others) about changed pages on publish. Turn on once SITE_URL serves this blog. */
+    INDEXNOW?: string;
+    /** The IndexNow key (32 hex characters). Generated and kept in settings when not set. */
+    INDEXNOW_KEY?: string;
+    /** Admin stats read PostHog with a personal API key (query read access) for this project id. */
+    POSTHOG_PERSONAL_API_KEY?: string;
+    POSTHOG_PROJECT_ID?: string;
 }
 
 export interface Principal {
@@ -59,4 +74,9 @@ export interface Ctx {
     url: URL;
     basePath: string;
     principal?: Principal;
+    /**
+     * Served at the canonical address (SITE_URL's host), directly or through a
+     * proxy that passes it as x-forwarded-host. Other hosts are previews: noindex.
+     */
+    canonical?: boolean;
 }

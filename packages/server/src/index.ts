@@ -15,7 +15,7 @@ import { migrate } from './db';
 import type { AppOptions, Ctx, Env } from './env';
 import { processSends } from './newsletter';
 import { legacyRoute, publicRoutes, serveMedia, serveSearch, serveSite } from './public';
-import { basePath, publishSite, releaseScheduled } from './publish';
+import { basePath, publishSite, publishUnfinished, releaseScheduled } from './publish';
 import { embedPending, refreshKnowledge } from './knowledge';
 import { HttpError, json } from './util';
 
@@ -29,7 +29,9 @@ export function createApp(options: AppOptions) {
     async function handle(req: Request, env: Env, exec: ExecutionContext): Promise<Response> {
         const url = new URL(req.url);
         const base = basePath(env);
-        const ctx: Ctx = { env, db: env.DB, exec, options, url, basePath: base };
+        const siteHost = new URL(env.SITE_URL).host;
+        const forwarded = (req.headers.get('x-forwarded-host') ?? '').split(',')[0].trim();
+        const ctx: Ctx = { env, db: env.DB, exec, options, url, basePath: base, canonical: url.host === siteHost || forwarded === siteHost };
         const path = url.pathname;
 
         if (base !== '/' && (path === '/' || path === '')) return Response.redirect(new URL(base, url).toString(), 302);
@@ -84,7 +86,7 @@ export function createApp(options: AppOptions) {
         /** Every minute: publish scheduled posts, then work through newsletter batches. */
         async scheduled(event: ScheduledController, env: Env, exec: ExecutionContext): Promise<void> {
             await migrate(env.DB);
-            if (await releaseScheduled(env.DB)) await publishSite(env, env.DB, options);
+            if ((await releaseScheduled(env.DB)) || (await publishUnfinished(env.DB))) await publishSite(env, env.DB, options);
             exec.waitUntil(processSends(env, env.DB, options, 50_000));
             // The writing assistant's knowledge: embed what is queued; re-read every source once a day.
             const ai = options.ai?.(env) ?? null;

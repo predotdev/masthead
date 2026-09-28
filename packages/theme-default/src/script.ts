@@ -6,6 +6,94 @@
  * Written as plain ES2019 in a string so it ships exactly as written.
  */
 export const script = `(function () {
+  // ---------------------------------------------------------------- analytics (PostHog, when configured)
+  var article = document.querySelector('article[data-post-slug]');
+  var postSlug = article ? article.getAttribute('data-post-slug') : null;
+  var analytics = (function () {
+    var el = document.getElementById('mh-analytics');
+    try { return el ? JSON.parse(el.textContent || '{}') : {}; } catch (e) { return {}; }
+  })();
+  var ph = analytics.posthog;
+  var production = !!ph && (location.hostname === ph.canonicalHost || location.hostname === 'www.' + ph.canonicalHost);
+  var queue = [];
+  function track(event, props) {
+    if (!ph || (!production && !ph.trackPreview)) return;
+    var p = props || {};
+    if (postSlug && !('post_slug' in p)) p.post_slug = postSlug;
+    if (window.posthog && window.posthog.__loaded) window.posthog.capture(event, p);
+    else queue.push([event, p]);
+  }
+  track.id = function () { return window.posthog && window.posthog.__loaded ? window.posthog.get_distinct_id() : null; };
+  function placement(form) {
+    return form.closest('.post-foot, article') || article ? 'post' : form.closest('#subscribe') ? 'home' : 'page';
+  }
+  if (ph && (production || ph.trackPreview)) {
+    var startPosthog = function () {
+      var s = document.createElement('script');
+      s.async = true;
+      s.crossOrigin = 'anonymous';
+      s.src = ph.host.replace('.i.posthog.com', '-assets.i.posthog.com') + '/static/array.js';
+      s.onload = function () {
+        var lib = window.posthog;
+        if (!lib || typeof lib.init !== 'function') return;
+        lib.init(ph.key, {
+          api_host: ph.host,
+          person_profiles: 'always',
+          autocapture: true,
+          capture_pageview: true,
+          capture_pageleave: true,
+          disable_session_recording: true,
+          disable_surveys: true,
+          loaded: function (p) {
+            // The blog never identifies anyone; it names the environment and, on a post, the post that brought the reader.
+            var props = { environment: production ? 'production' : 'preview' };
+            if (postSlug) props.blog_ref_post_slug = postSlug;
+            p.register(props);
+            if (article) {
+              p.setPersonProperties({}, { first_blog_post_slug: postSlug, first_blog_visit_at: new Date().toISOString() });
+              p.capture('blog_post_viewed', {
+                post_slug: postSlug,
+                post_type: article.getAttribute('data-post-type'),
+                post_tags: (article.getAttribute('data-post-tags') || '').split(',').filter(Boolean),
+                post_authors: (article.getAttribute('data-post-authors') || '').split(',').filter(Boolean),
+                post_published_at: article.getAttribute('data-post-published') || null
+              });
+            }
+            queue.splice(0).forEach(function (q) { p.capture(q[0], q[1]); });
+          }
+        });
+      };
+      document.head.appendChild(s);
+    };
+    // After the page is up, so analytics never slows the first paint.
+    var later = window.requestIdleCallback || function (f) { setTimeout(f, 1500); };
+    if (document.readyState === 'complete') later(startPosthog); else window.addEventListener('load', function () { later(startPosthog); }, { once: true });
+
+    // A reader got through most of a post.
+    if (article) {
+      var t0 = Date.now(), read = false;
+      window.addEventListener('scroll', function () {
+        if (read) return;
+        var r = article.getBoundingClientRect();
+        if (r.height && (innerHeight - r.top) / r.height >= 0.6) { read = true; track('blog_post_read', { seconds_on_page: Math.round((Date.now() - t0) / 1000) }); }
+      }, { passive: true });
+    }
+    // Links out of the blog into the product, and shares.
+    document.addEventListener('click', function (e) {
+      var a = e.target.closest && e.target.closest('a[href]');
+      if (!a) return;
+      var share = a.getAttribute('data-share');
+      if (share) return track('blog_post_shared', { network: share });
+      var u;
+      try { u = new URL(a.href, location.href); } catch (err) { return; }
+      var base = document.documentElement.getAttribute('data-base') || '/';
+      var toProduct = (u.hostname === ph.canonicalHost || u.hostname === 'www.' + ph.canonicalHost) && u.pathname.indexOf(base) !== 0;
+      if (!toProduct) return;
+      var section = a.closest('.site-header') ? 'header' : a.closest('.site-footer') ? 'footer' : a.closest('.kg-button-card, .kg-cta-card') ? 'button' : a.closest('.content') ? 'post_body' : a.closest('.hero, .lead-post') ? 'hero' : 'page';
+      track('blog_cta_clicked', { cta: (a.textContent || '').trim().slice(0, 60), section: section, href: u.origin + u.pathname });
+    }, true);
+  }
+
   var d = document, root = d.documentElement;
 
   // Color scheme: the choice is stored per reader.
@@ -41,10 +129,11 @@ export const script = `(function () {
     e.preventDefault();
     var btn = f.querySelector('button'), note = f.parentNode.querySelector('[data-subscribe-note]');
     btn.disabled = true;
+    track('blog_subscribe_submitted', { placement: placement(f) });
     fetch(f.action, {
       method: 'POST',
       headers: { 'content-type': 'application/json', accept: 'application/json' },
-      body: JSON.stringify({ email: f.elements.email.value, company: f.elements.company ? f.elements.company.value : '' })
+      body: JSON.stringify({ email: f.elements.email.value, company: f.elements.company ? f.elements.company.value : '', analyticsId: track.id(), placement: placement(f), post: postSlug })
     }).then(function (r) {
       return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || 'Something went wrong. Try again.'); return j; });
     }).then(function (j) {
@@ -90,6 +179,7 @@ export const script = `(function () {
       e.preventDefault();
       var slug = chip.getAttribute('data-topic');
       applyTopic(slug);
+      track('blog_topic_filtered', { topic: slug || 'all' });
       history.replaceState(null, '', slug ? '?topic=' + encodeURIComponent(slug) : location.pathname);
     });
     var initial = new URLSearchParams(location.search).get('topic');
@@ -164,7 +254,13 @@ export const script = `(function () {
       input = dialog.querySelector('input');
       list = dialog.querySelector('.search-results');
       var timer;
-      input.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(function () { render(input.value.trim()); }, 60); });
+      var searchTimer;
+      input.addEventListener('input', function () {
+        clearTimeout(timer); timer = setTimeout(function () { render(input.value.trim()); }, 60);
+        // One event per search, once the reader stops typing.
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(function () { var q = input.value.trim(); if (q) track('blog_search', { query_length: q.length, results: list.children.length }); }, 1500);
+      });
       input.addEventListener('keydown', function (e) {
         if (e.key === 'ArrowDown') { e.preventDefault(); move(1); }
         else if (e.key === 'ArrowUp') { e.preventDefault(); move(-1); }

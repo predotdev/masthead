@@ -1,5 +1,5 @@
 import type { AspectRatio, ModelKind, Post, StaffRole } from '@masthead/core';
-import { buildSite, renderBody, tagLinks } from '@masthead/render';
+import { renderBody, renderSite, tagLinks } from '@masthead/render';
 import { addIdeas, assist, draft, draftIdea, edit, image, listIdeas, listModels, meta, startVideo, unfurl, videoStatus } from './ai';
 import { atLeast, clearSessionCookie, consumeLoginToken, createApiKey, createLoginToken, createSession, endSession, peekLoginToken, sessionCookie } from './auth';
 import {
@@ -13,6 +13,7 @@ import {
     listPosts,
     listStaff,
     listTags,
+    loadBodies,
     loadSnapshot,
     newsletterSettings,
     savePost,
@@ -24,6 +25,9 @@ import {
 import { signInEmail } from './email';
 import type { Ctx, Principal } from './env';
 import { importAudience, importContent, importMedia, rewriteUrls } from './importer';
+import { siteStats } from './analytics';
+import { backfillImages, storeImage } from './images';
+import { getRevision, keepRevision, listRevisions } from './revisions';
 import { addMemory, deleteMemory, embedPending, knowledgeStats, listMemory, refreshKnowledge, resetKnowledge } from './knowledge';
 import { addMember, deleteMember, getMember, getMemberByEmail, listMembers, memberEvents, memberStats, restoreOptOuts, setStatus, type MemberStatus } from './members';
 import { appUrl, buildEmail, cancelSend, countSegment, createSend, getSend, listSends, processSends, sendTest, testMode, unsubscribeUrl, type Segment } from './newsletter';
@@ -146,9 +150,40 @@ export function adminRoutes(): Router<A> {
         const input = await body(req);
         delete input.status;
         if ((p.role === 'author' || p.role === 'contributor') && input.authors) delete input.authors;
+        await keepRevision(ctx.db, existing, input, p.name, 'edited');
         const post = await savePost(ctx.db, { ...input, id });
         if (post.status === 'published') republish(ctx);
         return json(post);
+    });
+
+    // ---------------------------------------------------------- history
+    r.get('/posts/:id/revisions', async (_req, ctx, { id }) => {
+        const existing = await getPost(ctx.db, id);
+        if (!existing) throw new HttpError(404, 'Post not found.');
+        await canEdit(ctx, existing);
+        return json(await listRevisions(ctx.db, id));
+    });
+    r.get('/posts/:id/revisions/:rid', async (_req, ctx, { id, rid }) => {
+        const existing = await getPost(ctx.db, id);
+        if (!existing) throw new HttpError(404, 'Post not found.');
+        await canEdit(ctx, existing);
+        const rev = await getRevision(ctx.db, id, Number(rid));
+        if (!rev) throw new HttpError(404, 'That version is gone.');
+        return json({ ...rev, rendered: tagLinks(renderBody({ ...existing, ...rev } as Post), '', undefined) });
+    });
+    /**
+     * Hands a version back to the editor, which loads it as unsaved changes (a
+     * live post changes only when you click Update). The current text is kept
+     * as a version first, so a restore can itself be undone.
+     */
+    r.post('/posts/:id/revisions/:rid/restore', async (_req, ctx, { id, rid }) => {
+        const existing = await getPost(ctx.db, id);
+        if (!existing) throw new HttpError(404, 'Post not found.');
+        const p = await canEdit(ctx, existing);
+        const rev = await getRevision(ctx.db, id, Number(rid));
+        if (!rev) throw new HttpError(404, 'That version is gone.');
+        await keepRevision(ctx.db, existing, {}, p.name, 'restored');
+        return json(rev);
     });
 
     r.post('/posts/:id/publish', async (req, ctx, { id }) => {
@@ -160,6 +195,7 @@ export function adminRoutes(): Router<A> {
         const when = publishedAt ? new Date(publishedAt) : existing.publishedAt && existing.status === 'published' ? new Date(existing.publishedAt) : new Date();
         if (Number.isNaN(when.getTime())) throw new HttpError(400, 'publishedAt is not a valid date.');
         const status = when.getTime() > Date.now() + 60_000 ? 'scheduled' : 'published';
+        await keepRevision(ctx.db, existing, {}, (await canEdit(ctx, existing, true)).name, 'published');
         const post = await savePost(ctx.db, { id, status, publishedAt: when.toISOString() });
         const result = status === 'published' ? await publishSite(ctx.env, ctx.db, ctx.options) : null;
         // The writing assistant learns the new post.
@@ -196,13 +232,23 @@ export function adminRoutes(): Router<A> {
         const post = await getPost(ctx.db, id);
         if (!post) throw new HttpError(404, 'Post not found.');
         await canEdit(ctx, post);
-        const snap = await loadSnapshot(ctx.env, ctx.db);
+        const snap = await loadSnapshot(ctx.env, ctx.db, { bodies: false });
         const previewPost: Post = { ...post, status: 'published', publishedAt: post.publishedAt ?? now() };
         snap.posts = [...snap.posts.filter(p => p.id !== id), previewPost];
-        const built = await buildSite(snap, { theme: ctx.options.theme, render: { linkTag: linkTag(ctx.env) }, features: { subscribeUrl: `${ctx.basePath}api/subscribe` } });
-        const file = built.files.find(f => f.path === `${ctx.basePath.slice(1)}${post.slug}/index.html`);
-        if (!file) throw new HttpError(500, 'Preview failed to render.');
-        return html(String(file.contents).replace('<head>', '<head><meta name="robots" content="noindex">'));
+        // Stream the site and stop at this post's page; its unsaved-to-site body comes from the draft itself.
+        const want = `${ctx.basePath.slice(1)}${post.slug}/index.html`;
+        const bodies = {
+            load: async (ids: string[]) => {
+                const found = await loadBodies(ctx.db, ids.filter(x => x !== id));
+                if (ids.includes(id)) found.set(id, { html: post.html, markdown: post.markdown, bodyFormat: post.bodyFormat });
+                return found;
+            }
+        };
+        for await (const file of renderSite(snap, { theme: ctx.options.theme, render: { linkTag: linkTag(ctx.env) }, features: { subscribeUrl: `${ctx.basePath}api/subscribe` } }, bodies)) {
+            // Previews never load analytics (the features above leave it out).
+            if (file.path === want) return html(String(file.contents).replace('<head>', '<head><meta name="robots" content="noindex">'));
+        }
+        throw new HttpError(500, 'Preview failed to render.');
     });
 
     // ---------------------------------------------------------- tags
@@ -418,9 +464,20 @@ export function adminRoutes(): Router<A> {
         const kind = f.type.startsWith('image/') ? 'images' : f.type.startsWith('video/') ? 'media' : 'files';
         const d = new Date();
         const rel = `content/${kind}/${d.getUTCFullYear()}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${newId()}.${ext}`;
-        await ctx.env.BUCKET.put(`${MEDIA_PREFIX}${rel}`, await f.arrayBuffer(), { httpMetadata: { contentType: f.type || 'application/octet-stream' } });
+        const bytes = new Uint8Array(await f.arrayBuffer());
+        if (kind === 'images') {
+            const size = await storeImage(ctx.env, ctx.db, rel, bytes, f.type, 'upload');
+            return json({ url: `${ctx.basePath}${rel}`, width: size?.width ?? null, height: size?.height ?? null }, 201);
+        }
+        await ctx.env.BUCKET.put(`${MEDIA_PREFIX}${rel}`, bytes, { httpMetadata: { contentType: f.type || 'application/octet-stream' } });
         await ctx.db.prepare('INSERT INTO media (key, content_type, size, source_url, created_at) VALUES (?, ?, ?, ?, ?)').bind(rel, f.type, f.size, 'upload', now()).run();
         return json({ url: `${ctx.basePath}${rel}` }, 201);
+    });
+
+    /** Records sizes (and makes missing resized copies) for images stored before sizes were kept. */
+    r.post('/media/backfill', async (_req, ctx) => {
+        atLeast(ctx.principal, 'admin');
+        return json(await backfillImages(ctx.env, ctx.db));
     });
 
     // ---------------------------------------------------------- settings
@@ -493,6 +550,17 @@ export function adminRoutes(): Router<A> {
     r.post('/publish', async (_req, ctx) => (atLeast(ctx.principal, 'editor'), json(await publishSite(ctx.env, ctx.db, ctx.options))));
 
     // ---------------------------------------------------------- AI studio
+    // ---------------------------------------------------------- reader analytics (PostHog)
+    r.get('/analytics', async (_req, ctx) => {
+        me(ctx);
+        const days = Number(ctx.url.searchParams.get('days') ?? 30) || 30;
+        try {
+            return json(await siteStats(ctx.env, days));
+        } catch (err: any) {
+            throw new HttpError(502, `Stats are unavailable: ${err?.message ?? 'PostHog did not answer'}`);
+        }
+    });
+
     r.get('/ai/models', async (_req, ctx) => (me(ctx), json(await listModels(ctx, (ctx.url.searchParams.get('kind') as ModelKind) || undefined))));
     r.post('/ai/draft', async (req, ctx) => (me(ctx), json(await draft(ctx, (await body(req)) as any))));
     r.post('/ai/edit', async (req, ctx) => (me(ctx), json(await edit(ctx, (await body(req)) as any))));
