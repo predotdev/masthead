@@ -112,7 +112,11 @@ function App() {
                     ))}
                 </div>
                 <div class="me">
-                    {me.testMode ? <span class="pill amber">email test mode</span> : null}
+                    {me.testMode ? (
+                        <span class="pill amber" title="Test mode: email reaches only the team. Newsletters go only to team members; subscribers get nothing.">
+                            test mode: team-only email
+                        </span>
+                    ) : null}
                     <span class="muted small">
                         {me.user.name} · {me.user.role}
                     </span>

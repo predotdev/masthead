@@ -138,7 +138,7 @@ export const script = `(function () {
       return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || 'Something went wrong. Try again.'); return j; });
     }).then(function (j) {
       f.hidden = true;
-      note.textContent = j.status === 'subscribed' ? "You're already subscribed. New posts will keep arriving." : 'Check your inbox and click the link to confirm.';
+      note.textContent = j.status === 'subscribed' ? "You're already subscribed. New posts will keep arriving." : j.emailed === false ? 'This blog is in test mode, so no email was sent.' : 'Check your inbox and click the link to confirm.';
       note.hidden = false;
     }).catch(function (err) {
       note.textContent = err.message;

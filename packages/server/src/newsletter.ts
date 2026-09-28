@@ -24,6 +24,42 @@ export function testAddress(env: Env): string {
     return env.EMAIL_TEST_ADDRESS || 'delivered@resend.dev';
 }
 
+export interface Team {
+    domains: string[];
+    addresses: string[];
+}
+
+/** Test mode's team: EMAIL_TEST_ALLOW entries (addresses or @domains), staff, and the provider's test domain. */
+export async function testTeam(env: Env, db: D1Database): Promise<Team> {
+    const entries = (env.EMAIL_TEST_ALLOW ?? '')
+        .split(',')
+        .map(e => e.trim().toLowerCase())
+        .filter(Boolean);
+    const { results } = await db.prepare('SELECT lower(email) AS email FROM staff').all<{ email: string }>();
+    return {
+        domains: [...new Set(['@resend.dev', ...entries.filter(e => e.startsWith('@'))])],
+        addresses: [...new Set([...entries.filter(e => !e.startsWith('@')), ...results.map(r => r.email)])]
+    };
+}
+
+export function onTeam(team: Team, address: string): boolean {
+    const a = address.trim().toLowerCase();
+    return team.addresses.includes(a) || team.domains.some(d => a.endsWith(d));
+}
+
+/** Whether test mode lets email reach this address. Always true outside test mode. */
+export async function mayEmail(env: Env, db: D1Database, address: string): Promise<boolean> {
+    return !testMode(env) || onTeam(await testTeam(env, db), address);
+}
+
+/** SQL that keeps only test mode's team, for a members query. */
+async function teamOnly(env: Env, db: D1Database): Promise<{ sql: string; args: string[] }> {
+    const team = await testTeam(env, db);
+    // A domain matches as a suffix, as onTeam does: LIKE's own wildcards (% and _) in it are escaped.
+    const parts = [...team.domains.map(() => "lower(email) LIKE ? ESCAPE '\\'"), ...team.addresses.map(() => 'lower(email) = ?')];
+    return { sql: parts.length ? `(${parts.join(' OR ')})` : '0', args: [...team.domains.map(d => `%${d.replace(/[\\%_]/g, '\\$&')}`), ...team.addresses] };
+}
+
 export async function unsubscribeUrl(env: Env, memberId: string): Promise<string> {
     return `${appUrl(env)}api/unsubscribe?m=${memberId}&t=${await memberToken(env.SECRET, 'unsubscribe', memberId)}`;
 }
@@ -67,9 +103,13 @@ function segmentWhere(segment: Segment): { sql: string; args: unknown[] } {
     return { sql: base, args: [] };
 }
 
-export async function countSegment(db: D1Database, segment: Segment): Promise<number> {
+export async function countSegment(db: D1Database, segment: Segment, env?: Env): Promise<number> {
     const w = segmentWhere(segment);
-    const row = await db.prepare(`SELECT COUNT(*) AS n FROM members WHERE ${w.sql}`).bind(...w.args).first<{ n: number }>();
+    const team = env && testMode(env) ? await teamOnly(env, db) : null;
+    const row = await db
+        .prepare(`SELECT COUNT(*) AS n FROM members WHERE ${w.sql}${team ? ` AND ${team.sql}` : ''}`)
+        .bind(...w.args, ...(team?.args ?? []))
+        .first<{ n: number }>();
     return Number(row?.n ?? 0);
 }
 
@@ -86,11 +126,13 @@ export async function createSend(env: Env, db: D1Database, by: Principal, input:
     if (previous && !input.force && !testMode(env)) throw new HttpError(409, 'This post was already sent. Pass force to send it again.');
     const id = newId();
     const w = segmentWhere(segment);
+    // Test mode: only the team members of the segment become recipients; nobody else is ever sent to.
+    const team = testMode(env) ? await teamOnly(env, db) : null;
     await db.batch([
         db
             .prepare("INSERT INTO sends (id, post_id, subject, segment, status, test_mode, created_by, created_at) VALUES (?, ?, ?, ?, 'queued', ?, ?, ?)")
             .bind(id, post.id, (input.subject || post.title).slice(0, 250), segment, testMode(env) ? 1 : 0, by.staffId, now()),
-        db.prepare(`INSERT INTO send_recipients (send_id, member_id, email) SELECT ?, id, email FROM members WHERE ${w.sql}`).bind(id, ...w.args),
+        db.prepare(`INSERT INTO send_recipients (send_id, member_id, email) SELECT ?, id, email FROM members WHERE ${w.sql}${team ? ` AND ${team.sql}` : ''}`).bind(id, ...w.args, ...(team?.args ?? [])),
         db.prepare('UPDATE sends SET total = (SELECT COUNT(*) FROM send_recipients WHERE send_id = ?) WHERE id = ?').bind(id, id)
     ]);
     return getSend(db, id);
@@ -101,6 +143,11 @@ export async function sendTest(env: Env, db: D1Database, options: AppOptions, in
     if (!transport) throw new HttpError(500, 'No email provider is configured.');
     const emails = [...new Set((input.emails ?? []).map(e => String(e).trim().toLowerCase()))].filter(isEmail).slice(0, 10);
     if (!emails.length) throw new HttpError(400, 'Add at least one valid email address.');
+    if (testMode(env)) {
+        const team = await testTeam(env, db);
+        const blocked = emails.filter(e => !onTeam(team, e));
+        if (blocked.length) throw new HttpError(400, `Test mode: email only goes to the team. Not allowed: ${blocked.join(', ')}`);
+    }
     const post = await getPost(db, input.postId);
     if (!post) throw new HttpError(404, 'Post not found.');
     const email = await buildEmail(env, db, post);
@@ -168,12 +215,13 @@ export async function processSends(env: Env, db: D1Database, options: AppOptions
             const { from, replyTo } = await sender(env, db);
             const extraHeaders = (await newsletterSettings(env, db)).emailHeaders ?? {};
             const postSlug = email.slug ?? '';
-            const redirect = send.test_mode ? testAddress(env) : null;
+            // A test-mode send already holds only team addresses; anything else (the team list changed since) goes to the test inbox.
+            const team = send.test_mode ? await testTeam(env, db) : null;
             const messages: EmailMessage[] = await Promise.all(
                 batch.map(async r => {
                     const unsub = await unsubscribeUrl(env, r.member_id);
                     return {
-                        to: redirect ?? r.email,
+                        to: team && !onTeam(team, r.email) ? testAddress(env) : r.email,
                         from,
                         replyTo,
                         subject: send.subject,

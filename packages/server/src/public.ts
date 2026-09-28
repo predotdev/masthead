@@ -8,7 +8,7 @@ import { indexNowKey } from './indexnow';
 import { confirmEmail } from './email';
 import type { Ctx } from './env';
 import { checkMemberToken, getMember, getMemberByExternalUuid, memberToken, requestSubscription, setStatus } from './members';
-import { appUrl, recordEmailEvents, testMode } from './newsletter';
+import { appUrl, mayEmail, recordEmailEvents, testMode } from './newsletter';
 import { SITE_PREFIX, edgeCache, edgeKey } from './publish';
 import { Router } from './router';
 import { HttpError, body, escapeHtml as esc, html, json, redirect } from './util';
@@ -270,16 +270,18 @@ export function publicRoutes(): Router<Ctx> {
         const origin = { post_slug: typeof data.post === 'string' ? data.post.slice(0, 200) : null, placement: typeof data.placement === 'string' ? data.placement.slice(0, 40) : null, source: 'blog' };
         capture(ctx.env, p => ctx.exec.waitUntil(p), needsConfirmation ? 'newsletter_subscribe_requested' : 'newsletter_subscribe_repeated', distinctId(member), origin);
         let confirmUrl: string | undefined;
+        let emailed = false;
         if (needsConfirmation) {
             confirmUrl = `${appUrl(ctx.env)}api/confirm?m=${member.id}&t=${await memberToken(ctx.env.SECRET, 'confirm', member.id)}`;
             const transport = ctx.options.email?.(ctx.env);
-            if (transport && ctx.env.EMAIL_FROM) {
+            // Test mode: confirmations reach only the team.
+            if (transport && ctx.env.EMAIL_FROM && (await mayEmail(ctx.env, ctx.db, member.email))) {
+                emailed = true;
                 const site = await siteSettings(ctx.env, ctx.db);
                 const mail = confirmEmail(site, confirmUrl);
                 ctx.exec.waitUntil(
                     transport.send([
                         {
-                            // Test mode holds back newsletters only: someone who signs up gets their confirmation.
                             to: member.email,
                             from: ctx.env.EMAIL_FROM,
                             subject: mail.subject,
@@ -302,7 +304,7 @@ export function publicRoutes(): Router<Ctx> {
             const caller = await principal(req, ctx.env, ctx.db);
             reveal = caller?.role === 'owner' || caller?.role === 'admin';
         }
-        return json({ ok: true, status: needsConfirmation ? 'pending' : 'subscribed', ...(reveal ? { confirmUrl } : {}) });
+        return json({ ok: true, status: needsConfirmation ? 'pending' : 'subscribed', emailed, ...(reveal ? { confirmUrl } : {}) });
     });
 
     r.get('/api/confirm', async (req, ctx) => {

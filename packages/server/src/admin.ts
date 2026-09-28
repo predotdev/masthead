@@ -426,7 +426,7 @@ export function adminRoutes(): Router<A> {
     r.get('/sends', async (_req, ctx) => (atLeast(ctx.principal, 'editor'), json(await listSends(ctx.db))));
     r.get('/sends/segment', async (_req, ctx) => {
         atLeast(ctx.principal, 'editor');
-        return json({ count: await countSegment(ctx.db, (ctx.url.searchParams.get('segment') as Segment) || 'all') });
+        return json({ count: await countSegment(ctx.db, (ctx.url.searchParams.get('segment') as Segment) || 'all', ctx.env), testMode: testMode(ctx.env) });
     });
     r.get('/sends/preview', async (_req, ctx) => {
         atLeast(ctx.principal, 'editor');

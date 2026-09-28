@@ -80,7 +80,7 @@ function SettingsForm({ data, reload }: { data: SettingsData; reload: () => void
                     <dt>This server</dt>
                     <dd>{env.appUrl}</dd>
                     <dt>Newsletter sending</dt>
-                    <dd>{env.testMode ? <Pill tone="amber">test mode: only the provider's test inbox receives mail</Pill> : <Pill tone="green">live</Pill>}</dd>
+                    <dd>{env.testMode ? <Pill tone="amber">test mode: email reaches only the team</Pill> : <Pill tone="green">live</Pill>}</dd>
                     <dt>Email</dt>
                     <dd>{env.email ? `${env.emailFrom ?? 'no sender set'}` : 'Not configured'}</dd>
                     <dt>Delivery webhooks</dt>

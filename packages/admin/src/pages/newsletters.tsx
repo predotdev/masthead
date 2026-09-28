@@ -69,7 +69,7 @@ export function SendDialog({ post, onClose }: { post: Post; onClose: () => void 
         <Dialog title="Send as newsletter" onClose={onClose} wide>
             <div class="send-grid">
                 <div class="stack">
-                    {testMode ? <div class="note">Test mode is on: every newsletter goes to the email provider's test inbox, not to subscribers.</div> : null}
+                    {testMode ? <div class="note">Test mode is on: a newsletter goes only to the team members of the segment you pick. Subscribers get nothing.</div> : null}
                     <Field label="Send to">
                         <select value={segment} onChange={e => setSegment(e.currentTarget.value)}>
                             <option value="all">All subscribers</option>
@@ -191,7 +191,7 @@ export function SendDetail({ id }: { id: string }) {
             <div class="progress" aria-label={`${pct}% sent`}>
                 <div style={{ width: `${pct}%` }} />
             </div>
-            {data.test_mode ? <div class="note">Sent in test mode: every message went to the provider's test inbox.</div> : null}
+            {data.test_mode ? <div class="note">Sent in test mode: only team addresses received it.</div> : null}
             {data.error ? <ErrorNote text={data.error} /> : null}
             <p class="muted small">Delivered, opened and bounced counts arrive from the email provider's webhook.</p>
         </div>

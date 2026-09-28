@@ -22,8 +22,16 @@ export interface Env {
     BOOTSTRAP_TOKEN?: string;
     EMAIL_FROM?: string;
     EMAIL_REPLY_TO?: string;
-    /** "true": newsletters and subscriber mail go only to EMAIL_TEST_ADDRESS. Staff sign-in mail is unaffected. */
+    /**
+     * "true": test mode. Email reaches only the team: addresses in EMAIL_TEST_ALLOW,
+     * staff, and the provider's test addresses (@resend.dev). Newsletters go only to
+     * the team members of a segment; confirmations and test sends to anyone else are
+     * not sent. Staff sign-in and invites are unaffected.
+     */
     EMAIL_TEST_MODE?: string;
+    /** Test mode's team: comma-separated addresses or @domains, e.g. "@example.com". */
+    EMAIL_TEST_ALLOW?: string;
+    /** Where anything that slips past the team check goes in test mode. Default delivered@resend.dev. */
     EMAIL_TEST_ADDRESS?: string;
     POSTAL_ADDRESS?: string;
     RESEND_API_KEY?: string;
