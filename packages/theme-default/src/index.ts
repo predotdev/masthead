@@ -228,7 +228,7 @@ function featured(ctx: ThemeContext, item: ListItem): string {
     const p = item.post;
     const kicker = [item.primaryTag?.name, date(p.publishedAt, ctx.site.locale)].filter(Boolean).map(x => esc(x!)).join('<span class="dot"></span>');
     const avatars = item.authors
-        .map(a => (a.profileImage ? `<img src="${esc(a.profileImage)}" alt="" width="28" height="28">` : `<span aria-hidden="true">${esc(initials(a.name))}</span>`))
+        .map(a => (a.profileImage ? `<img src="${esc(a.profileImage)}" alt="${esc(a.name)}" width="28" height="28">` : `<span aria-hidden="true">${esc(initials(a.name))}</span>`))
         .join('');
     return `<section class="feature-hero">
   <p class="feature-kicker"><span class="spark" aria-hidden="true"></span>${kicker}</p>
@@ -333,7 +333,7 @@ ${footer(ctx)}
         const isPost = p.type === 'post';
         const url = new URL(v.url, ctx.site.url).toString();
         const avatars = v.authors
-            .map(a => (a.profileImage ? `<img src="${esc(a.profileImage)}" alt="" width="36" height="36" loading="lazy">` : `<span aria-hidden="true">${esc(initials(a.name))}</span>`))
+            .map(a => (a.profileImage ? `<img src="${esc(a.profileImage)}" alt="${esc(a.name)}" width="36" height="36" loading="lazy">` : `<span aria-hidden="true">${esc(initials(a.name))}</span>`))
             .join('');
         const share = `<div class="share"><span class="share-label">Share</span>
       <a class="icon-btn" data-share="x" href="https://x.com/intent/post?url=${encodeURIComponent(url)}&amp;text=${encodeURIComponent(p.title)}" target="_blank" rel="noopener" aria-label="Share on X">${socialIcons.x}</a>
@@ -387,7 +387,7 @@ ${signup(ctx)}`;
         const kind = v.kind === 'tag' ? 'Topic' : v.kind === 'author' ? 'Author' : '';
         const count = v.kind === 'index' ? '' : `<p class="list-count">${(ctx.topics ?? []).find(t => t.slug === v.tag?.slug)?.count ?? v.items.length} posts</p>`;
         return `<header class="list-header">
-  ${v.author?.profileImage ? `<img class="avatar" src="${esc(v.author.profileImage)}" alt="" width="72" height="72">` : ''}
+  ${v.author?.profileImage ? `<img class="avatar" src="${esc(v.author.profileImage)}" alt="${esc(v.author.name)}" width="72" height="72">` : ''}
   ${kind ? `<span class="list-kind">${kind}</span>` : ''}
   <h1 class="list-title">${esc(v.heading)}</h1>
   ${v.description ? `<p class="list-text">${esc(v.description)}</p>` : ''}

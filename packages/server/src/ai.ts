@@ -392,7 +392,7 @@ export async function imageStream(ctx: Ctx, input: ImageInput, client?: AbortSig
 }
 
 /** An image the blog stores (or any public URL) as a data: URL, so the model provider needs no access to it. */
-async function asDataUrl(ctx: Ctx, src: string): Promise<string> {
+export async function asDataUrl(ctx: Ctx, src: string): Promise<string> {
     const path = src.startsWith(ctx.basePath) ? src : (() => {
         try {
             const u = new URL(src);

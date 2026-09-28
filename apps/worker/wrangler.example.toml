@@ -47,6 +47,8 @@ EMAIL_TEST_MODE = "true"
 # LINK_TAG = "ref=example.com"
 # Default models for drafting and images; editors can change them in Settings, AI.
 # TEXT_MODEL = "<model id>"
+# A vision-capable model that describes images for alt text; blank uses TEXT_MODEL.
+# ALT_MODEL = "<model id>"
 # IMAGE_MODEL = "<model id>"
 # VIDEO_MODEL = "<model id>"          # the editor's "Generate a video"
 # EMBEDDING_MODEL = "<model id>"      # lets the AI search the blog and your knowledge sources

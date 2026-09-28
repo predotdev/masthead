@@ -305,6 +305,8 @@ export interface ModelInfo {
 export interface TextMessage {
     role: 'user' | 'assistant';
     content: string;
+    /** Pictures the model should look at with this message: https or data: URLs. Needs a vision-capable model. */
+    images?: string[];
 }
 
 export interface TextRequest {

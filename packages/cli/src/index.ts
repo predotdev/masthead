@@ -9,6 +9,7 @@ import { exportGhostAudience, importGhost } from '@masthead/import-ghost';
 import { buildSite } from '@masthead/render';
 import { defaultTheme } from '@masthead/theme-default';
 import { webFs } from '@masthead/web-fs';
+import { altText } from './alt';
 import { backup, restore } from './backup';
 import { compare } from './compare';
 import { push } from './push';
@@ -45,6 +46,10 @@ const HELP = `masthead <command>
   push --server <url> [--snapshot <file>] [--members <file>] [--media]
                                    Load an import into a running server and publish
                                    (token from MASTHEAD_TOKEN or --token)
+  alt-text --server <url> [--dry-run] [--slug <post>] [--model <id>]
+                                   Write alt text (vision model) into every published
+                                   image and cover that has none; --dry-run prints the
+                                   table and changes nothing (token from MASTHEAD_TOKEN)
   seed [--server <url>] [--dir <folder>] [--force]
                                    Load the sample Acme blog (examples/demo) into an
                                    empty server and publish it. Default server
@@ -205,6 +210,13 @@ async function main() {
             if (!server || !token) throw new Error('Usage: masthead push --server <url> --snapshot <file> [--members <file>] [--media], with MASTHEAD_TOKEN set');
             const readJson = async (f: string | undefined) => (f ? JSON.parse(await readFile(f, 'utf8')) : undefined);
             await push({ server, token, snapshot: await readJson(str(flags.snapshot)), audience: await readJson(str(flags.members)), media: flags.media === true });
+            return;
+        }
+        case 'alt-text': {
+            const server = str(flags.server);
+            const token = str(flags.token) ?? process.env.MASTHEAD_TOKEN;
+            if (!server || !token) throw new Error('Usage: masthead alt-text --server <url> [--dry-run] [--slug <post>], with MASTHEAD_TOKEN set');
+            await altText({ server, token, dryRun: flags['dry-run'] === true, slug: str(flags.slug), model: str(flags.model) });
             return;
         }
         case 'seed': {

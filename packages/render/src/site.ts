@@ -101,8 +101,10 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
     const authorsById = new Map(snapshot.authors.map(a => [a.id, a]));
     const tagsById = new Map(snapshot.tags.map(t => [t.id, t]));
     const isLive = (p: Post) => (p.status === 'published' || p.status === 'scheduled') && !!p.publishedAt && new Date(p.publishedAt) <= now;
-    const posts = snapshot.posts.filter(p => p.type === 'post' && isLive(p)).sort((a, b) => b.publishedAt!.localeCompare(a.publishedAt!));
-    const pages = snapshot.posts.filter(p => p.type === 'page' && isLive(p));
+    // A cover with no description of its own is described by the post's title: never an empty alt, in the page, the share card or the structured data.
+    const described = (p: Post): Post => (p.featureImage && !p.featureImageAlt?.trim() ? { ...p, featureImageAlt: p.title } : p);
+    const posts = snapshot.posts.filter(p => p.type === 'post' && isLive(p)).map(described).sort((a, b) => b.publishedAt!.localeCompare(a.publishedAt!));
+    const pages = snapshot.posts.filter(p => p.type === 'page' && isLive(p)).map(described);
 
     const urls = {
         post: (p: Post) => `${basePath}${p.slug}/`,
@@ -305,6 +307,7 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
                           url,
                           description,
                           image: absolute(p.featureImage) ?? card?.url,
+                          imageAlt: p.featureImage ? p.featureImageAlt : card?.alt,
                           imageSize: coverSize ?? card?.size,
                           authors: authors.map(a => ({ author: { ...a, profileImage: absolute(a.profileImage) }, url: abs(urls.author(a)) })),
                           tags,

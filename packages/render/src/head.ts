@@ -100,6 +100,8 @@ export function blogPostingLd(p: {
     url: string;
     description: string;
     image?: string | null;
+    /** What the image shows: becomes the image's name and caption. */
+    imageAlt?: string | null;
     imageSize?: { width: number; height: number } | null;
     authors: { author: Author; url: string }[];
     tags: Tag[];
@@ -113,7 +115,7 @@ export function blogPostingLd(p: {
         description: p.description,
         url: p.url,
         mainEntityOfPage: { '@type': 'WebPage', '@id': p.url },
-        ...(p.image ? { image: { '@type': 'ImageObject', url: p.image, ...(p.imageSize ? { width: p.imageSize.width, height: p.imageSize.height } : {}) } } : {}),
+        ...(p.image ? { image: { '@type': 'ImageObject', url: p.image, ...(p.imageAlt ? { name: p.imageAlt, caption: p.imageAlt } : {}), ...(p.imageSize ? { width: p.imageSize.width, height: p.imageSize.height } : {}) } } : {}),
         datePublished: p.post.publishedAt,
         dateModified: p.post.updatedAt,
         author: p.authors.map(a => personLd(a.author, a.url)),

@@ -7,7 +7,7 @@
  * settles after it ends and is read back with usage(requestId).
  * API reference: https://docs.pre.dev/ai-gateway/overview
  */
-import type { AIProvider, EmbeddingResult, ImageRequest, ImageResult, ModelInfo, ModelKind, StreamEnd, TextRequest, TextResult, Usage, VideoJob, VideoRequest } from '@masthead/core';
+import type { AIProvider, EmbeddingResult, ImageRequest, ImageResult, ModelInfo, ModelKind, StreamEnd, TextMessage, TextRequest, TextResult, Usage, VideoJob, VideoRequest } from '@masthead/core';
 
 export interface PredevAIOptions {
     /** Defaults to the PREDEV_API_KEY environment variable. */
@@ -135,7 +135,7 @@ export function predevAI(options: PredevAIOptions = {}): AIProvider {
             if (!model) throw new Error('No text model. Pass model, or set textModel on predevAI().');
             const messages = [
                 ...(request.system ? [{ role: 'system', content: request.system }] : []),
-                ...request.messages
+                ...request.messages.map(chatMessage)
             ];
             const { body, usage } = await call('/chat/completions', {
                 method: 'POST',
@@ -206,7 +206,7 @@ export function predevAI(options: PredevAIOptions = {}): AIProvider {
                 {
                     model,
                     stream: true,
-                    messages: [...(request.system ? [{ role: 'system', content: request.system }] : []), ...request.messages],
+                    messages: [...(request.system ? [{ role: 'system', content: request.system }] : []), ...request.messages.map(chatMessage)],
                     max_tokens: request.maxTokens,
                     temperature: request.temperature
                 },
@@ -414,6 +414,11 @@ function supports(row: any, kind: ModelKind): ModelInfo['supports'] {
         audio: row.generate_audio === true || undefined
     };
     return Object.values(out).some(v => v !== undefined) ? out : undefined;
+}
+
+/** A message as the chat API takes it: pictures become image_url parts next to the text. */
+function chatMessage({ images, ...m }: TextMessage): Record<string, unknown> {
+    return images?.length ? { ...m, content: [{ type: 'text', text: m.content }, ...images.map(url => ({ type: 'image_url', image_url: { url } }))] } : m;
 }
 
 function numericFields(obj: Record<string, unknown>): Record<string, number> {

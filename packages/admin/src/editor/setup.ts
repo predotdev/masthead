@@ -26,6 +26,8 @@ export interface SelectionState {
 export interface EditorHooks extends MediaBridge {
     onChange: () => void;
     upload: (file: File) => Promise<string>;
+    /** What a just-added image shows, for its alt text; null when it can't be told. */
+    describe?: (src: string) => Promise<string | null>;
     /** A link on its own line: the page decides whether it becomes an embed. */
     unfurl: (url: string) => Promise<{ type: 'embed' | 'bookmark'; html?: string; provider?: string; url: string; title?: string; description?: string; image?: string | null; icon?: string | null; publisher?: string | null } | null>;
     onSlash: (s: SlashState | null) => void;
@@ -58,6 +60,19 @@ export function extensions(bridge: MediaBridge | null = null) {
     ];
 }
 
+/** Writes `alt` into the image cards showing `src` that have no description yet. */
+export function fillAlt(editor: Editor, src: string, alt: string): void {
+    if (editor.isDestroyed) return;
+    const found: number[] = [];
+    editor.state.doc.descendants((node, pos) => {
+        if (node.type.name === 'figure' && node.attrs.src === src && !String(node.attrs.alt ?? '').trim()) found.push(pos);
+    });
+    if (!found.length) return;
+    const tr = editor.state.tr;
+    for (const pos of found) tr.setNodeMarkup(pos, undefined, { ...tr.doc.nodeAt(pos)!.attrs, alt });
+    editor.view.dispatch(tr);
+}
+
 /** The editor. It edits a document and hands back publishable HTML and a Markdown copy. */
 export function createEditor(element: HTMLElement, content: { html?: string | null; markdown?: string | null }, hooks: EditorHooks): Editor {
     const insertFiles = (editor: Editor, files: File[], pos?: number) => {
@@ -66,9 +81,11 @@ export function createEditor(element: HTMLElement, content: { html?: string | nu
             const isVideo = file.type.startsWith('video/');
             if (!isImage && !isVideo) continue;
             hooks.upload(file).then(src => {
-                const node = isImage ? { type: 'figure', attrs: { src, alt: file.name.replace(/\.[^.]+$/, '') } } : { type: 'video', attrs: { src } };
+                // The file's name is no description: the image goes in empty and the AI describes it a moment later.
+                const node = isImage ? { type: 'figure', attrs: { src, alt: '' } } : { type: 'video', attrs: { src } };
                 const chain = editor.chain().focus();
                 (pos != null ? chain.insertContentAt(pos, node) : chain.insertContent(node)).run();
+                if (isImage) hooks.describe?.(src).then(alt => alt && fillAlt(editor, src, alt));
             });
         }
     };
