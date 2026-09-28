@@ -1,6 +1,7 @@
 import { useState } from 'preact/hooks';
-import { api, fmtDate, type Post } from '../api';
-import { Button, Dialog, Empty, ErrorNote, Field, Loading, PageHead, Pill, errorToast, toast, useLoad } from '../ui';
+import { api, fmtDate } from '../api';
+import { Button, Dialog, Empty, ErrorNote, Field, Loading, PageHead, Pill, errorToast, useLoad } from '../ui';
+import { IdeaDraft } from './idea-draft';
 import { RefreshButton, RefreshStatus } from './ideas-refresh';
 
 interface Idea {
@@ -18,17 +19,9 @@ export function Ideas() {
     const [busy, setBusy] = useState<string | null>(null);
     const [adding, setAdding] = useState(false);
 
-    const draft = async (idea: Idea) => {
-        setBusy(idea.id);
-        try {
-            const { post } = await api<{ post: Post }>(`/ideas/${idea.id}/draft`, { method: 'POST' });
-            toast('Draft ready');
-            location.hash = `#/edit/${post.id}`;
-        } catch (err) {
-            errorToast(err);
-            setBusy(null);
-        }
-    };
+    // The draft is written in a dialog that shows it as it comes.
+    const draft = (idea: Idea) => setBusy(idea.id);
+    const drafting = busy ? data?.find(i => i.id === busy) : undefined;
 
     return (
         <div>
@@ -79,6 +72,7 @@ export function Ideas() {
                 </div>
             )}
             {adding ? <AddIdea onClose={() => (setAdding(false), reload())} /> : null}
+            {drafting ? <IdeaDraft idea={drafting} onClose={changed => (setBusy(null), changed && reload())} /> : null}
         </div>
     );
 }

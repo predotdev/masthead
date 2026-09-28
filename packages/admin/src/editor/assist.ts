@@ -1,4 +1,5 @@
-import { getHTMLFromFragment, type Editor, type JSONContent } from '@tiptap/core';
+import { Editor, getHTMLFromFragment, type JSONContent } from '@tiptap/core';
+import { extensions } from './setup';
 
 export type AssistMode = 'chat' | 'edit' | 'write' | 'continue';
 
@@ -38,6 +39,14 @@ export function previewHtml(editor: Editor, text: string): string {
     } catch {
         return text.replace(/&/g, '&amp;').replace(/</g, '&lt;');
     }
+}
+
+let offscreen: Editor | null = null;
+
+/** Markdown as the editor would show it, for pages without an editor (an editor off screen does the parsing). */
+export function renderMarkdown(text: string): string {
+    offscreen ??= new Editor({ element: document.createElement('div'), extensions: extensions(), editable: false });
+    return previewHtml(offscreen, text);
 }
 
 /**

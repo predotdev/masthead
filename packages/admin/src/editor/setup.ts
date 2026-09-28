@@ -34,6 +34,23 @@ export interface EditorHooks extends MediaBridge {
 
 const EMBEDDABLE = /^https?:\/\/(?:www\.)?(?:youtube\.com\/(?:watch|shorts|live)|youtu\.be\/|vimeo\.com\/\d|loom\.com\/share\/|(?:x|twitter)\.com\/[^/]+\/status\/\d)/i;
 
+/** The editor's blocks and marks. Without a bridge, image and HTML cards have no edit buttons (fine for rendering). */
+export function extensions(bridge: MediaBridge | null = null) {
+    return [
+        StarterKit.configure({ heading: { levels: [1, 2, 3, 4] }, link: { openOnClick: false, autolink: true } }),
+        Placeholder.configure({ placeholder: 'Write, or press / for blocks, ⌘J for AI' }),
+        Markdown,
+        TableKit.configure({ table: { resizable: false } }),
+        Figure.configure({ bridge }),
+        Video,
+        Embed,
+        Bookmark,
+        Callout,
+        ButtonCard,
+        HtmlCard.configure({ bridge })
+    ];
+}
+
 /** The editor. It edits a document and hands back publishable HTML and a Markdown copy. */
 export function createEditor(element: HTMLElement, content: { html?: string | null; markdown?: string | null }, hooks: EditorHooks): Editor {
     const insertFiles = (editor: Editor, files: File[], pos?: number) => {
@@ -52,19 +69,7 @@ export function createEditor(element: HTMLElement, content: { html?: string | nu
     const useHtml = content.html != null && content.html !== '';
     const editor: Editor = new Editor({
         element,
-        extensions: [
-            StarterKit.configure({ heading: { levels: [1, 2, 3, 4] }, link: { openOnClick: false, autolink: true } }),
-            Placeholder.configure({ placeholder: 'Write, or press / for blocks, ⌘J for AI' }),
-            Markdown,
-            TableKit.configure({ table: { resizable: false } }),
-            Figure.configure({ bridge: hooks }),
-            Video,
-            Embed,
-            Bookmark,
-            Callout,
-            ButtonCard,
-            HtmlCard.configure({ bridge: hooks })
-        ],
+        extensions: extensions(hooks),
         content: useHtml ? prepareHtml(content.html!) : content.markdown ?? '',
         contentType: useHtml ? 'html' : 'markdown',
         editorProps: {
