@@ -426,6 +426,8 @@ export interface EmailEvent {
     email: string;
     at: string;
     providerId?: string;
+    /** For a click, the link that was clicked. */
+    url?: string;
 }
 
 /** Moves bytes. Lists, consent, tokens and retries belong to the core. */
@@ -503,6 +505,8 @@ export interface AnalyticsConfig {
         host: string;
         /** Pages served on this host count as production; any other host is a preview. */
         canonicalHost: string;
+        /** The blog's path on that host, e.g. "/blog/". The site at another path (PREVIEW_PATH) is a preview too. */
+        canonicalPath?: string;
         /** Track previews too, tagged environment=preview. Off by default. */
         trackPreview?: boolean;
     };

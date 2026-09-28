@@ -8,7 +8,7 @@ import { webpVariant } from './images';
 import { indexNowKey } from './indexnow';
 import { confirmEmail } from './email';
 import type { Ctx } from './env';
-import { checkMemberToken, getMember, getMemberByExternalUuid, memberToken, requestSubscription, setStatus } from './members';
+import { checkMemberToken, getMember, getMemberByExternalUuid, memberToken, requestSubscription, setStatus, type Attribution } from './members';
 import { appUrl, mayEmail, recordEmailEvents, testMode } from './newsletter';
 import { SITE_PREFIX, edgeCache, edgeKey } from './publish';
 import { Router } from './router';
@@ -271,7 +271,7 @@ export function publicRoutes(): Router<Ctx> {
         const data = await body(req);
         // Bots fill every field, people never see this one.
         if (data.company) return wantsHtml(req) ? resultPage(ctx, 'Check your email', '<p class="dek">We sent you a link to confirm.</p>') : json({ ok: true });
-        const { member, needsConfirmation } = await requestSubscription(ctx.db, String(data.email ?? ''), data.name ? String(data.name) : null);
+        const { member, needsConfirmation } = await requestSubscription(ctx.db, String(data.email ?? ''), data.name ? String(data.name) : null, signupOrigin(data));
         // The reader's browser analytics id: server events about this subscription then join their visit.
         const analyticsId = cleanAnalyticsId(data.analyticsId);
         if (analyticsId && !member.analyticsId) {
@@ -330,12 +330,12 @@ export function publicRoutes(): Router<Ctx> {
         return resultPage(ctx, "You're subscribed", `<p class="dek">New posts will arrive by email. <a href="${esc(ctx.basePath)}">Read the latest</a></p>`);
     });
 
-    const unsubscribePage = async (ctx: Ctx, memberId: string, token: string) =>
+    const unsubscribePage = async (ctx: Ctx, memberId: string, token: string, sendId: string | null) =>
         resultPage(
             ctx,
             'Unsubscribe',
             `<p class="dek">Stop getting new posts by email?</p>
-<form method="post" action="${esc(`${ctx.basePath}api/unsubscribe?m=${memberId}&t=${token}`)}" class="subscribe-form" style="margin-top:20px"><button type="submit">Unsubscribe</button></form>`
+<form method="post" action="${esc(`${ctx.basePath}api/unsubscribe?m=${memberId}&t=${token}${sendId ? `&s=${sendId}` : ''}`)}" class="subscribe-form" style="margin-top:20px"><button type="submit">Unsubscribe</button></form>`
         );
 
     r.get('/api/unsubscribe', async (req, ctx) => {
@@ -344,7 +344,7 @@ export function publicRoutes(): Router<Ctx> {
         const member = m ? await getMember(ctx.db, m) : null;
         if (!member || !(await checkMemberToken(ctx.env.SECRET, 'unsubscribe', member.id, t))) return resultPage(ctx, 'This link is not valid', '<p class="dek">It may be incomplete. Try the link in a newer email.</p>', 400);
         if (member.status === 'unsubscribed') return resultPage(ctx, "You're unsubscribed", '<p class="dek">You won\'t get any more emails.</p>');
-        return unsubscribePage(ctx, member.id, t);
+        return unsubscribePage(ctx, member.id, t, sendParam(ctx));
     });
 
     // Handles both the confirmation button and one-click unsubscribe from mail clients (RFC 8058).
@@ -354,7 +354,18 @@ export function publicRoutes(): Router<Ctx> {
         const member = m ? await getMember(ctx.db, m) : null;
         if (!member || !(await checkMemberToken(ctx.env.SECRET, 'unsubscribe', member.id, t))) throw new HttpError(400, 'This unsubscribe link is not valid.');
         if (member.status !== 'unsubscribed') capture(ctx.env, p => ctx.exec.waitUntil(p), 'newsletter_unsubscribed', distinctId(member), { source: 'blog' }, { set: { newsletter_subscribed: false } });
-        await setStatus(ctx.db, member, 'unsubscribed', 'member');
+        // Counted against the newsletter the link came from, if they were sent it.
+        const sendId = sendParam(ctx);
+        const counted =
+            member.status !== 'unsubscribed' && sendId
+                ? (
+                      await ctx.db
+                          .prepare('UPDATE sends SET unsubscribed = unsubscribed + 1 WHERE id = ? AND EXISTS (SELECT 1 FROM send_recipients WHERE send_id = ? AND member_id = ?)')
+                          .bind(sendId, sendId, member.id)
+                          .run()
+                  ).meta.changes > 0
+                : false;
+        await setStatus(ctx.db, member, 'unsubscribed', 'member', counted ? { send: sendId } : undefined);
         if (!wantsHtml(req)) return new Response('Unsubscribed', { status: 200 });
         return resultPage(ctx, "You're unsubscribed", '<p class="dek">You won\'t get any more emails.</p>');
     });
@@ -372,6 +383,27 @@ export function publicRoutes(): Router<Ctx> {
     });
 
     return r;
+}
+
+/** The newsletter an unsubscribe link came from (?s=), when it names one. */
+function sendParam(ctx: Ctx): string | null {
+    const s = ctx.url.searchParams.get('s') ?? '';
+    return /^[0-9a-f]{24}$/.test(s) ? s : null;
+}
+
+/** Where a signup through the form came from, as the theme's script reports it. Short, plain values only. */
+function signupOrigin(data: Record<string, unknown>): Attribution {
+    const text = (v: unknown, max: number) => (typeof v === 'string' && v.trim() ? v.trim().replace(/[\u0000-\u001f]/g, '').slice(0, max) : null);
+    const referrer = text(data.referrer, 253)?.toLowerCase().replace(/^www\./, '') ?? null;
+    return {
+        post: text(data.post, 200),
+        placement: text(data.placement, 40),
+        referrer: referrer && /^[a-z0-9.-]+$/.test(referrer) ? referrer : null,
+        utmSource: text(data.utm_source, 100),
+        utmMedium: text(data.utm_medium, 100),
+        utmCampaign: text(data.utm_campaign, 200),
+        at: new Date().toISOString()
+    };
 }
 
 /** Old Ghost links in past newsletters. */

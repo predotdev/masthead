@@ -85,6 +85,22 @@ const MIGRATIONS: string[][] = [
         `CREATE INDEX post_revisions_post ON post_revisions (post_id, id)`,
         `ALTER TABLE media ADD COLUMN width INTEGER`,
         `ALTER TABLE media ADD COLUMN height INTEGER`
+    ],
+    // v6: analytics. Where a signup came from (post, placement, referrer, campaign); the link a
+    // click was on; each send's unique opens and clicks and its unsubscribes; growth over time;
+    // PostHog answers kept for a few minutes.
+    [
+        `ALTER TABLE members ADD COLUMN attribution TEXT`,
+        `ALTER TABLE email_events ADD COLUMN url TEXT`,
+        `ALTER TABLE sends ADD COLUMN unique_opens INTEGER NOT NULL DEFAULT 0`,
+        `ALTER TABLE sends ADD COLUMN unique_clicks INTEGER NOT NULL DEFAULT 0`,
+        `ALTER TABLE sends ADD COLUMN unsubscribed INTEGER NOT NULL DEFAULT 0`,
+        `CREATE INDEX email_events_send ON email_events (send_id, type, member_id)`,
+        `CREATE INDEX member_events_at ON member_events (at)`,
+        `UPDATE sends SET
+            unique_opens = (SELECT COUNT(DISTINCT member_id) FROM email_events e WHERE e.send_id = sends.id AND e.type = 'opened'),
+            unique_clicks = (SELECT COUNT(DISTINCT member_id) FROM email_events e WHERE e.send_id = sends.id AND e.type = 'clicked')`,
+        `CREATE TABLE analytics_cache (key TEXT PRIMARY KEY, data TEXT NOT NULL, fetched_at TEXT NOT NULL)`
     ]
 ];
 

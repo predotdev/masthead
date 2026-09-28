@@ -16,6 +16,7 @@ interface Member {
     emailCount: number;
     openedCount: number;
     createdAt: string;
+    attribution: { post: string | null; placement: string | null; referrer: string | null; utmSource: string | null; at: string } | null;
 }
 
 const FILTERS: [string, string][] = [
@@ -204,6 +205,7 @@ function MemberDialog({ id, onClose }: { id: string; onClose: () => void }) {
                             since {fmtDate(data.member.createdAt)} · {data.member.source} · {fmtNum(data.member.emailCount)} emails, {fmtNum(data.member.openedCount)} opens
                         </span>
                     </div>
+                    {data.member.attribution ? <SignedUp a={data.member.attribution} /> : null}
                     {data.member.labels.length ? (
                         <div class="chips">
                             {data.member.labels.map(l => (
@@ -250,6 +252,18 @@ function MemberDialog({ id, onClose }: { id: string; onClose: () => void }) {
                 </div>
             )}
         </Dialog>
+    );
+}
+
+/** Where their latest signup through the blog's form happened, and where the visit came from. */
+function SignedUp({ a }: { a: NonNullable<Member['attribution']> }) {
+    const where = a.post ? `on /${a.post}/` : a.placement === 'home' ? 'on the front page' : 'on the blog';
+    const from = a.referrer || a.utmSource;
+    return (
+        <p class="muted small">
+            Signed up {where}
+            {from ? `, arriving from ${from},` : ''} on {fmtDate(a.at)}.
+        </p>
     );
 }
 

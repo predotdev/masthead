@@ -14,7 +14,24 @@ export const script = `(function () {
     try { return el ? JSON.parse(el.textContent || '{}') : {}; } catch (e) { return {}; }
   })();
   var ph = analytics.posthog;
-  var production = !!ph && (location.hostname === ph.canonicalHost || location.hostname === 'www.' + ph.canonicalHost);
+  // Production is the canonical host at the blog's own path: a preview host, or the site at a second path, is a preview.
+  var siteBase = document.documentElement.getAttribute('data-base') || '/';
+  var production = !!ph && (location.hostname === ph.canonicalHost || location.hostname === 'www.' + ph.canonicalHost) && (!ph.canonicalPath || siteBase === ph.canonicalPath);
+  // Where this visit came from (the referring site and campaign tags when it began), kept for the tab so a
+  // signup a few pages later still knows. Only the signup form sends it, with or without analytics.
+  var visit = (function () {
+    var v = null;
+    try { v = JSON.parse(sessionStorage.getItem('mh-visit') || 'null'); } catch (e) {}
+    if (v) return v;
+    var q = new URLSearchParams(location.search), ref = '';
+    try {
+      var r = new URL(document.referrer);
+      if (!(r.hostname === location.hostname && r.pathname.indexOf(siteBase) === 0)) ref = r.hostname;
+    } catch (e) {}
+    v = { referrer: ref, utm_source: q.get('utm_source') || '', utm_medium: q.get('utm_medium') || '', utm_campaign: q.get('utm_campaign') || '' };
+    try { sessionStorage.setItem('mh-visit', JSON.stringify(v)); } catch (e) {}
+    return v;
+  })();
   var queue = [];
   function track(event, props) {
     if (!ph || (!production && !ph.trackPreview)) return;
@@ -141,7 +158,8 @@ export const script = `(function () {
     fetch(f.action, {
       method: 'POST',
       headers: { 'content-type': 'application/json', accept: 'application/json' },
-      body: JSON.stringify({ email: f.elements.email.value, company: f.elements.company ? f.elements.company.value : '', analyticsId: track.id(), placement: placement(f), post: postSlug })
+      body: JSON.stringify({ email: f.elements.email.value, company: f.elements.company ? f.elements.company.value : '', analyticsId: track.id(), placement: placement(f), post: postSlug,
+        referrer: visit.referrer, utm_source: visit.utm_source, utm_medium: visit.utm_medium, utm_campaign: visit.utm_campaign })
     }).then(function (r) {
       return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || 'Something went wrong. Try again.'); return j; });
     }).then(function (j) {

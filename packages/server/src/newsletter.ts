@@ -60,8 +60,9 @@ async function teamOnly(env: Env, db: D1Database): Promise<{ sql: string; args: 
     return { sql: parts.length ? `(${parts.join(' OR ')})` : '0', args: [...team.domains.map(d => `%${d.replace(/[\\%_]/g, '\\$&')}`), ...team.addresses] };
 }
 
-export async function unsubscribeUrl(env: Env, memberId: string): Promise<string> {
-    return `${appUrl(env)}api/unsubscribe?m=${memberId}&t=${await memberToken(env.SECRET, 'unsubscribe', memberId)}`;
+/** A member's unsubscribe link. From a newsletter it also names the send, so the unsubscribe counts against it. */
+export async function unsubscribeUrl(env: Env, memberId: string, sendId?: string): Promise<string> {
+    return `${appUrl(env)}api/unsubscribe?m=${memberId}&t=${await memberToken(env.SECRET, 'unsubscribe', memberId)}${sendId ? `&s=${sendId}` : ''}`;
 }
 
 async function sender(env: Env, db: D1Database) {
@@ -219,7 +220,7 @@ export async function processSends(env: Env, db: D1Database, options: AppOptions
             const team = send.test_mode ? await testTeam(env, db) : null;
             const messages: EmailMessage[] = await Promise.all(
                 batch.map(async r => {
-                    const unsub = await unsubscribeUrl(env, r.member_id);
+                    const unsub = await unsubscribeUrl(env, r.member_id, send.id);
                     return {
                         to: team && !onTeam(team, r.email) ? testAddress(env) : r.email,
                         from,
@@ -302,9 +303,20 @@ export async function recordEmailEvents(db: D1Database, events: EmailEvent[]): P
         // plus bounces and complaints, which protect the list whatever email caused them.
         if (!r && e.type !== 'bounced' && e.type !== 'complained') continue;
         const stmts: D1PreparedStatement[] = [
-            db.prepare('INSERT INTO email_events (send_id, member_id, type, provider_id, at) VALUES (?, ?, ?, ?, ?)').bind(r?.send_id ?? null, r?.member_id ?? null, e.type, e.providerId ?? null, e.at)
+            db
+                .prepare('INSERT INTO email_events (send_id, member_id, type, provider_id, at, url) VALUES (?, ?, ?, ?, ?, ?)')
+                .bind(r?.send_id ?? null, r?.member_id ?? null, e.type, e.providerId ?? null, e.at, e.type === 'clicked' ? cleanLink(e.url) : null)
         ];
         if (r) stmts.push(db.prepare(`UPDATE sends SET ${COUNTER[e.type]} = ${COUNTER[e.type]} + 1 WHERE id = ?`).bind(r.send_id));
+        // People, not events: a send's first open (or click) by someone counts once however often they come back.
+        if (r && (e.type === 'opened' || e.type === 'clicked')) {
+            const unique = e.type === 'opened' ? 'unique_opens' : 'unique_clicks';
+            stmts.push(
+                db
+                    .prepare(`UPDATE sends SET ${unique} = ${unique} + 1 WHERE id = ? AND (SELECT COUNT(*) FROM email_events WHERE send_id = ? AND member_id = ? AND type = ?) = 1`)
+                    .bind(r.send_id, r.send_id, r.member_id, e.type)
+            );
+        }
         if (r && e.type === 'opened') stmts.push(db.prepare('UPDATE members SET opened_count = opened_count + 1 WHERE id = ?').bind(r.member_id));
         await db.batch(stmts);
         if (e.type === 'bounced' || e.type === 'complained') {
@@ -314,6 +326,22 @@ export async function recordEmailEvents(db: D1Database, events: EmailEvent[]): P
         n++;
     }
     return n;
+}
+
+/**
+ * A clicked link without the campaign tags added to it, so clicks on one link group together.
+ * Unsubscribe links lose their member and token: they are one link, and tokens are not kept.
+ */
+function cleanLink(url: string | undefined): string | null {
+    if (!url) return null;
+    try {
+        const u = new URL(url);
+        if (u.pathname.endsWith('/api/unsubscribe')) return `${u.origin}${u.pathname}`;
+        for (const k of [...u.searchParams.keys()]) if (k.startsWith('utm_')) u.searchParams.delete(k);
+        return u.toString().slice(0, 1000);
+    } catch {
+        return url.slice(0, 1000);
+    }
 }
 
 /** Adds campaign parameters to every web link in an email, keeping any the link already has. */

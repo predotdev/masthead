@@ -10,11 +10,13 @@ const DEFAULT_HOST = 'https://us.i.posthog.com';
 
 export function analyticsConfig(env: Env): AnalyticsConfig | undefined {
     if (!env.POSTHOG_KEY) return undefined;
+    const site = new URL(env.SITE_URL);
     return {
         posthog: {
             key: env.POSTHOG_KEY,
             host: (env.POSTHOG_HOST || DEFAULT_HOST).replace(/\/+$/, ''),
-            canonicalHost: new URL(env.SITE_URL).hostname.replace(/^www\./, ''),
+            canonicalHost: site.hostname.replace(/^www\./, ''),
+            canonicalPath: site.pathname.endsWith('/') ? site.pathname : `${site.pathname}/`,
             trackPreview: env.POSTHOG_TRACK_PREVIEW === 'true'
         }
     };

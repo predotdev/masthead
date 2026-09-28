@@ -53,7 +53,7 @@ export interface Env {
     POSTHOG_KEY?: string;
     /** PostHog host. Default https://us.i.posthog.com (EU: https://eu.i.posthog.com, or your own proxy). */
     POSTHOG_HOST?: string;
-    /** "true": also track previews (hosts other than SITE_URL's), tagged environment=preview. */
+    /** "true": also track previews (hosts other than SITE_URL's, and the site at PREVIEW_PATH), tagged environment=preview. */
     POSTHOG_TRACK_PREVIEW?: string;
     /** "true": tell search engines (IndexNow: Bing, Yandex and others) about changed pages on publish. Turn on once SITE_URL serves this blog. */
     INDEXNOW?: string;
