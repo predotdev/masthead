@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import { api, base, fmtDate, fmtNum, session, type Post } from '../api';
-import { Button, Dialog, Empty, ErrorNote, Field, Loading, PageHead, Pill, errorToast, toast, useLoad } from '../ui';
+import { Button, Dialog, Empty, ErrorNote, Field, Loading, PageHead, Pill, TableSkeleton, errorToast, toast, useLoad } from '../ui';
 
 interface Send {
     id: string;
@@ -105,12 +105,14 @@ export function Newsletters() {
     const { data, error, loading } = useLoad(() => api<Send[]>('/sends'), []);
     return (
         <div>
-            <PageHead title="Newsletters" />
+            <PageHead title="Newsletters" description="Every post sent by email, with how many were delivered and opened." />
             {error ? <ErrorNote text={error} /> : null}
             {loading && !data ? (
-                <Loading />
+                <TableSkeleton rows={6} columns={6} />
             ) : !data?.length ? (
-                <Empty title="Nothing sent yet.">Open a published post and choose Send as newsletter.</Empty>
+                <Empty icon="newsletters" title="Nothing sent yet">
+                    Open a published post and choose Send as newsletter.
+                </Empty>
             ) : (
                 <div class="table-wrap">
                     <table class="table">

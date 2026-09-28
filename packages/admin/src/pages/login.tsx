@@ -1,5 +1,7 @@
+import type { ComponentChildren } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { api, session, type Me } from '../api';
+import { Icon } from '../icons';
 import { Button, Field, errorToast } from '../ui';
 
 interface Brand {
@@ -15,6 +17,9 @@ function useBrand() {
             .then(setBrand)
             .catch(() => setBrand(null));
     }, []);
+    useEffect(() => {
+        document.title = brand ? `Sign in · ${brand.title}` : 'Sign in';
+    }, [brand?.title]);
     return brand;
 }
 
@@ -24,6 +29,20 @@ function BrandMark({ brand }: { brand: Brand | null }) {
         <div class="login-brand">
             {brand.logo ? <img class={brand.invertLogoInLight ? 'invert-light' : ''} src={brand.logo} alt="" height={26} /> : null}
             <span>{brand.title}</span>
+        </div>
+    );
+}
+
+/** The sign-in screens: a card on the night sky, like the public site. */
+function AuthFrame({ brand, children }: { brand: Brand | null; children: ComponentChildren }) {
+    return (
+        <div class="login">
+            <div class="login-sky" aria-hidden="true" />
+            <main class="login-card">
+                <BrandMark brand={brand} />
+                {children}
+            </main>
+            <p class="login-meta">Admin{brand ? ` for ${brand.title}` : ''}</p>
         </div>
     );
 }
@@ -72,43 +91,55 @@ export function Login() {
     };
 
     return (
-        <div class="login">
-            <div class="login-card">
-                <BrandMark brand={brand} />
-                <h1>Sign in</h1>
-                {sent ? (
-                    <div class="stack">
-                        <p class="muted">
+        <AuthFrame brand={brand}>
+            {sent ? (
+                <div class="login-body">
+                    <span class="login-icon" aria-hidden="true">
+                        <Icon name="mail" size={20} />
+                    </span>
+                    <div class="login-head">
+                        <h1>Check your email</h1>
+                        <p class="login-sub">
                             If <strong>{email}</strong> is on the team, a sign-in link is on its way. It works once, for an hour.
                         </p>
-                        <p class="muted small">Nothing after a minute? Check spam, or make sure this is the address you were invited with.</p>
-                        <Button onClick={() => setSent(false)}>Use a different address</Button>
                     </div>
-                ) : useToken ? (
-                    <form onSubmit={signInWithToken} class="stack">
-                        <Field label="Owner token" hint="The BOOTSTRAP_TOKEN secret set when the server was deployed.">
-                            <input type="password" required value={token} onInput={e => setToken(e.currentTarget.value)} autoComplete="off" />
-                        </Field>
-                        <Button tone="primary" type="submit" busy={busy}>
-                            Sign in
-                        </Button>
-                    </form>
-                ) : (
-                    <form onSubmit={sendLink} class="stack">
-                        {notice ? <p class="note warn">{notice}</p> : null}
-                        <Field label="Email">
-                            <input type="email" required value={email} onInput={e => setEmail(e.currentTarget.value)} autoComplete="email" placeholder="you@company.com" autoFocus />
-                        </Field>
-                        <Button tone="primary" type="submit" busy={busy}>
-                            Email me a sign-in link
-                        </Button>
-                    </form>
-                )}
+                    <p class="muted small">Nothing after a minute? Check spam, or make sure this is the address you were invited with.</p>
+                    <Button onClick={() => setSent(false)}>Use a different address</Button>
+                </div>
+            ) : useToken ? (
+                <form onSubmit={signInWithToken} class="login-body">
+                    <div class="login-head">
+                        <h1>Sign in with the owner token</h1>
+                        <p class="login-sub">For first setup, before anyone has an email sign-in.</p>
+                    </div>
+                    <Field label="Owner token" hint="The BOOTSTRAP_TOKEN secret set when the server was deployed.">
+                        <input type="password" required value={token} onInput={e => setToken(e.currentTarget.value)} autoComplete="off" autoFocus />
+                    </Field>
+                    <Button tone="primary" type="submit" size="lg" busy={busy}>
+                        Sign in
+                    </Button>
+                </form>
+            ) : (
+                <form onSubmit={sendLink} class="login-body">
+                    <div class="login-head">
+                        <h1>Sign in</h1>
+                        <p class="login-sub">We will email you a link. No password needed.</p>
+                    </div>
+                    {notice ? <p class="note warn">{notice}</p> : null}
+                    <Field label="Email">
+                        <input type="email" required value={email} onInput={e => setEmail(e.currentTarget.value)} autoComplete="email" placeholder="you@company.com" autoFocus />
+                    </Field>
+                    <Button tone="primary" type="submit" size="lg" busy={busy}>
+                        Email me a sign-in link
+                    </Button>
+                </form>
+            )}
+            <div class="login-foot">
                 <button class="link-btn" onClick={() => (setUseToken(!useToken), setSent(false))}>
                     {useToken ? 'Use an email link instead' : 'Use the owner token'}
                 </button>
             </div>
-        </div>
+        </AuthFrame>
     );
 }
 
@@ -142,15 +173,16 @@ export function Verify({ token }: { token: string }) {
         return null;
     }
     return (
-        <div class="login">
-            <div class="login-card">
-                <BrandMark brand={brand} />
-                <h1>{link?.name ? `Continue as ${link.name}` : 'Sign in'}</h1>
-                {link?.email ? <p class="muted">{link.email}</p> : null}
-                <Button tone="primary" busy={busy || !link} onClick={go}>
+        <AuthFrame brand={brand}>
+            <div class="login-body">
+                <div class="login-head">
+                    <h1>{link?.name ? `Continue as ${link.name}` : 'Sign in'}</h1>
+                    <p class="login-sub">{link?.email ?? 'Checking your sign-in link…'}</p>
+                </div>
+                <Button tone="primary" size="lg" busy={busy || !link} onClick={go}>
                     Continue to the admin
                 </Button>
             </div>
-        </div>
+        </AuthFrame>
     );
 }

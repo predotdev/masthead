@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks';
 import { api, base, fmtDate, fmtNum } from '../api';
-import { Button, Dialog, Empty, ErrorNote, Field, Loading, PageHead, Pill, errorToast, toast, useLoad } from '../ui';
+import { Button, Dialog, Empty, ErrorNote, Field, Loading, PageHead, Pill, TableSkeleton, errorToast, toast, useLoad } from '../ui';
 import { Stat } from './newsletters';
 
 interface Member {
@@ -60,7 +60,7 @@ export function Members() {
 
     return (
         <div>
-            <PageHead title="Members">
+            <PageHead title="Members" description="Everyone on the list, and whether newsletters reach them.">
                 <label class="btn ghost">
                     Import CSV
                     <input type="file" accept=".csv,text/csv" hidden onChange={e => e.currentTarget.files?.[0] && importCsv(e.currentTarget.files[0])} />
@@ -81,7 +81,7 @@ export function Members() {
             ) : null}
             {s?.flagged ? (
                 <div class="note warn">
-                    {fmtNum(s.flagged)} people unsubscribed themselves and were later subscribed again by an integration, not by them.{' '}
+                    {fmtNum(s.flagged)} {s.flagged === 1 ? 'person' : 'people'} unsubscribed themselves and were later subscribed again by an integration, not by them.{' '}
                     <button class="link-btn" onClick={() => (setFilter('flag=resubscribed-after-opt-out'), setOffset(0))}>
                         Review them
                     </button>{' '}
@@ -116,9 +116,25 @@ export function Members() {
             </div>
             {error ? <ErrorNote text={error} /> : null}
             {loading && !data ? (
-                <Loading />
+                <TableSkeleton rows={10} columns={6} />
             ) : !data?.items.length ? (
-                <Empty title="Nobody matches." />
+                filter || q ? (
+                    <Empty icon="search" title="Nobody matches" action={<Button onClick={() => (setFilter(''), setQ(''), setOffset(0))}>Clear filters</Button>}>
+                        Try another filter or search.
+                    </Empty>
+                ) : (
+                    <Empty
+                        icon="members"
+                        title="No members yet"
+                        action={
+                            <Button tone="primary" icon="plus" onClick={() => setAdding(true)}>
+                                Add member
+                            </Button>
+                        }
+                    >
+                        People join from the signup form on the site. You can also add them here or import a CSV.
+                    </Empty>
+                )
             ) : (
                 <>
                     <div class="table-wrap">
@@ -201,7 +217,7 @@ function MemberDialog({ id, onClose }: { id: string; onClose: () => void }) {
                     <div class="row">
                         <MemberStatus m={data.member} />
                         <span class="muted small">
-                            since {fmtDate(data.member.createdAt)} · {data.member.source} · {fmtNum(data.member.emailCount)} emails, {fmtNum(data.member.openedCount)} opens
+                            since {fmtDate(data.member.createdAt)} · {data.member.source} · {fmtNum(data.member.emailCount)} email{data.member.emailCount === 1 ? '' : 's'}, {fmtNum(data.member.openedCount)} open{data.member.openedCount === 1 ? '' : 's'}
                         </span>
                     </div>
                     {data.member.labels.length ? (

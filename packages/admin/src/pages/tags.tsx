@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks';
 import { api, session, type Tag } from '../api';
-import { Button, Dialog, Empty, ErrorNote, Field, Loading, PageHead, Pill, errorToast, toast, useLoad } from '../ui';
+import { Button, Dialog, Empty, ErrorNote, Field, PageHead, Pill, TableSkeleton, errorToast, toast, useLoad } from '../ui';
 
 export function Tags() {
     const { data, error, loading, reload } = useLoad(() => api<Tag[]>('/tags'), []);
@@ -9,7 +9,7 @@ export function Tags() {
     const role = session.value?.user.role;
     return (
         <div>
-            <PageHead title="Tags">
+            <PageHead title="Tags" description="Group posts by topic. Internal tags organize posts without showing readers.">
                 {role === 'owner' || role === 'admin' || role === 'editor' ? (
                     <Button
                         busy={tagging}
@@ -30,15 +30,25 @@ export function Tags() {
                         Tag untagged posts
                     </Button>
                 ) : null}
-                <Button tone="primary" onClick={() => setEditing({ name: '', visibility: 'public' })}>
+                <Button tone="primary" icon="plus" onClick={() => setEditing({ name: '', visibility: 'public' })}>
                     New tag
                 </Button>
             </PageHead>
             {error ? <ErrorNote text={error} /> : null}
             {loading && !data ? (
-                <Loading />
+                <TableSkeleton rows={8} columns={4} />
             ) : !data?.length ? (
-                <Empty title="No tags yet." />
+                <Empty
+                    icon="tags"
+                    title="No tags yet"
+                    action={
+                        <Button tone="primary" icon="plus" onClick={() => setEditing({ name: '', visibility: 'public' })}>
+                            New tag
+                        </Button>
+                    }
+                >
+                    Each public tag gets its own page on the site.
+                </Empty>
             ) : (
                 <div class="table-wrap">
                     <table class="table">

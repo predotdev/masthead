@@ -57,7 +57,7 @@ function SettingsForm({ data, reload }: { data: SettingsData; reload: () => void
 
     return (
         <div class="settings">
-            <PageHead title="Settings">
+            <PageHead title="Settings" description="The site, its newsletter, AI and integrations.">
                 <Button
                     onClick={async () => {
                         try {
@@ -83,7 +83,7 @@ function SettingsForm({ data, reload }: { data: SettingsData; reload: () => void
                     <dt>This server</dt>
                     <dd>{env.appUrl}</dd>
                     <dt>Newsletter sending</dt>
-                    <dd>{env.testMode ? <Pill tone="amber">test mode: email reaches only the team</Pill> : <Pill tone="green">live</Pill>}</dd>
+                    <dd>{env.testMode ? <Pill tone="amber" dot>Test mode: email reaches only the team</Pill> : <Pill tone="green" dot>Live</Pill>}</dd>
                     <dt>Email</dt>
                     <dd>{env.email ? `${env.emailFrom ?? 'no sender set'}` : 'Not configured'}</dd>
                     <dt>Delivery webhooks</dt>
