@@ -1,6 +1,6 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
-import { api, session, type Me } from '../api';
+import { ApiError, api, session, type Me } from '../api';
 import { Icon } from '../icons';
 import { Button, Field, errorToast } from '../ui';
 
@@ -61,6 +61,9 @@ export function Login() {
     const [busy, setBusy] = useState(false);
     const [useToken, setUseToken] = useState(false);
     const [token, setToken] = useState('');
+    // A new server has no owner yet: the token then creates one, named here.
+    const [needsOwner, setNeedsOwner] = useState(false);
+    const [name, setName] = useState('');
     const notice = params.has('expired') ? 'That sign-in link was already used or has expired. Here is a fresh one, one click away.' : null;
 
     const sendLink = async (e: Event) => {
@@ -80,11 +83,12 @@ export function Login() {
         e.preventDefault();
         setBusy(true);
         try {
-            await api('/auth/bootstrap', { body: { token } });
+            await api('/auth/bootstrap', { body: needsOwner ? { token, email, name } : { token } });
             session.value = await api<Me>('/me');
             location.hash = '#/posts';
         } catch (err) {
-            errorToast(err);
+            if (err instanceof ApiError && err.status === 400 && !needsOwner) setNeedsOwner(true);
+            else errorToast(err);
         } finally {
             setBusy(false);
         }
@@ -109,14 +113,24 @@ export function Login() {
             ) : useToken ? (
                 <form onSubmit={signInWithToken} class="login-body">
                     <div class="login-head">
-                        <h1>Sign in with the owner token</h1>
-                        <p class="login-sub">For first setup, before anyone has an email sign-in.</p>
+                        <h1>{needsOwner ? 'Create the owner account' : 'Sign in with the owner token'}</h1>
+                        <p class="login-sub">{needsOwner ? 'This server has no owner yet. Add your name and the email you will sign in with.' : 'For first setup, before anyone has an email sign-in.'}</p>
                     </div>
                     <Field label="Owner token" hint="The BOOTSTRAP_TOKEN secret set when the server was deployed.">
-                        <input type="password" required value={token} onInput={e => setToken(e.currentTarget.value)} autoComplete="off" autoFocus />
+                        <input type="password" required value={token} onInput={e => setToken(e.currentTarget.value)} autoComplete="off" autoFocus={!needsOwner} />
                     </Field>
+                    {needsOwner ? (
+                        <>
+                            <Field label="Your name">
+                                <input required value={name} onInput={e => setName(e.currentTarget.value)} autoComplete="name" autoFocus />
+                            </Field>
+                            <Field label="Your email">
+                                <input type="email" required value={email} onInput={e => setEmail(e.currentTarget.value)} autoComplete="email" placeholder="you@company.com" />
+                            </Field>
+                        </>
+                    ) : null}
                     <Button tone="primary" type="submit" size="lg" busy={busy}>
-                        Sign in
+                        {needsOwner ? 'Create and sign in' : 'Sign in'}
                     </Button>
                 </form>
             ) : (
