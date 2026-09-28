@@ -26,8 +26,9 @@ import {
 import { signInEmail } from './email';
 import type { Ctx, Principal } from './env';
 import { importAudience, importContent, importMedia, rewriteUrls } from './importer';
-import { siteStats } from './analytics';
 import { envDenylist, ideaSettings, ideaStatus, refreshIdeas, saveIdeaSettings } from './ideas';
+import { postWebStats, posthogSetup, webStats } from './posthog';
+import { emailReport, firstActivity, makeRange, membersReport, postReport, postsBySlug, rangeKey } from './stats';
 import { backfillImages, storeImage } from './images';
 import { getRevision, keepRevision, listRevisions } from './revisions';
 import { addMemory, deleteMemory, embedPending, knowledgeStats, listMemory, refreshKnowledge, resetKnowledge } from './knowledge';
@@ -570,18 +571,66 @@ export function adminRoutes(): Router<A> {
 
     r.post('/publish', async (_req, ctx) => (atLeast(ctx.principal, 'editor'), json(await publishSite(ctx.env, ctx.db, ctx.options))));
 
-    // ---------------------------------------------------------- AI studio
-    // ---------------------------------------------------------- reader analytics (PostHog)
-    r.get('/analytics', async (_req, ctx) => {
+    // ---------------------------------------------------------- analytics
+    // Reader traffic comes from PostHog when it is connected; newsletters and growth come from here.
+    // A PostHog failure is an answer (status "error"), so the rest of the page still shows.
+    const rangeOf = async (ctx: A, first?: string | null) => {
+        const key = rangeKey(ctx.url.searchParams.get('range'));
+        return makeRange(key, key === 'all' ? (first ?? (await firstActivity(ctx.db))) : null);
+    };
+    const refresh = (ctx: A) => ctx.url.searchParams.get('refresh') === '1';
+
+    r.get('/analytics/web', async (_req, ctx) => {
         me(ctx);
-        const days = Number(ctx.url.searchParams.get('days') ?? 30) || 30;
+        const range = await rangeOf(ctx);
+        const setup = posthogSetup(ctx.env);
+        if (!setup.key || !setup.project) return json({ status: 'off', setup, range });
         try {
-            return json(await siteStats(ctx.env, days));
+            const res = await webStats(ctx, range, refresh(ctx));
+            const base = ctx.basePath;
+            const fromPath = (path: string) => (path.startsWith(base) && /^[^/]+\/?$/.test(path.slice(base.length)) ? path.slice(base.length).replace(/\/$/, '') : null);
+            const slugs = [...res.data.posts.map(p => p.slug), ...res.data.pages.map(p => fromPath(p.path)), ...res.data.signups.map(p => p.slug)].filter((x): x is string => Boolean(x));
+            return json({ ...res, setup, range, titles: Object.fromEntries(await postsBySlug(ctx.db, [...new Set(slugs)])) });
         } catch (err: any) {
-            throw new HttpError(502, `Stats are unavailable: ${err?.message ?? 'PostHog did not answer'}`);
+            return json({ status: 'error', setup, range, error: err?.message ?? 'PostHog did not answer.' });
         }
     });
 
+    r.get('/analytics/email', async (_req, ctx) => {
+        atLeast(ctx.principal, 'editor');
+        return json(await emailReport(ctx.env, ctx.db, await rangeOf(ctx)));
+    });
+
+    r.get('/analytics/members', async (_req, ctx) => {
+        atLeast(ctx.principal, 'editor');
+        return json(await membersReport(ctx.env, ctx.db, await rangeOf(ctx)));
+    });
+
+    /** One post: its newsletter and the members it brought in. "All time" starts when it was published. */
+    r.get('/analytics/posts/:id', async (_req, ctx, { id }) => {
+        const post = await getPost(ctx.db, id);
+        if (!post) throw new HttpError(404, 'Post not found.');
+        await canEdit(ctx, post).catch(err => {
+            throw err instanceof HttpError && err.status === 403 ? new HttpError(403, 'Newsletter and signup numbers are shown for your own posts.') : err;
+        });
+        return json(await postReport(ctx.env, ctx.db, post, await rangeOf(ctx, post.publishedAt ?? post.createdAt)));
+    });
+
+    r.get('/analytics/posts/:id/web', async (_req, ctx, { id }) => {
+        me(ctx);
+        const post = await getPost(ctx.db, id);
+        if (!post) throw new HttpError(404, 'Post not found.');
+        const range = await rangeOf(ctx, post.publishedAt ?? post.createdAt);
+        const setup = posthogSetup(ctx.env);
+        if (!setup.key || !setup.project) return json({ status: 'off', setup, range });
+        try {
+            return json({ ...(await postWebStats(ctx, post.slug, range, refresh(ctx))), setup, range });
+        } catch (err: any) {
+            return json({ status: 'error', setup, range, error: err?.message ?? 'PostHog did not answer.' });
+        }
+    });
+
+    // ---------------------------------------------------------- AI studio
     r.get('/ai/models', async (_req, ctx) => (me(ctx), json(await listModels(ctx, (ctx.url.searchParams.get('kind') as ModelKind) || undefined))));
     r.post('/ai/draft', async (req, ctx) => (me(ctx), json(await draft(ctx, (await body(req)) as any))));
     r.post('/ai/edit', async (req, ctx) => (me(ctx), json(await edit(ctx, (await body(req)) as any))));

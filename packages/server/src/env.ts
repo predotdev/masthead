@@ -58,7 +58,7 @@ export interface Env {
     POSTHOG_KEY?: string;
     /** PostHog host. Default https://us.i.posthog.com (EU: https://eu.i.posthog.com, or your own proxy). */
     POSTHOG_HOST?: string;
-    /** "true": also track previews (hosts other than SITE_URL's), tagged environment=preview. */
+    /** "true": also track previews (hosts other than SITE_URL's, and the site at PREVIEW_PATH), tagged environment=preview. */
     POSTHOG_TRACK_PREVIEW?: string;
     /** "true": tell search engines (IndexNow: Bing, Yandex and others) about changed pages on publish. Turn on once SITE_URL serves this blog. */
     INDEXNOW?: string;
@@ -67,6 +67,10 @@ export interface Env {
     /** Admin stats read PostHog with a personal API key (query read access) for this project id. */
     POSTHOG_PERSONAL_API_KEY?: string;
     POSTHOG_PROJECT_ID?: string;
+    /** Where the admin sends those queries. Default: POSTHOG_HOST's app host (https://us.posthog.com); set it when POSTHOG_HOST is a proxy. */
+    POSTHOG_API_HOST?: string;
+    /** Your product's signup event, for "signups after reading" (it carries blog_ref_post_slug). Default auth_signup_success. */
+    POSTHOG_SIGNUP_EVENT?: string;
 }
 
 export interface Principal {

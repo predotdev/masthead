@@ -24,6 +24,30 @@ export interface Member {
     lastEmailedAt: string | null;
     /** The reader's browser analytics id from their signup, so server events join their visit. */
     analyticsId: string | null;
+    /** Where their latest signup through the blog's form came from. */
+    attribution: Attribution | null;
+}
+
+/** Where a signup through the blog's form came from: the post and spot on the page, and how the reader got there. */
+export interface Attribution {
+    post: string | null;
+    /** "post", "home" or "page". */
+    placement: string | null;
+    /** The referring domain of the visit; empty when there was none. */
+    referrer: string | null;
+    utmSource: string | null;
+    utmMedium: string | null;
+    utmCampaign: string | null;
+    at: string;
+}
+
+function parseAttribution(v: unknown): Attribution | null {
+    if (typeof v !== 'string' || !v) return null;
+    try {
+        return JSON.parse(v) as Attribution;
+    } catch {
+        return null;
+    }
 }
 
 function toMember(r: any): Member {
@@ -44,7 +68,8 @@ function toMember(r: any): Member {
         createdAt: r.created_at,
         updatedAt: r.updated_at,
         lastEmailedAt: r.last_emailed_at,
-        analyticsId: r.analytics_id ?? null
+        analyticsId: r.analytics_id ?? null,
+        attribution: parseAttribution(r.attribution)
     };
 }
 
@@ -122,13 +147,13 @@ function event(db: D1Database, memberId: string, type: string, source: string, d
     return db.prepare('INSERT INTO member_events (member_id, type, source, at, data) VALUES (?, ?, ?, ?, ?)').bind(memberId, type, source, now(), data ? JSON.stringify(data) : null);
 }
 
-/** Changes a member's subscription and records who did it. */
-export async function setStatus(db: D1Database, member: Member, status: MemberStatus, source: ChangeSource): Promise<Member> {
+/** Changes a member's subscription and records who did it (and, for an unsubscribe from a newsletter, which one). */
+export async function setStatus(db: D1Database, member: Member, status: MemberStatus, source: ChangeSource, data?: Record<string, unknown>): Promise<Member> {
     if (member.status === status) return member;
     const flags = status === 'unsubscribed' ? member.flags.filter(f => f !== 'resubscribed-after-opt-out') : member.flags;
     await db.batch([
         db.prepare('UPDATE members SET status = ?, status_source = ?, flags = ?, updated_at = ? WHERE id = ?').bind(status, source, JSON.stringify(flags), now(), member.id),
-        event(db, member.id, status, source)
+        event(db, member.id, status, source, data)
     ]);
     return { ...member, status, statusSource: source, flags };
 }
@@ -168,24 +193,31 @@ export async function addMember(
     return { member: (await getMember(db, id))!, created: true };
 }
 
-/** Public signup: new or unsubscribed people wait in 'pending' until they confirm by email. */
-export async function requestSubscription(db: D1Database, email: string, name?: string | null): Promise<{ member: Member; needsConfirmation: boolean }> {
+/**
+ * Public signup: new or unsubscribed people wait in 'pending' until they confirm by email.
+ * Where the signup came from is kept with it; the latest signup wins.
+ */
+export async function requestSubscription(db: D1Database, email: string, name?: string | null, attribution?: Attribution | null): Promise<{ member: Member; needsConfirmation: boolean }> {
     const clean = String(email ?? '').trim().toLowerCase();
     if (!isEmail(clean)) throw new HttpError(400, 'That email address is not valid.');
     const existing = await getMemberByEmail(db, clean);
     if (existing?.status === 'subscribed' && !existing.suppressed) return { member: existing, needsConfirmation: false };
     const t = now();
+    const origin = attribution ? JSON.stringify(attribution) : null;
     if (existing) {
-        await db.prepare("UPDATE members SET status = 'pending', status_source = 'member', updated_at = ? WHERE id = ?").bind(t, existing.id).run();
-        return { member: { ...existing, status: 'pending' }, needsConfirmation: true };
+        await db
+            .prepare("UPDATE members SET status = 'pending', status_source = 'member', attribution = COALESCE(?, attribution), updated_at = ? WHERE id = ?")
+            .bind(origin, t, existing.id)
+            .run();
+        return { member: { ...existing, status: 'pending', attribution: attribution ?? existing.attribution }, needsConfirmation: true };
     }
     const id = newId();
     await db
         .prepare(
-            `INSERT INTO members (id, email, name, status, status_source, labels, flags, source, created_at, updated_at)
-             VALUES (?, ?, ?, 'pending', 'member', '[]', '[]', 'signup', ?, ?)`
+            `INSERT INTO members (id, email, name, status, status_source, labels, flags, source, attribution, created_at, updated_at)
+             VALUES (?, ?, ?, 'pending', 'member', '[]', '[]', 'signup', ?, ?, ?)`
         )
-        .bind(id, clean, name ?? null, t, t)
+        .bind(id, clean, name ?? null, origin, t, t)
         .run();
     return { member: (await getMember(db, id))!, needsConfirmation: true };
 }

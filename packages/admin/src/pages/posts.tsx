@@ -44,11 +44,15 @@ export function Posts({ type }: { type: 'post' | 'page' }) {
         [type, status, q]
     );
     const people = useLoad(() => api<Staff[]>('/staff'), []);
-    const stats = useLoad(() => (type === 'post' ? api<{ configured: boolean; posts: { slug: string; views: number }[] }>('/analytics?days=30').catch(() => null) : Promise.resolve(null)), [type]);
+    // Views come from PostHog when it is connected; the list never waits for them.
+    const stats = useLoad(
+        () => (type === 'post' ? api<{ status: string; data?: { posts: { slug: string | null; views: number }[] } }>('/analytics/web?range=30').catch(() => null) : Promise.resolve(null)),
+        [type]
+    );
     const counts = useLoad(() => Promise.all((['post', 'page'] as const).map(t => api<{ total: number }>(`/posts?type=${t}&limit=1`).then(r => r.total))), []);
 
     const staff = new Map((people.data ?? []).map(s => [s.id, s]));
-    const views = stats.data?.configured ? new Map(stats.data.posts.map(p => [p.slug, p.views])) : null;
+    const views = stats.data?.status === 'ok' && stats.data.data ? new Map(stats.data.data.posts.map(p => [p.slug ?? '', p.views])) : null;
     const noun = type === 'post' ? 'post' : 'page';
     const filtered = !!(q || status);
 
@@ -114,6 +118,11 @@ export function Posts({ type }: { type: 'post' | 'page' }) {
                                     <th class="col-date">Date</th>
                                     {views ? <th class="num">Views, 30 days</th> : null}
                                     {type === 'post' ? <th class="num">Emailed to</th> : null}
+                                    {type === 'post' ? (
+                                        <th class="col-stats">
+                                            <span class="an-sr">Analytics</span>
+                                        </th>
+                                    ) : null}
                                 </tr>
                             </thead>
                             <tbody>
@@ -157,6 +166,15 @@ export function Posts({ type }: { type: 'post' | 'page' }) {
                                             </td>
                                             {views ? <td class="num">{p.status === 'published' ? fmtNum(views.get(p.slug) ?? 0) : <span class="faint">–</span>}</td> : null}
                                             {type === 'post' ? <td class="num muted">{p.newsletter ? fmtNum(p.newsletter.recipients) : <span class="faint">–</span>}</td> : null}
+                                            {type === 'post' ? (
+                                                <td class="col-stats">
+                                                    {p.status === 'published' ? (
+                                                        <a class="an-stats-link" href={`#/analytics/post/${p.id}`} title="Analytics" aria-label={`Analytics for ${p.title || 'Untitled'}`} onClick={e => e.stopPropagation()}>
+                                                            <Icon name="analytics" size={16} />
+                                                        </a>
+                                                    ) : null}
+                                                </td>
+                                            ) : null}
                                         </tr>
                                     );
                                 })}

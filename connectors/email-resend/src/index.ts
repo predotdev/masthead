@@ -1,7 +1,8 @@
 /**
  * Resend transport: batches of up to 100 messages per call, an idempotency
  * key per batch so a retried batch is never delivered twice, and signed
- * webhook verification for delivery, bounce and complaint events.
+ * webhook verification for delivery, open, click (with the link), bounce and
+ * complaint events.
  */
 import type { EmailEvent, EmailMessage, EmailTransport, SendResult } from '@masthead/core';
 
@@ -84,12 +85,14 @@ export function resend(options: ResendOptions): EmailTransport {
             const mapped = map[type];
             if (!mapped) return [];
             const to = evt?.data?.to;
+            const link = mapped === 'clicked' && typeof evt?.data?.click?.link === 'string' ? evt.data.click.link : undefined;
             return [
                 {
                     type: mapped,
                     email: String(Array.isArray(to) ? to[0] : (to ?? '')).toLowerCase(),
                     at: String(evt?.created_at ?? new Date().toISOString()),
-                    providerId: evt?.data?.email_id ? String(evt.data.email_id) : undefined
+                    providerId: evt?.data?.email_id ? String(evt.data.email_id) : undefined,
+                    ...(link ? { url: link } : {})
                 }
             ];
         }
