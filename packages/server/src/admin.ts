@@ -31,13 +31,15 @@ import { postWebStats, posthogSetup, webStats } from './posthog';
 import { emailReport, firstActivity, makeRange, membersReport, postReport, postsBySlug, rangeKey } from './stats';
 import { backfillImages, storeImage } from './images';
 import { getRevision, keepRevision, listRevisions } from './revisions';
-import { addMemory, deleteMemory, embedPending, knowledgeStats, listMemory, refreshKnowledge, resetKnowledge } from './knowledge';
+import { addMemory, deleteMemory, embedPending, knowledgeStats, listMemory, refreshKnowledge, resetKnowledge, suggestLinks } from './knowledge';
 import { addMember, deleteMember, getMember, getMemberByEmail, listMembers, memberEvents, memberStats, restoreOptOuts, setStatus, type MemberStatus } from './members';
 import { appUrl, buildEmail, cancelSend, countSegment, createSend, getSend, listSends, processSends, sendTest, testMode, unsubscribeUrl, type Segment } from './newsletter';
 import { linkTag, publishSite } from './publish';
 import { MEDIA_PREFIX } from './public';
 import { Router } from './router';
+import { share, shareStream } from './share';
 import { wantsEvents } from './sse';
+import { saveStyleSettings, styleSettings } from './style';
 import { HttpError, body, csvEscape, html, json, newId, now, parseCsv, redirect, safeEqual, sleep } from './util';
 
 type A = Ctx & { principal?: Principal };
@@ -520,13 +522,14 @@ export function adminRoutes(): Router<A> {
     // ---------------------------------------------------------- settings
     r.get('/settings', async (_req, ctx) => {
         atLeast(ctx.principal, 'admin');
-        const [site, newsletter, ai, memory, knowledge, ideas] = await Promise.all([
+        const [site, newsletter, ai, memory, knowledge, ideas, style] = await Promise.all([
             siteSettings(ctx.env, ctx.db),
             newsletterSettings(ctx.env, ctx.db),
             aiSettings(ctx.env, ctx.db),
             listMemory(ctx.db),
             knowledgeStats(ctx.db),
-            ideaSettings(ctx.db)
+            ideaSettings(ctx.db),
+            styleSettings(ctx.db)
         ]);
         const { results: keys } = await ctx.db.prepare('SELECT id, name, prefix, role, created_at, last_used_at FROM api_keys ORDER BY created_at DESC').all();
         return json({
@@ -536,6 +539,7 @@ export function adminRoutes(): Router<A> {
             knowledge,
             // The DENYLIST variable's terms stay out of the response; only how many there are.
             ideas: { ...ideas, envDenylist: envDenylist(ctx.env).length },
+            style,
             keys,
             environment: {
                 siteUrl: ctx.env.SITE_URL,
@@ -560,6 +564,7 @@ export function adminRoutes(): Router<A> {
         }
         if (input.newsletter) await setSetting(ctx.db, 'newsletter', { ...(await getSetting(ctx.db, 'newsletter', {})), ...input.newsletter });
         if (input.ideas) await saveIdeaSettings(ctx.db, input.ideas);
+        if (input.style) await saveStyleSettings(ctx.db, input.style);
         if (input.ai) await saveAiSettings(ctx, input.ai);
         return json({ ok: true });
     });
@@ -737,6 +742,32 @@ export function adminRoutes(): Router<A> {
         if (!['new', 'drafted', 'dismissed'].includes(status)) throw new HttpError(400, 'Unknown status.');
         await ctx.db.prepare('UPDATE ideas SET status = ?, updated_at = ? WHERE id = ?').bind(status, now(), id).run();
         return json({ ok: true });
+    });
+
+    // ---------------------------------------------------------- writing tools
+    /** The house-style rules the editor checks as people write (Settings, Style checks). */
+    r.get('/style', async (_req, ctx) => (me(ctx), json(await styleSettings(ctx.db))));
+    /** Published posts to link from the paragraph being written, nearest in meaning first. */
+    r.post('/ai/links', async (req, ctx) => {
+        me(ctx);
+        const input = await body(req);
+        const ai = ctx.options.ai?.(ctx.env);
+        if (!ai) throw new HttpError(501, 'No AI provider is configured. Set PREDEV_API_KEY.');
+        const exclude = [input.postId, ...(Array.isArray(input.exclude) ? input.exclude : [])].filter((x): x is string => typeof x === 'string' && !!x);
+        try {
+            return json(await suggestLinks(ctx, ai, String(input.text ?? ''), exclude));
+        } catch (err: any) {
+            throw err instanceof HttpError ? err : new HttpError(502, `The AI provider said: ${err?.message ?? 'request failed'}`);
+        }
+    });
+    /** Posts for X and LinkedIn and newsletter subject lines, to copy (streamed on request). Nothing is posted anywhere. */
+    r.post('/posts/:id/share', async (req, ctx, { id }) => {
+        const post = await getPost(ctx.db, id);
+        if (!post) throw new HttpError(404, 'Post not found.');
+        await canEdit(ctx, post);
+        const input = await body(req);
+        const args = { angle: typeof input.angle === 'string' ? input.angle : undefined, model: typeof input.model === 'string' ? input.model : undefined };
+        return wantsEvents(req) ? shareStream(ctx, post, args, req.signal) : json(await share(ctx, post, args));
     });
 
     // ---------------------------------------------------------- import

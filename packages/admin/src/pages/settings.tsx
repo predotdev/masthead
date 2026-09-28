@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'preact/hooks';
 import { api, fmtDate } from '../api';
+import { loadStyle, type StyleSettings } from '../house-style';
 import { ModelPicker } from '../model-picker';
 import { reloadModels } from '../models';
 import { Button, Dialog, ErrorNote, Field, Loading, PageHead, Pill, errorToast, toast, useLoad } from '../ui';
 import { IdeasSettings, type IdeaSettings } from './ideas-settings';
 import { MemoryPanel } from './memory';
 import { AppearanceEditor, FooterEditor, HeaderMenu } from './site-design';
+import { StyleChecksSettings } from './style-settings';
 
 interface SettingsData {
     site: Record<string, any>;
@@ -13,6 +15,7 @@ interface SettingsData {
     ai: { textModel: string | null; imageModel: string | null; videoModel: string | null; embeddingModel: string | null; knowledgeSources: string[]; voice: string | null; memory?: unknown };
     knowledge: { passages: number; pending: number; sources: number; refreshedAt: string | null };
     ideas: IdeaSettings;
+    style: StyleSettings;
     keys: { id: string; name: string; prefix: string; role: string; created_at: string; last_used_at: string | null }[];
     environment: { siteUrl: string; appUrl: string; testMode: boolean; emailFrom: string | null; email: boolean; ai: boolean; webhooks: boolean; linkTag: string | null };
 }
@@ -34,6 +37,7 @@ function SettingsForm({ data, reload, section }: { data: SettingsData; reload: (
     });
     const [sources, setSources] = useState(data.ai.knowledgeSources.join('\n'));
     const [ideas, setIdeas] = useState(data.ideas);
+    const [style, setStyle] = useState(data.style);
     const [busy, setBusy] = useState(false);
     const [newKey, setNewKey] = useState<string | null>(null);
     const env = data.environment;
@@ -48,11 +52,13 @@ function SettingsForm({ data, reload, section }: { data: SettingsData; reload: (
                 .split('\n')
                 .map(s => s.trim())
                 .filter(s => /^https?:\/\//.test(s));
-            await api('/settings', { method: 'PUT', body: { site, newsletter, ai: { ...ai, knowledgeSources }, ideas } });
+            await api('/settings', { method: 'PUT', body: { site, newsletter, ai: { ...ai, knowledgeSources }, ideas, style } });
             toast('Saved');
             reload();
             // Pickers mark the site's defaults; they may have moved.
             reloadModels();
+            // The editor checks with the new rules.
+            loadStyle(true);
         } catch (err) {
             errorToast(err);
         } finally {
@@ -190,6 +196,12 @@ function SettingsForm({ data, reload, section }: { data: SettingsData; reload: (
                 >
                     <textarea rows={4} value={sources} spellcheck={false} placeholder="https://example.com/llms.txt" onInput={e => setSources(e.currentTarget.value)} />
                 </Field>
+            </section>
+
+            <section class="panel" id="settings-style">
+                <h2>Style checks</h2>
+                <p class="muted small">What the editor underlines as people write, with one-click fixes. Nothing here blocks publishing.</p>
+                <StyleChecksSettings value={style} onChange={setStyle} />
             </section>
 
             <section class="panel">
