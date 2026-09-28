@@ -1561,7 +1561,12 @@ button.issue-main { cursor: pointer; }
 .ws-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px 24px; margin-bottom: 16px; padding: 18px 20px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--card); box-shadow: var(--shadow-xs); }
 .ws-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .ws-title h2 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.015em; }
-.ws-sub { margin: 6px 0 0; max-width: 64ch; color: var(--muted); font-size: var(--text-md); line-height: 1.5; }
+.ws-sub { margin: 6px 0 0; max-width: 100ch; color: var(--muted); font-size: var(--text-md); line-height: 1.5; }
+.ws-callout { grid-column: 1 / -1; display: flex; align-items: flex-start; gap: 10px; margin: 0; padding: 10px 12px; border-radius: var(--radius-md); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); color: var(--fg-2); font-size: var(--text-md); line-height: 1.5; }
+.ws-callout .icon { margin-top: 2px; color: var(--muted); }
+.ws-callout.warn { background: var(--amber-bg); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 24%, transparent); color: var(--fg); }
+.ws-callout.warn .icon { color: var(--amber); }
+.ws-callout + .ws-callout { margin-top: -8px; }
 .ws-controls { display: flex; align-items: center; gap: 12px; align-self: start; }
 .ws-unsaved { font-size: var(--text-sm); color: var(--amber); white-space: nowrap; }
 .ws-saved { display: inline-flex; align-items: center; gap: 6px; padding: 0 4px; font-size: var(--text-sm); color: var(--muted); white-space: nowrap; }
@@ -1704,4 +1709,6 @@ button.issue-main { cursor: pointer; }
   .ws-joiners .table th:nth-child(2), .ws-joiners .table td:nth-child(2) { display: none; }
   .ws-joiners .table td:first-child { max-width: 150px; }
   .ws-progress { gap: 8px; font-size: var(--text-sm); }
+  .ws-picked li { flex-direction: column; gap: 0; }
+  .ws-picked li + li { margin-top: 4px; }
 }

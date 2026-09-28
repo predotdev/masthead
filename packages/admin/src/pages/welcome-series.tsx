@@ -251,14 +251,21 @@ function SeriesEditor({ initial }: { initial: Payload }) {
                     )}
                     <Switch on={seq.enabled} label="Send the welcome series" onClick={() => setConfirm(seq.enabled ? 'off' : 'on')} />
                 </div>
+                {env.testMode ? (
+                    <p class="ws-callout warn">
+                        <Icon name="warning" size={15} />
+                        <span>
+                            <strong>Test mode is on.</strong> Only team addresses join the series and get its emails. Anyone else who subscribes meanwhile is skipped for good, so nobody gets a stale series when test mode ends.
+                        </span>
+                    </p>
+                ) : null}
+                {!env.email ? (
+                    <p class="ws-callout">
+                        <Icon name="info" size={15} />
+                        <span>Email isn't set up on this server: people still join, and their emails go out once it is.</span>
+                    </p>
+                ) : null}
             </section>
-
-            {env.testMode ? (
-                <div class="note warn">
-                    <strong>Test mode is on.</strong> Only team addresses join the series and get its emails. Anyone else who subscribes meanwhile is skipped for good, so nobody gets a stale series when test mode ends.
-                </div>
-            ) : null}
-            {!env.email ? <div class="note">Email isn't set up on this server: people still join, and their emails go out once it is.</div> : null}
 
             <Flow steps={steps} selected={step?.id} stats={saved.stats.steps} people={people} onSelect={setSelected} onAdd={add} />
 
