@@ -62,6 +62,17 @@ export function sentenceSummary(html: string, max = 200): string {
     return end >= 60 ? cut.slice(0, end + 1) : autoExcerpt(html, max);
 }
 
+/** A description sized for search results: whole sentences up to `max` characters, else a cut at a word with an ellipsis. */
+export function fitMeta(text: string, max = 160): string {
+    const t = text.replace(/\s+/g, ' ').trim();
+    if (t.length <= max) return t;
+    const cut = t.slice(0, max);
+    const end = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('? '), cut.lastIndexOf('! '));
+    if (end >= 60) return cut.slice(0, end + 1);
+    const word = cut.slice(0, max - 1);
+    return `${word.slice(0, Math.max(word.lastIndexOf(' '), 60)).replace(/[\s,;:.\-–—]+$/, '')}…`;
+}
+
 export function rfc822(iso: string): string {
     return new Date(iso).toUTCString();
 }

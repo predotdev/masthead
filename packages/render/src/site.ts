@@ -5,7 +5,7 @@ import { rss, sitemapIndex, urlset } from './feeds';
 import { blogLd, blogPostingLd, breadcrumbLd, collectionLd, headTags, organizationLd, profileLd, websiteLd } from './head';
 import { responsiveImages } from './images';
 import { llmsFull, llmsTxt, markdownCopy } from './llms';
-import { autoExcerpt, fileFor, isTruncated, ownLinks, plainText, readingMinutes, sentenceSummary, shortHash, tagLinks, wordCount } from './util';
+import { autoExcerpt, fileFor, fitMeta, isTruncated, ownLinks, plainText, readingMinutes, sentenceSummary, shortHash, tagLinks, wordCount } from './util';
 
 export interface BuildOptions {
     theme: Theme;
@@ -292,7 +292,7 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
         const url = abs(urls.post(p));
         const tags = publicTags(p);
         const authors = postAuthors(p);
-        const description = f.summary || site.description;
+        const description = fitMeta(f.summary || site.description);
         const coverSize = imageSizeOf(p.featureImage);
         const shareImage = p.ogImage || p.featureImage;
         const card = shareImage ? null : shareCard(p.slug, postShareCard(p, tags, authors, f.minutes));
@@ -400,7 +400,7 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
             const prevUrl = n > 1 ? urls.paged(prefix, n - 1) : undefined;
             const nextUrl = n < total ? urls.paged(prefix, n + 1) : undefined;
             const title = n === 1 ? extra.title : `${extra.pagedTitle ?? extra.title} (Page ${n})`;
-            const description = extra.description || site.description;
+            const description = fitMeta(extra.description || site.description);
             const view: ListView = {
                 kind,
                 heading: extra.heading,
