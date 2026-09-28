@@ -239,8 +239,20 @@ export interface ModelInfo {
     contextLength?: number;
     /** Provider-specific prices, e.g. credits per million tokens or per image. */
     price?: Record<string, number>;
-    /** What a media model accepts, where the catalog says. `streaming`: an image model that sends previews while it paints. */
-    supports?: { durations?: number[]; aspectRatios?: string[]; resolutions?: string[]; frameImages?: string[]; streaming?: boolean };
+    /**
+     * What a media model accepts, where the catalog says. `streaming`: an image model that sends
+     * previews while it paints. `references`: an image model that takes images to edit or draw
+     * from (false when the catalog says it takes none). `audio`: a video model that also makes sound.
+     */
+    supports?: { durations?: number[]; aspectRatios?: string[]; resolutions?: string[]; frameImages?: string[]; streaming?: boolean; references?: boolean; audio?: boolean };
+    /** When the provider released it (ISO 8601), for newest-first lists. */
+    released?: string;
+    /** A public benchmark score, where the catalog has one: higher is more capable. Compare within one kind only. */
+    score?: number;
+    /** An alias such as "...-latest" names the model it stands for today. */
+    aliasOf?: { id: string; name: string };
+    /** The day the provider retires the model (YYYY-MM-DD), once announced. */
+    retires?: string;
     /** The site's default model for this kind. */
     isDefault?: boolean;
 }

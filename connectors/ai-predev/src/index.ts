@@ -118,7 +118,11 @@ export function predevAI(options: PredevAIOptions = {}): AIProvider {
                             kind: k,
                             contextLength: typeof row.context_length === 'number' ? row.context_length : undefined,
                             price: row.predev && typeof row.predev === 'object' ? numericFields(row.predev) : undefined,
-                            supports: supports(row)
+                            supports: supports(row, k),
+                            released: typeof row.created === 'number' ? new Date(row.created * 1000).toISOString() : undefined,
+                            score: typeof row.benchmarks?.artificial_analysis?.intelligence_index === 'number' ? row.benchmarks.artificial_analysis.intelligence_index : undefined,
+                            aliasOf: typeof row.alias_target?.slug === 'string' ? { id: row.alias_target.slug, name: String(row.alias_target.name ?? row.alias_target.slug) } : undefined,
+                            retires: typeof row.expiration_date === 'string' ? row.expiration_date : undefined
                         })
                     );
                 })
@@ -380,17 +384,25 @@ function imageRef(url: string) {
     return { type: 'image_url', image_url: { url } };
 }
 
-/** The parameters a media model's catalog row says it accepts. */
-function supports(row: any): ModelInfo['supports'] {
+/**
+ * The parameters a media model's catalog row says it accepts. Video rows list them as
+ * supported_*; image rows describe them under supported_parameters.
+ */
+function supports(row: any, kind: ModelKind): ModelInfo['supports'] {
     const list = (v: unknown) => (Array.isArray(v) && v.length ? v : undefined);
+    const params = row.supported_parameters && !Array.isArray(row.supported_parameters) ? row.supported_parameters : {};
+    const choices = (p: any) => (p?.type === 'enum' ? list(p.values)?.filter((v: unknown) => typeof v === 'string' && v !== 'auto') : undefined);
+    const refs = params.input_references;
     const out = {
         durations: list(row.supported_durations)?.filter((d: unknown): d is number => typeof d === 'number').sort((a: number, b: number) => a - b),
-        aspectRatios: list(row.supported_aspect_ratios),
-        resolutions: list(row.supported_resolutions),
+        aspectRatios: list(row.supported_aspect_ratios) ?? choices(params.aspect_ratio),
+        resolutions: list(row.supported_resolutions) ?? choices(params.resolution),
         frameImages: list(row.supported_frame_images),
-        streaming: row.supports_streaming === true || undefined
+        streaming: row.supports_streaming === true || undefined,
+        references: kind !== 'image' ? undefined : typeof refs?.max === 'number' ? refs.max > 0 : Array.isArray(row.architecture?.input_modalities) ? row.architecture.input_modalities.includes('image') : undefined,
+        audio: row.generate_audio === true || undefined
     };
-    return Object.values(out).some(Boolean) ? out : undefined;
+    return Object.values(out).some(v => v !== undefined) ? out : undefined;
 }
 
 function numericFields(obj: Record<string, unknown>): Record<string, number> {
