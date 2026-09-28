@@ -534,7 +534,7 @@ function Newsletters({ range, setRange }: TabProps) {
                     label="Unsubscribed"
                     value={fmtInt(t.unsubscribed)}
                     delta={p ? <Delta now={t.unsubscribed} before={p.unsubscribed} upIsGood={false} vs={vsText(r)} /> : null}
-                    note={t.delivered ? `${pct(t.unsubscribed / t.delivered, 2)} of delivered` : null}
+                    note={t.unsubscribeRate !== null ? `${pct(t.unsubscribeRate, 2)} of delivered` : null}
                 />
             </div>
             <section class="panel an-panel an-main">{chart}</section>

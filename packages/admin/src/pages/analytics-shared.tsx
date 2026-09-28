@@ -113,6 +113,7 @@ export interface EmailTotals {
     complained: number;
     openRate: number | null;
     clickRate: number | null;
+    unsubscribeRate: number | null;
 }
 
 export interface EmailReport {
@@ -461,8 +462,10 @@ export function PosthogProblem({ report, onRetry }: { report: FromPosthog<unknow
     );
 }
 
-export function SendsTable({ sends, compactView }: { sends: SendRow[]; compactView?: boolean }) {
+export function SendsTable({ sends, compactView, limit = 12 }: { sends: SendRow[]; compactView?: boolean; limit?: number }) {
+    const [all, setAll] = useState(false);
     if (!sends.length) return <p class="muted small an-none">No newsletters in this period.</p>;
+    const shown = all ? sends : sends.slice(0, limit);
     const rate = (n: number | null, d: number | null, r: number | null, digits = 1) =>
         n === null || d === null || !d ? (
             <span class="muted">–</span>
@@ -487,7 +490,7 @@ export function SendsTable({ sends, compactView }: { sends: SendRow[]; compactVi
                     </tr>
                 </thead>
                 <tbody>
-                    {sends.map(s => (
+                    {shown.map(s => (
                         <tr key={`${s.id ?? s.postId}${s.at}`}>
                             <td>
                                 {compactView ? null : s.postId ? (
@@ -529,6 +532,11 @@ export function SendsTable({ sends, compactView }: { sends: SendRow[]; compactVi
                     ))}
                 </tbody>
             </table>
+            {sends.length > limit ? (
+                <button type="button" class="link-btn an-more an-table-more" onClick={() => setAll(!all)}>
+                    {all ? 'Show fewer' : `Show all ${sends.length}`}
+                </button>
+            ) : null}
         </div>
     );
 }

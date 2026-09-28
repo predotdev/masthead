@@ -294,6 +294,7 @@ export interface EmailTotals {
     complained: number;
     openRate: number | null;
     clickRate: number | null;
+    unsubscribeRate: number | null;
 }
 
 export interface EmailReport {
@@ -368,16 +369,22 @@ export function emailTotals(rows: SendRow[]): EmailTotals {
     const t = { sends: rows.length, sent: 0, delivered: 0, opened: 0, clicked: 0, unsubscribed: 0, bounced: 0, complained: 0 };
     let openBase = 0;
     let clickBase = 0;
+    let unsubscribeBase = 0;
     for (const r of rows) {
         t.sent += r.sent;
         t.delivered += r.delivered ?? 0;
-        t.unsubscribed += r.unsubscribed ?? 0;
         t.bounced += r.bounced ?? 0;
         t.complained += r.complained ?? 0;
         if (r.delivered && r.opened !== null) (t.opened += r.opened), (openBase += r.delivered);
         if (r.delivered && r.clicked !== null) (t.clicked += r.clicked), (clickBase += r.delivered);
+        if (r.delivered && r.unsubscribed !== null) (t.unsubscribed += r.unsubscribed), (unsubscribeBase += r.delivered);
     }
-    return { ...t, openRate: openBase ? t.opened / openBase : null, clickRate: clickBase ? t.clicked / clickBase : null };
+    return {
+        ...t,
+        openRate: openBase ? t.opened / openBase : null,
+        clickRate: clickBase ? t.clicked / clickBase : null,
+        unsubscribeRate: unsubscribeBase ? t.unsubscribed / unsubscribeBase : null
+    };
 }
 
 export async function emailReport(env: Env, db: D1Database, range: Range): Promise<EmailReport> {

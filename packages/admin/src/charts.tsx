@@ -53,6 +53,26 @@ function niceTicks(max: number, whole: boolean, min = 0): number[] {
     return ticks;
 }
 
+interface AxisLabel {
+    x: number;
+    text: string;
+    anchor: 'start' | 'middle' | 'end';
+}
+
+/** Date labels along the bottom, dropping any that would touch the one before. */
+function fitLabels(all: AxisLabel[]): AxisLabel[] {
+    const kept: AxisLabel[] = [];
+    let right = -Infinity;
+    for (const l of all) {
+        const w = l.text.length * 6.4;
+        const left = l.anchor === 'start' ? l.x : l.anchor === 'end' ? l.x - w : l.x - w / 2;
+        if (left < right + 10) continue;
+        kept.push(l);
+        right = left + w;
+    }
+    return kept;
+}
+
 function useWidth<T extends Element>(): [RefObject<T>, number] {
     const ref = useRef<T>(null);
     const [width, setWidth] = useState(0);
@@ -261,8 +281,14 @@ export function TrendChart({
                 const band = pw / Math.max(1, n);
                 const x = (i: number) => (bars ? pad.l + band * (i + 0.5) : pad.l + (n > 1 ? (pw * i) / (n - 1) : pw / 2));
                 const barW = Math.max(1, Math.min(24, band - 2));
-                const every = Math.max(1, Math.ceil(n / Math.max(2, Math.floor(pw / 72))));
-                const xTicks = labels.map((_, i) => i).filter(i => i % every === 0);
+                const longest = Math.max(...labels.map(b => bucketLabel(b, unit).length)) * 6.4;
+                const every = Math.max(1, Math.ceil(n / Math.max(2, Math.floor(pw / (longest + 18)))));
+                const xTicks = fitLabels(
+                    labels
+                        .map((b, i) => ({ i, b }))
+                        .filter(({ i }) => i % every === 0)
+                        .map(({ i, b }) => ({ x: x(i), text: bucketLabel(b, unit), anchor: !bars && i === 0 ? 'start' : !bars && i === n - 1 ? 'end' : 'middle' }))
+                );
                 const pick = (clientX: number, rect: DOMRect) => {
                     const px = clientX - rect.left;
                     const i = bars ? Math.floor((px - pad.l) / band) : Math.round(((px - pad.l) / pw) * (n - 1));
@@ -300,9 +326,9 @@ export function TrendChart({
                                     </text>
                                 </g>
                             ))}
-                            {xTicks.map(i => (
-                                <text key={i} class="an-axis" x={x(i)} y={height - 8} text-anchor={!bars && i === 0 ? 'start' : !bars && i === n - 1 ? 'end' : 'middle'}>
-                                    {bucketLabel(labels[i], unit)}
+                            {xTicks.map(l => (
+                                <text key={l.x} class="an-axis" x={l.x} y={height - 8} text-anchor={l.anchor}>
+                                    {l.text}
                                 </text>
                             ))}
                             {bars ? (
@@ -430,8 +456,11 @@ export function PointsChart({
                 const ph = height - pad.t - pad.b;
                 const x = (t: number) => (t1 > t0 ? pad.l + ((t - t0) / (t1 - t0)) * pw : pad.l + pw / 2);
                 const y = (v: number) => pad.t + ((top - v) / (top || 1)) * ph;
-                const labelCount = Math.max(2, Math.min(6, Math.floor(pw / 90)));
-                const xTicks = t1 > t0 ? Array.from({ length: labelCount }, (_, i) => t0 + ((t1 - t0) * i) / (labelCount - 1)) : [t0];
+                const dateText = (t: number) => (t1 - t0 > 300 * 86_400_000 ? MONTH_FMT.format(new Date(t)) : shortDate(new Date(t).toISOString()));
+                const longest = Math.max(dateText(t0).length, dateText(t1).length) * 6.4;
+                const labelCount = Math.max(2, Math.min(6, Math.floor(pw / (longest + 24))));
+                const at = t1 > t0 ? Array.from({ length: labelCount }, (_, i) => t0 + ((t1 - t0) * i) / (labelCount - 1)) : [t0];
+                const xTicks = fitLabels(at.map((t, i) => ({ x: x(t), text: dateText(t), anchor: at.length === 1 ? 'middle' : i === 0 ? 'start' : i === at.length - 1 ? 'end' : 'middle' })));
                 const d = list.map((p, i) => `${i ? 'L' : 'M'}${x(times[i]).toFixed(1)},${y(p.value!).toFixed(1)}`).join('');
                 const keys = keyHandlers(n, active, setActive);
                 const nearest = (clientX: number, rect: DOMRect) => {
@@ -458,9 +487,9 @@ export function PointsChart({
                                     </text>
                                 </g>
                             ))}
-                            {xTicks.map((t, i) => (
-                                <text key={i} class="an-axis" x={x(t)} y={height - 8} text-anchor={xTicks.length === 1 ? 'middle' : i === 0 ? 'start' : i === xTicks.length - 1 ? 'end' : 'middle'}>
-                                    {t1 - t0 > 300 * 86_400_000 ? MONTH_FMT.format(new Date(t)) : shortDate(new Date(t).toISOString())}
+                            {xTicks.map(l => (
+                                <text key={l.x} class="an-axis" x={l.x} y={height - 8} text-anchor={l.anchor}>
+                                    {l.text}
                                 </text>
                             ))}
                             {n > 1 ? <path class="an-line tone-main" d={d} /> : null}
