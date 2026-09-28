@@ -14,12 +14,13 @@ import { EmbedDialog, HtmlDialog, ImageDialog, VideoDialog } from './media';
 import { HistoryPanel, SearchPanel } from './post-tools';
 import { AutoTagNote, useServerTags, type TaggedPost } from './post-tags';
 import { SendDialog } from './newsletters';
+import { ShareButton, ShareDialog } from './share';
 
 type Draft = Omit<Post, 'id' | 'createdAt' | 'updatedAt' | 'newsletter' | 'type'>;
 
 type Modal =
     | null
-    | { kind: 'publish' | 'send' | 'draft' | 'meta' | 'delete' | 'embed' }
+    | { kind: 'publish' | 'send' | 'draft' | 'meta' | 'delete' | 'embed' | 'share' }
     | { kind: 'image'; mode: 'insert' | 'cover' | 'edit'; pos?: number; src?: string }
     | { kind: 'video' }
     | { kind: 'html'; pos: number; html: string };
@@ -278,6 +279,7 @@ function PostEditor({ initial, tags: allTags, staff }: { initial: Post; tags: Ta
                 <Button onClick={() => setSide(side === 'settings' ? null : 'settings')} aria-pressed={side === 'settings'}>
                     Settings
                 </Button>
+                <ShareButton post={post} onClick={() => setModal({ kind: 'share' })} />
                 {live ? (
                     <>
                         {post.type === 'post' ? (
@@ -442,6 +444,7 @@ function PostEditor({ initial, tags: allTags, staff }: { initial: Post; tags: Ta
 
             {modal?.kind === 'publish' ? <PublishDialog post={post} onClose={() => setModal(null)} onDone={p => (setPost(p), serverTags.saved(p), setModal(null))} onReview={() => (setModal(null), setSide('checks'))} /> : null}
             {modal?.kind === 'send' ? <SendDialog post={post} onClose={() => setModal(null)} /> : null}
+            {modal?.kind === 'share' ? <ShareDialog post={post} onClose={() => setModal(null)} /> : null}
             {modal?.kind === 'draft' ? (
                 <DraftDialog
                     editor={editorRef.current}

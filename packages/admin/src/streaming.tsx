@@ -243,7 +243,7 @@ export function splitDraft(text: string): { title: string; body: string; titleDo
     return { title: m[1].trim(), body: t.slice(m[0].length).trim(), titleDone: m[2] === '\n' };
 }
 
-const credits = (n: number) => `${n < 0.01 ? 'Under 0.01' : n < 10 ? n.toFixed(2) : Math.round(n)} credits`;
+export const credits = (n: number) => `${n < 0.01 ? 'Under 0.01' : n < 10 ? n.toFixed(2) : Math.round(n)} credits`;
 
 /**
  * Which model answered and, once the provider has settled it, what it cost. When the model

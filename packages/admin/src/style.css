@@ -1175,7 +1175,7 @@ html.has-sheet { overflow: hidden; }
 /* ------------------------------------------------------------------ writing tools
    House-style checks (underlines, the fix menu, the Style panel and its button in the
    editor bar), posts to link, and the Style checks settings. Issues are amber; a name
-   never to mention is red; the missing link is blue. */
+   never to mention is red; the missing link is blue. The share kit follows. */
 .style-issue { --tone: var(--amber); text-decoration: underline wavy color-mix(in srgb, var(--tone) 85%, transparent); text-decoration-thickness: 1.5px; text-underline-offset: 4px; text-decoration-skip-ink: none; border-radius: 3px; cursor: pointer; transition: background-color var(--fast); }
 .style-issue.style-name { --tone: var(--red); }
 /* A lone dash is thin: a tint makes it easy to find. */
@@ -1302,4 +1302,71 @@ button.issue-main { cursor: pointer; }
 }
 @media (pointer: coarse) {
   .style-menu-keys { display: none; }
+}
+
+/* the share kit: its cards scroll inside the dialog, so Stop, Copy and Write again stay in view */
+.kit { display: flex; flex-direction: column; gap: 12px; max-height: calc(90vh - 200px); margin: 0 -20px; padding: 2px 20px 6px; overflow-y: auto; overscroll-behavior: contain; }
+/* A scrolling column: the cards keep their height (the one with overflow: hidden would shrink to nothing). */
+.kit > * { flex-shrink: 0; }
+.kit > .note, .kit > .ai-note { margin: 0; }
+.kit-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: 12px; }
+.kit-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.kit-card { display: flex; flex-direction: column; min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--card); box-shadow: var(--shadow-xs); transition: border-color var(--base), box-shadow var(--base); }
+.kit-card.is-writing { border-color: color-mix(in srgb, var(--ai) 38%, var(--line)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ai) 9%, transparent), var(--shadow-xs); }
+.kit-head { display: flex; align-items: center; gap: 9px; min-height: 46px; padding: 8px 8px 8px 12px; border-bottom: 1px solid var(--line); }
+.kit-head h3 { margin: 0; font-size: var(--text-md); font-weight: 600; white-space: nowrap; }
+.kit-mark { display: inline-grid; place-items: center; flex: none; width: 22px; height: 22px; border-radius: 6px; background: var(--fg); color: var(--bg); font-size: 12px; font-weight: 700; letter-spacing: -0.02em; }
+.kit-mark.linkedin { background: #0a66c2; color: #ffffff; font-size: 11.5px; }
+.kit-mark.mail { background: var(--surface-2); color: var(--fg-2); box-shadow: inset 0 0 0 1px var(--line-2); }
+.kit-meta { margin-left: auto; overflow: hidden; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
+.kit-body { padding: 12px 14px 14px; }
+.kit-text { margin: 0; color: var(--fg); font-size: 14px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.kit-link { color: var(--blue); }
+.kit-tags { padding: 7px 14px; overflow: hidden; border-top: 1px solid var(--line); background: var(--surface); color: var(--faint); font: 11px/1.45 var(--mono); text-overflow: ellipsis; white-space: nowrap; }
+.kit-limit { color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.kit-limit.over { color: var(--red); font-weight: 600; }
+.kit-copy { display: inline-flex; align-items: center; gap: 5px; flex: none; height: 28px; padding: 0 11px; border: 1px solid var(--line-2); border-radius: var(--radius-full); background: var(--bg); color: var(--fg-2); font-size: 12.5px; font-weight: 500; cursor: pointer; transition: background-color var(--fast), border-color var(--fast), color var(--fast); }
+.kit-head h3 + .kit-copy { margin-left: auto; }
+.kit-meta + .kit-copy { margin-left: 4px; }
+.kit-copy:hover { border-color: var(--line-3); color: var(--fg); }
+.kit-copy.copied { border-color: color-mix(in srgb, var(--green) 35%, var(--line-2)); background: var(--green-bg); color: var(--green); }
+.kit-copy.compact { width: 28px; padding: 0; justify-content: center; border-color: transparent; background: none; color: var(--muted); }
+.kit-copy.compact:hover { background: var(--hover); color: var(--fg); }
+.kit-copy.compact.copied { background: var(--green-bg); color: var(--green); }
+.kit-waiting { display: flex; flex-direction: column; gap: 10px; padding: 5px 0; }
+.kit-thread { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.kit-thread li { position: relative; display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 10px; padding-bottom: 12px; }
+.kit-thread li:last-child { padding-bottom: 0; }
+/* The line that runs down a thread, joining its posts. */
+.kit-thread li:not(:last-child)::before { content: ""; position: absolute; top: 26px; bottom: 4px; left: 10.5px; width: 1px; background: var(--line-2); }
+.kit-n { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line-2); color: var(--muted); font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.kit-post { min-width: 0; padding-top: 1px; }
+.kit-post-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 28px; margin-top: 2px; }
+.kit-subjects { display: flex; flex-direction: column; margin: -6px 0; padding: 0; list-style: none; }
+.kit-subjects li { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.kit-subjects li:last-child { border-bottom: 0; }
+.kit-subject { min-width: 0; }
+.kit-subject-line { margin: 0; color: var(--fg); font-size: 14px; font-weight: 600; line-height: 1.4; }
+.kit-preheader { margin: 2px 0 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
+.kit-subject-tools { display: grid; grid-template-columns: auto 28px; align-items: center; justify-items: end; gap: 0 6px; }
+.kit-subject-tools .kit-copy.compact { height: 24px; }
+.kit-actions .kit-model { display: flex; align-items: center; gap: 4px; min-width: 0; margin-right: auto; }
+.kit-actions .kit-model .ai-credits { margin: 0; }
+.kit-angle { flex: 0 1 230px; min-width: 0; height: 32px; padding-top: 5px; padding-bottom: 5px; font-size: var(--text-md); }
+/* Share keeps its word where the editor bar has room. */
+@media (max-width: 1599px) {
+  .btn.share-btn { padding: 0 11px; }
+  .btn.share-btn > .icon { margin: 0; }
+  .share-btn-label { display: none; }
+}
+@media (max-width: 760px) {
+  .kit-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 640px) {
+  /* On a phone the sheet scrolls as one; its footer stays at the bottom edge. */
+  .kit { max-height: none; margin: 0; padding: 0; overflow: visible; }
+  .kit-actions { position: sticky; bottom: 0; z-index: 2; flex-wrap: wrap; }
+  .kit-angle { flex: 1 1 100%; order: -1; }
+  .kit-subject-tools { grid-template-columns: 28px; }
+  .kit-subject-tools .kit-limit { display: none; }
 }
