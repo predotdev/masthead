@@ -181,9 +181,12 @@ function dashes(text: string, rules: CompiledRules, out: Finding[]) {
             const [open, close] = other > i ? [m, all[other]] : [all[other], m];
             // The closing mark sits against punctuation that follows it ("…, mostly)." not "…, mostly) .").
             const tight = /^[.,;:!?)]/.test(text.slice(close.end));
+            // A colon or a period changes only the dash you clicked: for dashes that only look like a pair.
             fixes = [
                 { label: 'Commas', edits: [{ from: open.start, to: open.end, text: ', ' }, { from: close.start, to: close.end, text: tight ? '' : ', ' }], safe: true },
-                { label: 'Parentheses', edits: [{ from: open.start, to: open.end, text: ' (' }, { from: close.start, to: close.end, text: tight ? ')' : ') ' }] }
+                { label: 'Parentheses', edits: [{ from: open.start, to: open.end, text: ' (' }, { from: close.start, to: close.end, text: tight ? ')' : ') ' }] },
+                { label: 'Colon', edits: [edit(': ')] },
+                { label: 'Period', edits: [edit('. '), ...capitalizeAt(text, end, rules)] }
             ];
         } else if (!before.trim() || before.endsWith(LEAF)) fixes = [{ label: 'Remove', edits: [edit('')] }];
         else if (!after.trim() || after.startsWith(LEAF)) fixes = [{ label: 'Period', edits: [edit(/[.!?…:;,]$/.test(before) ? '' : '.')], safe: true }];
