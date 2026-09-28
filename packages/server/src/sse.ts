@@ -8,7 +8,7 @@
  * open while a model thinks. When the client goes away the signal aborts,
  * which cancels the model call upstream, and the generator is closed.
  *
- * Events: `status` {stage}, `sources` [{title, url}], unnamed {t: text},
+ * Events: `status` {stage, model?, requestedModel?}, `sources` [{title, url}], unnamed {t: text},
  * `preview` {src}, `done` {...result}, `usage` {charged, ...} and
  * `error` {message, status}.
  */
@@ -26,7 +26,8 @@ export function wantsEvents(req: Request): boolean {
     return (req.headers.get('accept') ?? '').includes('text/event-stream');
 }
 
-export const status = (stage: string): SseEvent => ({ event: 'status', data: { stage } });
+/** Where the work is; `extra` rides along, e.g. the model doing it. */
+export const status = (stage: string, extra?: Record<string, unknown>): SseEvent => ({ event: 'status', data: { stage, ...extra } });
 
 /**
  * `client` is the request's signal. The runtime cancels the body when it

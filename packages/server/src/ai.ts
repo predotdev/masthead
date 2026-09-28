@@ -63,6 +63,8 @@ interface WritingJob {
     query?: string;
     messages: TextMessage[];
     model: string;
+    /** The model asked for, when the site default writes instead. */
+    requested?: string;
     maxTokens: number;
     temperature?: number;
 }
@@ -70,9 +72,10 @@ interface WritingJob {
 /**
  * The events of one piece of writing: what it read, then the text as it is
  * written. Returns the whole text and how the stream ended, for the done event.
+ * The first event names the model that writes, so the page can show it at once.
  */
 async function* compose(ctx: Ctx, ai: AIProvider, job: WritingJob, signal: AbortSignal): AsyncGenerator<SseEvent, { text: string; end: StreamEnd }> {
-    yield status('reading');
+    yield status('reading', answeredBy(job.model, job));
     const { prompt, sources } = await system(ctx, job.task, job.query ? { query: job.query, ai } : undefined);
     if (job.query) yield { event: 'sources', data: sources.map(p => ({ title: p.title, url: p.url })) };
     yield status('writing');
@@ -110,22 +113,49 @@ function splitTitle(raw: string): { title: string; markdown: string } {
 
 const modelCache = new Map<string, { at: number; list: ModelInfo[] }>();
 
-export async function listModels(ctx: Ctx, kind?: ModelKind) {
+/** The provider's catalog, kept for ten minutes. */
+async function catalog(ctx: Ctx, kind?: ModelKind): Promise<ModelInfo[]> {
     const key = kind ?? 'all';
     const hit = modelCache.get(key);
-    const list = hit && Date.now() - hit.at < 600_000 ? hit.list : await provider(ctx).listModels(kind);
-    if (!hit || hit.list !== list) modelCache.set(key, { at: Date.now(), list });
-    // Mark the models this site uses by default, so pickers can show what "default" means.
-    const s = await aiSettings(ctx.env, ctx.db);
-    const defaults = new Set([s.textModel, s.imageModel, s.videoModel, s.embeddingModel].filter(Boolean));
-    return list.map(m => (defaults.has(m.id) ? { ...m, isDefault: true } : m));
+    if (hit && Date.now() - hit.at < 600_000) return hit.list;
+    const list = await provider(ctx).listModels(kind);
+    modelCache.set(key, { at: Date.now(), list });
+    return list;
 }
 
-async function textModel(ctx: Ctx): Promise<string> {
+export async function listModels(ctx: Ctx, kind?: ModelKind) {
+    const list = await catalog(ctx, kind);
+    // Mark the site's default for each kind, so pickers can show what "default" means. The text
+    // catalog also lists some image models, so a model counts as default only for its own kind.
     const s = await aiSettings(ctx.env, ctx.db);
-    if (!s.textModel) throw new HttpError(400, 'Choose a text model in Settings, AI.');
-    return s.textModel;
+    const defaults: Record<ModelKind, string | null | undefined> = { text: s.textModel, image: s.imageModel, video: s.videoModel, embedding: s.embeddingModel };
+    return list.map(m => (defaults[m.kind] === m.id ? { ...m, isDefault: true } : m));
 }
+
+type Chosen = { model: string; requested?: string };
+
+const NO_DEFAULT: Record<'text' | 'image' | 'video', string> = {
+    text: 'Choose a text model in Settings, AI.',
+    image: 'Choose an image model in Settings, AI.',
+    video: 'Choose a video model in Settings, AI.'
+};
+
+/**
+ * The model for a request: the one asked for when the catalog lists it for this kind, else
+ * the site default. A model the catalog doesn't list (or a catalog that can't be read) never
+ * fails the request; `requested` then says which model was asked for instead.
+ */
+async function chooseModel(ctx: Ctx, kind: 'text' | 'image' | 'video', asked?: unknown): Promise<Chosen> {
+    const s = await aiSettings(ctx.env, ctx.db);
+    const fallback = kind === 'text' ? s.textModel : kind === 'image' ? s.imageModel : s.videoModel;
+    const want = typeof asked === 'string' ? asked.trim() : '';
+    if (want && want !== fallback && (await catalog(ctx, kind).catch(() => [])).some(m => m.id === want)) return { model: want };
+    if (!fallback) throw new HttpError(400, NO_DEFAULT[kind]);
+    return want && want !== fallback ? { model: fallback, requested: want } : { model: fallback };
+}
+
+/** Which model answered, for a result or a done event; `requestedModel` only when the one asked for was not used. */
+const answeredBy = (used: string, chosen: Chosen): { model: string; requestedModel?: string } => (chosen.requested ? { model: used, requestedModel: chosen.requested } : { model: used });
 
 /**
  * Everything the model is told before the task: who it writes for, the house
@@ -158,6 +188,8 @@ async function system(ctx: Ctx, task: string, grounding?: { query: string; ai: A
 interface DraftInput {
     prompt: string;
     notes?: string;
+    /** A text model from the catalog; the site default when absent or not listed. */
+    model?: string;
 }
 
 function draftJob(input: DraftInput) {
@@ -173,18 +205,19 @@ function draftJob(input: DraftInput) {
 export async function draft(ctx: Ctx, input: DraftInput) {
     const job = draftJob(input);
     const ai = provider(ctx);
+    const chosen = await chooseModel(ctx, 'text', input.model);
     const { prompt } = await system(ctx, job.task, { query: job.query, ai });
-    const res = await ai.text({ model: await textModel(ctx), system: prompt, messages: job.messages, maxTokens: job.maxTokens });
-    return { ...splitTitle(res.text), model: res.model, usage: res.usage };
+    const res = await ai.text({ model: chosen.model, system: prompt, messages: job.messages, maxTokens: job.maxTokens });
+    return { ...splitTitle(res.text), ...answeredBy(res.model, chosen), usage: res.usage };
 }
 
 export async function draftStream(ctx: Ctx, input: DraftInput, client?: AbortSignal): Promise<Response> {
     const job = draftJob(input);
     const ai = provider(ctx);
-    const model = await textModel(ctx);
+    const chosen = await chooseModel(ctx, 'text', input.model);
     return eventStream(async function* (signal) {
-        const { text, end } = yield* compose(ctx, ai, { ...job, model }, signal);
-        yield { event: 'done', data: { ...splitTitle(text), model: end.model, usage: end.usage, finishReason: end.finishReason } };
+        const { text, end } = yield* compose(ctx, ai, { ...job, ...chosen }, signal);
+        yield { event: 'done', data: { ...splitTitle(text), ...answeredBy(end.model, chosen), usage: end.usage, finishReason: end.finishReason } };
         yield* settled(ai, end.usage, signal);
     }, client);
 }
@@ -192,6 +225,7 @@ export async function draftStream(ctx: Ctx, input: DraftInput, client?: AbortSig
 interface EditInput {
     markdown: string;
     instruction?: string;
+    model?: string;
 }
 
 function editJob(input: EditInput) {
@@ -205,17 +239,18 @@ function editJob(input: EditInput) {
 
 export async function edit(ctx: Ctx, input: EditInput) {
     const job = editJob(input);
-    const res = await provider(ctx).text({ model: await textModel(ctx), system: (await system(ctx, job.task)).prompt, messages: job.messages, maxTokens: job.maxTokens });
-    return { markdown: unfence(res.text), model: res.model, usage: res.usage };
+    const chosen = await chooseModel(ctx, 'text', input.model);
+    const res = await provider(ctx).text({ model: chosen.model, system: (await system(ctx, job.task)).prompt, messages: job.messages, maxTokens: job.maxTokens });
+    return { markdown: unfence(res.text), ...answeredBy(res.model, chosen), usage: res.usage };
 }
 
 export async function editStream(ctx: Ctx, input: EditInput, client?: AbortSignal): Promise<Response> {
     const job = editJob(input);
     const ai = provider(ctx);
-    const model = await textModel(ctx);
+    const chosen = await chooseModel(ctx, 'text', input.model);
     return eventStream(async function* (signal) {
-        const { text, end } = yield* compose(ctx, ai, { ...job, model }, signal);
-        yield { event: 'done', data: { markdown: unfence(text), model: end.model, usage: end.usage, finishReason: end.finishReason } };
+        const { text, end } = yield* compose(ctx, ai, { ...job, ...chosen }, signal);
+        yield { event: 'done', data: { markdown: unfence(text), ...answeredBy(end.model, chosen), usage: end.usage, finishReason: end.finishReason } };
         yield* settled(ai, end.usage, signal);
     }, client);
 }
@@ -223,6 +258,7 @@ export async function editStream(ctx: Ctx, input: EditInput, client?: AbortSigna
 interface MetaInput {
     title?: string;
     markdown: string;
+    model?: string;
 }
 
 // One suggestion per line, so each shows up as soon as its line is written.
@@ -251,19 +287,20 @@ export function parseMeta(text: string): { titles: string[]; descriptions: strin
 
 export async function meta(ctx: Ctx, input: MetaInput) {
     const job = metaJob(input);
-    const res = await provider(ctx).text({ model: await textModel(ctx), system: (await system(ctx, job.task)).prompt, messages: job.messages, maxTokens: job.maxTokens });
+    const chosen = await chooseModel(ctx, 'text', input.model);
+    const res = await provider(ctx).text({ model: chosen.model, system: (await system(ctx, job.task)).prompt, messages: job.messages, maxTokens: job.maxTokens });
     const found = parseMeta(res.text);
     if (!found.titles.length && !found.descriptions.length && !found.excerpt) throw new HttpError(502, 'The model answered in the wrong shape. Try again.');
-    return { ...found, model: res.model, usage: res.usage };
+    return { ...found, ...answeredBy(res.model, chosen), usage: res.usage };
 }
 
 export async function metaStream(ctx: Ctx, input: MetaInput, client?: AbortSignal): Promise<Response> {
     const job = metaJob(input);
     const ai = provider(ctx);
-    const model = await textModel(ctx);
+    const chosen = await chooseModel(ctx, 'text', input.model);
     return eventStream(async function* (signal) {
-        const { text, end } = yield* compose(ctx, ai, { ...job, model }, signal);
-        yield { event: 'done', data: { ...parseMeta(text), model: end.model, usage: end.usage, finishReason: end.finishReason } };
+        const { text, end } = yield* compose(ctx, ai, { ...job, ...chosen }, signal);
+        yield { event: 'done', data: { ...parseMeta(text), ...answeredBy(end.model, chosen), usage: end.usage, finishReason: end.finishReason } };
         yield* settled(ai, end.usage, signal);
     }, client);
 }
@@ -277,11 +314,9 @@ interface ImageInput {
     reference?: string;
 }
 
-async function imageModel(ctx: Ctx, input: ImageInput): Promise<string> {
+async function imageModel(ctx: Ctx, input: ImageInput): Promise<Chosen> {
     if (!input.prompt?.trim()) throw new HttpError(400, 'Describe the image.');
-    const model = input.model || (await aiSettings(ctx.env, ctx.db)).imageModel;
-    if (!model) throw new HttpError(400, 'Choose an image model in Settings, AI.');
-    return model;
+    return chooseModel(ctx, 'image', input.model);
 }
 
 async function keepImage(ctx: Ctx, res: ImageResult): Promise<string> {
@@ -293,10 +328,10 @@ async function keepImage(ctx: Ctx, res: ImageResult): Promise<string> {
 }
 
 export async function image(ctx: Ctx, input: ImageInput) {
-    const model = await imageModel(ctx, input);
+    const chosen = await imageModel(ctx, input);
     const references = input.reference ? [await asDataUrl(ctx, input.reference)] : undefined;
-    const res = await provider(ctx).image({ model, prompt: input.prompt, aspectRatio: input.aspectRatio ?? '16:9', references });
-    return { url: await keepImage(ctx, res), model: res.model, usage: res.usage };
+    const res = await provider(ctx).image({ model: chosen.model, prompt: input.prompt, aspectRatio: input.aspectRatio ?? '16:9', references });
+    return { url: await keepImage(ctx, res), ...answeredBy(res.model, chosen), usage: res.usage };
 }
 
 /**
@@ -305,18 +340,19 @@ export async function image(ctx: Ctx, input: ImageInput) {
  * send them), saving, then the address of the result.
  */
 export async function imageStream(ctx: Ctx, input: ImageInput, client?: AbortSignal): Promise<Response> {
-    const model = await imageModel(ctx, input);
+    const chosen = await imageModel(ctx, input);
+    const model = chosen.model;
     const ai = provider(ctx);
     return eventStream(async function* (signal) {
         let references: string[] | undefined;
         if (input.reference) {
-            yield status('reading');
+            yield status('reading', answeredBy(model, chosen));
             references = [await asDataUrl(ctx, input.reference)];
         }
-        yield status('painting');
+        yield status('painting', answeredBy(model, chosen));
         const previews: string[] = [];
         let wake = () => {};
-        const sendsPreviews = (await listModels(ctx, 'image').catch(() => [])).some(m => m.id === model && m.supports?.streaming);
+        const sendsPreviews = (await catalog(ctx, 'image').catch(() => [])).some(m => m.id === model && m.supports?.streaming);
         const job = ai.image({
             model,
             prompt: input.prompt,
@@ -336,7 +372,7 @@ export async function imageStream(ctx: Ctx, input: ImageInput, client?: AbortSig
         }
         const res = await job;
         yield status('saving');
-        yield { event: 'done', data: { url: await keepImage(ctx, res), model: res.model, usage: res.usage } };
+        yield { event: 'done', data: { url: await keepImage(ctx, res), ...answeredBy(res.model, chosen), usage: res.usage } };
     }, client);
 }
 
@@ -385,6 +421,7 @@ export interface AssistInput {
     /** The whole post as Markdown (chat). */
     post?: string;
     messages?: TextMessage[];
+    /** A text model from the catalog; the site default when absent or not listed. */
     model?: string;
 }
 
@@ -427,11 +464,11 @@ export async function assist(ctx: Ctx, input: AssistInput, client?: AbortSignal)
                           .join('\n\n')
                   }
               ];
-    const model = input.model || (await textModel(ctx));
+    const chosen = await chooseModel(ctx, 'text', input.model);
     // The headers go out now; looking up passages happens inside the stream, so the client sees "reading" at once.
     return eventStream(async function* (signal) {
-        const { end } = yield* compose(ctx, ai, { task: TASKS[mode], query: query || clip(input.post, 1500), messages, model, maxTokens: mode === 'chat' ? 3000 : 2500, temperature: 0.6 }, signal);
-        yield { event: 'done', data: { model: end.model, usage: end.usage, finishReason: end.finishReason } };
+        const { end } = yield* compose(ctx, ai, { task: TASKS[mode], query: query || clip(input.post, 1500), messages, ...chosen, maxTokens: mode === 'chat' ? 3000 : 2500, temperature: 0.6 }, signal);
+        yield { event: 'done', data: { ...answeredBy(end.model, chosen), usage: end.usage, finishReason: end.finishReason } };
         yield* settled(ai, end.usage, signal);
     }, client);
 }
@@ -442,9 +479,8 @@ export async function startVideo(ctx: Ctx, input: { prompt: string; model?: stri
     const ai = provider(ctx);
     if (!ai.video) throw new HttpError(501, 'The AI provider cannot make video.');
     if (!input.prompt?.trim()) throw new HttpError(400, 'Describe the video.');
-    const s = await aiSettings(ctx.env, ctx.db);
-    const model = input.model || s.videoModel;
-    if (!model) throw new HttpError(400, 'Choose a video model in Settings, AI.');
+    const chosen = await chooseModel(ctx, 'video', input.model);
+    const model = chosen.model;
     // "Animate this image": the still becomes the clip's first frame.
     const firstFrame = input.reference ? await asDataUrl(ctx, input.reference) : undefined;
     const job = await ai.video.submit({ model, prompt: input.prompt.trim(), aspectRatio: input.aspectRatio ?? '16:9', duration: input.duration, firstFrame });
@@ -454,7 +490,7 @@ export async function startVideo(ctx: Ctx, input: { prompt: string; model?: stri
         .prepare('INSERT INTO ai_jobs (id, kind, provider_id, status, prompt, model, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
         .bind(id, 'video', job.id, job.status, input.prompt.trim(), model, by.staffId, t, t)
         .run();
-    return { id, status: job.status };
+    return { id, status: job.status, ...answeredBy(model, chosen) };
 }
 
 /** Checks a video job; once finished, stores the file with the rest of the media and returns its address. */
@@ -597,10 +633,10 @@ async function keepIdeaDraft(ctx: Ctx, idea: any, by: Principal, d: { title?: st
     return post;
 }
 
-export async function draftIdea(ctx: Ctx, id: string, by: Principal) {
+export async function draftIdea(ctx: Ctx, id: string, by: Principal, model?: string) {
     const idea = await ideaFor(ctx, id);
-    const d = await draft(ctx, ideaDraftInput(idea));
-    return { post: await keepIdeaDraft(ctx, idea, by, d) };
+    const d = await draft(ctx, { ...ideaDraftInput(idea), model });
+    return { post: await keepIdeaDraft(ctx, idea, by, d), model: d.model, requestedModel: d.requestedModel };
 }
 
 /** Text someone already has (say, a draft they stopped part way) saved as the idea's draft. */
@@ -610,18 +646,18 @@ export async function saveIdeaDraft(ctx: Ctx, id: string, by: Principal, d: { ti
 }
 
 /** Writes the idea's draft as events, then saves it as a post once the model finishes. Stopping early saves nothing. */
-export async function draftIdeaStream(ctx: Ctx, id: string, by: Principal, client?: AbortSignal): Promise<Response> {
+export async function draftIdeaStream(ctx: Ctx, id: string, by: Principal, client?: AbortSignal, model?: string): Promise<Response> {
     const idea = await ideaFor(ctx, id);
     const job = draftJob(ideaDraftInput(idea));
     const ai = provider(ctx);
-    const model = await textModel(ctx);
+    const chosen = await chooseModel(ctx, 'text', model);
     return eventStream(async function* (signal) {
-        const { text, end } = yield* compose(ctx, ai, { ...job, model }, signal);
+        const { text, end } = yield* compose(ctx, ai, { ...job, ...chosen }, signal);
         const d = splitTitle(text);
         if (!d.markdown.trim()) throw new HttpError(502, 'The model wrote nothing. Try again.');
         yield status('saving');
         const post = await keepIdeaDraft(ctx, idea, by, d);
-        yield { event: 'done', data: { ...d, post: { id: post.id, slug: post.slug, title: post.title }, model: end.model, usage: end.usage, finishReason: end.finishReason } };
+        yield { event: 'done', data: { ...d, post: { id: post.id, slug: post.slug, title: post.title }, ...answeredBy(end.model, chosen), usage: end.usage, finishReason: end.finishReason } };
         yield* settled(ai, end.usage, signal);
     }, client);
 }

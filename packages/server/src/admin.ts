@@ -699,12 +699,13 @@ export function adminRoutes(): Router<A> {
         const input = await body(req);
         return json(await addIdeas(ctx, Array.isArray(input.ideas) ? input.ideas : [input as any]), 201);
     });
-    /** Writes the idea's draft (streamed on request) and saves it; with markdown in the body, saves that text instead. */
+    /** Writes the idea's draft (streamed on request, with an optional text model) and saves it; with markdown in the body, saves that text instead. */
     r.post('/ideas/:id/draft', async (req, ctx, { id }) => {
         const p = me(ctx);
         const input = await body(req);
         if (input.markdown !== undefined) return json(await saveIdeaDraft(ctx, id, p, { title: input.title, markdown: String(input.markdown) }), 201);
-        return wantsEvents(req) ? draftIdeaStream(ctx, id, p, req.signal) : json(await draftIdea(ctx, id, p));
+        const model = typeof input.model === 'string' ? input.model : undefined;
+        return wantsEvents(req) ? draftIdeaStream(ctx, id, p, req.signal, model) : json(await draftIdea(ctx, id, p, model));
     });
     r.put('/ideas/:id', async (req, ctx, { id }) => {
         me(ctx);
