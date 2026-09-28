@@ -196,7 +196,7 @@ export async function saveSequence(db: D1Database, id: string, input: { name?: u
     const steps = input.steps !== undefined ? validSteps(input.steps) : existing!.steps;
     const name = typeof input.name === 'string' && input.name.trim() ? input.name.trim().slice(0, 80) : (existing?.name ?? 'Sequence');
     const enabled = typeof input.enabled === 'boolean' ? input.enabled : Boolean(existing?.enabled);
-    if (enabled && !steps.length) throw new HttpError(400, 'Add an email before turning the series on.');
+    if (enabled && !steps.length) throw new HttpError(400, existing?.enabled ? 'Turn the series off before removing its last email.' : 'Add an email before turning the series on.');
     const turningOn = enabled && !existing?.enabled;
     const t = now();
     await db
@@ -536,17 +536,18 @@ interface Handled {
     posts: string;
 }
 
-/** Sends what is due: new joiners first, then every enabled sequence's due emails, within the time budget. */
+/** Sends what is due: new joiners first, then the due emails of every sequence that is on, within the time budget. A sequence that is off sends nothing. */
 export async function processSequences(env: Env, db: D1Database, options: AppOptions, budgetMs = 40_000): Promise<SequenceRun> {
     const stats: SequenceRun = { enrolled: 0, sent: 0, failed: 0, skipped: 0, stopped: 0 };
-    const { results: rows } = await db.prepare('SELECT * FROM sequences').all<SequenceRow>();
-    const live = rows.filter(r => r.enabled);
-    const stuck = await db.prepare("SELECT COUNT(*) AS n FROM sequence_sends WHERE status = 'sending'").first<{ n: number }>();
-    if (!live.length && !Number(stuck?.n)) return stats;
+    const { results: live } = await db.prepare('SELECT * FROM sequences WHERE enabled = 1').all<SequenceRow>();
+    if (!live.length) return stats;
+    const ids = live.map(r => r.id);
+    const marks = ids.map(() => '?').join(',');
+    const stuck = await db.prepare(`SELECT COUNT(*) AS n FROM sequence_sends WHERE status = 'sending' AND sequence_id IN (${marks})`).bind(...ids).first<{ n: number }>();
     const deadline = Date.now() + budgetMs;
     // Test mode: only the team joins or gets an email; checked again right before each send.
     const team = testMode(env) ? await testTeam(env, db) : null;
-    const sequences = new Map(rows.map(r => [r.id, toSequence(r)]));
+    const sequences = new Map(live.map(r => [r.id, toSequence(r)]));
     for (const r of live) stats.enrolled += await sweep(db, r, sequences.get(r.id)!, team);
     const transport = options.email?.(env);
     if (!transport) return stats;
@@ -557,14 +558,13 @@ export async function processSequences(env: Env, db: D1Database, options: AppOpt
     }
     const run: Run = { env, db, transport, sequences, team, stats, render: { ...renderer(env, db), from }, emailed: new Set() };
     if (Number(stuck?.n)) await retryStuck(run);
-    const ids = live.map(r => r.id);
     let after: string[] | null = null;
-    while (ids.length && Date.now() < deadline) {
+    while (Date.now() < deadline) {
         const { results: due }: { results: Due[] } = await db
             .prepare(
                 `SELECT sm.sequence_id, sm.member_id, sm.enrolled_at, sm.next_at, m.email, m.status AS member_status, m.suppressed, m.analytics_id
                  FROM sequence_members sm LEFT JOIN members m ON m.id = sm.member_id
-                 WHERE sm.status = 'active' AND sm.next_at <= ? AND sm.sequence_id IN (${ids.map(() => '?').join(',')})
+                 WHERE sm.status = 'active' AND sm.next_at <= ? AND sm.sequence_id IN (${marks})
                  ${after ? 'AND (sm.next_at, sm.sequence_id, sm.member_id) > (?, ?, ?)' : ''}
                  ORDER BY sm.next_at, sm.sequence_id, sm.member_id LIMIT ?`
             )
@@ -703,6 +703,16 @@ async function sendDue(run: Run, due: Due[]): Promise<number | null> {
 async function deliver(run: Run, claims: Claim[]): Promise<number | null> {
     const { db, env, stats } = run;
     const r = run.render;
+    // Test mode's last word: nothing leaves for an address outside the team, whatever claimed it.
+    const outside = run.team ? claims.filter(c => !onTeam(run.team!, c.due.email ?? '')) : [];
+    if (outside.length) {
+        await batchAll(
+            db,
+            outside.flatMap(c => [db.prepare("UPDATE sequence_sends SET status = 'failed', error = 'Not on the team in test mode' WHERE id = ?").bind(c.id), settle(db, c.seq.id, c.due.member_id, null, 'test mode')])
+        );
+        claims = claims.filter(c => !outside.includes(c));
+        if (!claims.length) return 0;
+    }
     const messages: EmailMessage[] = [];
     for (const c of claims) {
         const email = await stepEmail(r, c.seq, c.step, c.posts);
@@ -774,9 +784,9 @@ async function retryStuck(run: Run): Promise<void> {
         .prepare(
             `SELECT ss.id, ss.sequence_id, ss.step_id, ss.member_id, ss.posts, ss.batch, ss.error, ss.created_at, m.email, m.status AS member_status, m.suppressed, m.analytics_id, sm.enrolled_at, sm.next_at
              FROM sequence_sends ss LEFT JOIN members m ON m.id = ss.member_id LEFT JOIN sequence_members sm ON sm.sequence_id = ss.sequence_id AND sm.member_id = ss.member_id
-             WHERE ss.status = 'sending' AND ss.tried_at < ? ORDER BY ss.batch, ss.id LIMIT 300`
+             WHERE ss.status = 'sending' AND ss.tried_at < ? AND ss.sequence_id IN (${[...run.sequences.keys()].map(() => '?').join(',')}) ORDER BY ss.batch, ss.id LIMIT 300`
         )
-        .bind(cutoff)
+        .bind(cutoff, ...run.sequences.keys())
         .all<Due & { id: string; step_id: string; posts: string; batch: string; error: string | null; created_at: string }>();
     const batches = new Map<string, typeof results>();
     for (const row of results) batches.set(row.batch, [...(batches.get(row.batch) ?? []), row]);
