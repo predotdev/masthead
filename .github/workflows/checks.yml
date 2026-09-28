@@ -4,6 +4,10 @@ on:
   push:
   pull_request:
 
+# Read-only token: pull requests from forks run this too once the repository is public.
+permissions:
+  contents: read
+
 jobs:
   checks:
     runs-on: ubuntu-latest
