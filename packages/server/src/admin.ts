@@ -42,6 +42,7 @@ import { share, shareStream } from './share';
 import { wantsEvents } from './sse';
 import { saveStyleSettings, styleSettings } from './style';
 import { HttpError, body, csvEscape, html, json, newId, now, parseCsv, redirect, safeEqual, sleep } from './util';
+import { workflowRoutes } from './workflow';
 
 type A = Ctx & { principal?: Principal };
 const me = (ctx: A) => atLeast(ctx.principal, 'contributor');
@@ -828,6 +829,7 @@ export function adminRoutes(): Router<A> {
         return json({ ...row, members: await memberStats(ctx.db) });
     });
 
+    workflowRoutes(r, canEdit);
     return r;
 }
 
