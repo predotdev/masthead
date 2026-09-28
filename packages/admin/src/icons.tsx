@@ -286,6 +286,24 @@ const PATHS = {
         </>
     ),
     pointer: <path d="M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z" />,
+    calendar: (
+        <>
+            <path d="M8 2v4" />
+            <path d="M16 2v4" />
+            <rect width="18" height="18" x="3" y="4" rx="2" />
+            <path d="M3 10h18" />
+        </>
+    ),
+    calendarPlus: (
+        <>
+            <path d="M8 2v4" />
+            <path d="M16 2v4" />
+            <path d="M21 13V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8" />
+            <path d="M3 10h18" />
+            <path d="M16 19h6" />
+            <path d="M19 16v6" />
+        </>
+    ),
     bell: (
         <>
             <path d="M10.268 21a2 2 0 0 0 3.464 0" />
@@ -306,6 +324,7 @@ const PATHS = {
             <path d="M12 6v6l4 2" />
         </>
     ),
+    chevronLeft: <path d="m15 18-6-6 6-6" />,
     more: (
         <>
             <circle cx="12" cy="12" r="1" />
@@ -349,6 +368,16 @@ const PATHS = {
         <>
             <path d="m9 17-5-5 5-5" />
             <path d="M20 18v-2a4 4 0 0 0-4-4H4" />
+        </>
+    ),
+    grip: (
+        <>
+            <circle cx="9" cy="12" r="1" />
+            <circle cx="9" cy="5" r="1" />
+            <circle cx="9" cy="19" r="1" />
+            <circle cx="15" cy="12" r="1" />
+            <circle cx="15" cy="5" r="1" />
+            <circle cx="15" cy="19" r="1" />
         </>
     )
 };

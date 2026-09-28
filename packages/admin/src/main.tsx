@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { api, base, session, type Me } from './api';
 import { Icon, type IconName } from './icons';
 import { Analytics } from './pages/analytics';
+import { Calendar } from './pages/calendar';
 import { Ideas } from './pages/ideas';
 import { Login, Verify } from './pages/login';
 import { Members } from './pages/members';
@@ -62,6 +63,7 @@ const NAV: { label: string; items: NavItem[] }[] = [
         label: 'Content',
         items: [
             { path: '/posts', label: 'Posts', icon: 'posts' },
+            { path: '/calendar', label: 'Calendar', icon: 'calendar' },
             { path: '/ideas', label: 'Ideas', icon: 'ideas' },
             { path: '/tags', label: 'Tags', icon: 'tags' }
         ]
@@ -82,7 +84,7 @@ const NAV: { label: string; items: NavItem[] }[] = [
         ]
     }
 ];
-const TITLES: Record<string, string> = { pages: 'Pages', edit: 'Editor', ideas: 'Ideas', analytics: 'Analytics', members: 'Members', newsletters: 'Newsletters', tags: 'Tags', staff: 'Staff', settings: 'Settings' };
+const TITLES: Record<string, string> = { pages: 'Pages', edit: 'Editor', calendar: 'Calendar', ideas: 'Ideas', analytics: 'Analytics', members: 'Members', newsletters: 'Newsletters', tags: 'Tags', staff: 'Staff', settings: 'Settings' };
 const ROLE_LABEL: Record<Role, string> = { owner: 'Owner', admin: 'Admin', editor: 'Editor', author: 'Author', contributor: 'Contributor' };
 
 /** The nav item a route belongs to: pages and the editor live under Posts. */
@@ -108,6 +110,8 @@ function Page() {
             return <Posts type="page" />;
         case 'edit':
             return <LazyEditor id={arg} />;
+        case 'calendar':
+            return <Calendar />;
         case 'ideas':
             return <Ideas />;
         case 'analytics':

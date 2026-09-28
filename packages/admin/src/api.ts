@@ -68,6 +68,8 @@ export interface Post {
     tags: string[];
     authors: string[];
     newsletter: { sentAt: string | null; recipients: number; delivered: number; opened: number } | null;
+    /** The day a draft is planned for (YYYY-MM-DD), on the calendar. */
+    targetDate?: string | null;
     /** Where its review stands, in lists. */
     review?: { status: 'in_review' | 'approved' | 'changes_requested'; approved: number; reviewers: number } | null;
 }
@@ -119,4 +121,15 @@ export function fmtSince(iso: string | null | undefined): string {
     if (s < 86400) return rtf.format(-Math.floor(s / 3600), 'hour');
     if (s < 7 * 86400) return rtf.format(-Math.floor(s / 86400), 'day');
     return `on ${fmtDate(iso)}`;
+}
+
+/** A local calendar day as YYYY-MM-DD. */
+export function dayKey(d: Date): string {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** YYYY-MM-DD as a local date at midnight. */
+export function fromDayKey(key: string): Date {
+    const [y, m, d] = key.split('-').map(Number);
+    return new Date(y, m - 1, d);
 }

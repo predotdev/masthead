@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
-import { api, fmtDate, fmtNum, type Post, type Staff } from '../api';
+import { api, fmtDate, fmtNum, fromDayKey, type Post, type Staff } from '../api';
 import { Icon } from '../icons';
 import { Avatar, Button, Empty, ErrorNote, PageHead, Pill, Segmented, TableSkeleton, errorToast, useLoad } from '../ui';
 import { REVIEW_LABEL, REVIEW_TONE } from './review-status';
@@ -172,9 +172,18 @@ export function Posts({ type }: { type: 'post' | 'page' }) {
                                                     <span class="faint">None</span>
                                                 )}
                                             </td>
-                                            <td class="col-date nowrap muted" title={`${p.status === 'published' ? 'Published' : p.status === 'scheduled' ? 'Scheduled for' : p.publishedAt ? 'Publish date' : 'Updated'} ${new Date(when).toLocaleString()}`}>
-                                                {fmtDate(when)}
-                                            </td>
+                                            {p.status === 'draft' && p.targetDate ? (
+                                                <td class="col-date nowrap muted" title={`Planned for ${fromDayKey(p.targetDate).toLocaleDateString(undefined, { dateStyle: 'full' })}`}>
+                                                    <span class="planned-date">
+                                                        <Icon name="calendar" size={13} />
+                                                        {fmtDate(fromDayKey(p.targetDate).toISOString())}
+                                                    </span>
+                                                </td>
+                                            ) : (
+                                                <td class="col-date nowrap muted" title={`${p.status === 'published' ? 'Published' : p.status === 'scheduled' ? 'Scheduled for' : p.publishedAt ? 'Publish date' : 'Updated'} ${new Date(when).toLocaleString()}`}>
+                                                    {fmtDate(when)}
+                                                </td>
+                                            )}
                                             {views ? <td class="num">{p.status === 'published' ? fmtNum(views.get(p.slug) ?? 0) : <span class="faint">–</span>}</td> : null}
                                             {type === 'post' ? <td class="num muted">{p.newsletter ? fmtNum(p.newsletter.recipients) : <span class="faint">–</span>}</td> : null}
                                             {type === 'post' ? (

@@ -558,6 +558,11 @@ function SettingsPanel(props: {
             <Field label="Publish date">
                 <input type="datetime-local" value={draft.publishedAt ? toLocal(draft.publishedAt) : ''} onInput={e => update({ publishedAt: e.currentTarget.value ? new Date(e.currentTarget.value).toISOString() : null })} />
             </Field>
+            {props.post.status === 'draft' ? (
+                <Field label="Target date" hint="The day it is planned for, on the calendar.">
+                    <input type="date" value={draft.targetDate ?? ''} onInput={e => update({ targetDate: e.currentTarget.value || null })} />
+                </Field>
+            ) : null}
             <Field label="Tags">
                 <div class="chips">
                     {draft.tags.map(id => {
