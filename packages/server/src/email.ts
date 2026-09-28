@@ -84,7 +84,7 @@ function brand(site: SiteSettings, origin: string, assets?: Partial<EmailAssets>
     const named = title.toLowerCase().startsWith(`${site.title.toLowerCase()} `);
     return {
         logo,
-        logoSize: site.logo ? assets?.images?.[site.logo] : undefined,
+        logoSize: site.logoSize ?? (site.logo ? assets?.images?.[site.logo] : undefined),
         name: named ? title.slice(0, site.title.length) : title,
         kind: named ? title.slice(site.title.length + 1) : '',
         words: !logo || !!a.logoText,

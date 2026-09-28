@@ -85,7 +85,7 @@ export async function buildEmail(env: Env, db: D1Database, post: Post): Promise<
     const body = settings.utm === false ? tagged : utmLinks(tagged, { utm_source: 'email', utm_medium: 'newsletter', utm_campaign: post.slug });
     const tags = post.tags.length ? await listTags(db) : [];
     const tag = post.tags.map(id => tags.find(t => t.id === id && t.visibility === 'public')?.name).find(Boolean) ?? null;
-    const [assets, sizes] = await Promise.all([loadEmailAssets(body, { sizes: srcs => storedSizes(db, srcs) }), imageSizes(db, [post.featureImage, site.logo])]);
+    const [assets, sizes] = await Promise.all([loadEmailAssets(body, { sizes: srcs => storedSizes(db, srcs) }), imageSizes(db, [post.featureImage, site.logoSize ? null : site.logo])]);
     const email = newsletterEmail({
         site,
         post,
@@ -140,7 +140,18 @@ async function imageSizes(db: D1Database, srcs: (string | null | undefined)[]): 
     return out;
 }
 
+/** Remote sizes already read in this isolate: a send is built again for every batch. */
+const remoteSizes = new Map<string, Size>();
+
 async function remoteSize(url: string): Promise<Size | null> {
+    const known = remoteSizes.get(url);
+    if (known) return known;
+    const size = await readSize(url);
+    if (size) remoteSizes.set(url, size);
+    return size;
+}
+
+async function readSize(url: string): Promise<Size | null> {
     const res = await fetch(url, { headers: { range: 'bytes=0-65535' }, signal: AbortSignal.timeout(2500) }).catch(() => null);
     if (!res?.ok || !res.body) return null;
     // At most 64 KB, even from a server that ignores the range.
