@@ -178,7 +178,7 @@ function card(ctx: ThemeContext, item: ListItem): string {
 }
 
 /**
- * The front page's masthead: the configured title, big, after the logo, and the tagline.
+ * The front page's masthead: the configured title, big, after the logo, and a tagline if one is set.
  * A title that starts with the site's name ("pre.dev blog") sets the name at full strength
  * and the rest lighter. Without a title, the heading is for screen readers only.
  */
@@ -191,13 +191,9 @@ function masthead(ctx: ThemeContext): string {
     const title = named
         ? `<span class="masthead-name">${esc(h.title.slice(0, s.title.length))}</span> <span class="masthead-kind">${esc(h.title.slice(s.title.length + 1))}</span>`
         : `<span class="masthead-name">${esc(h.title)}</span>`;
-    // "A + B": each phrase stays whole, and a wrapped line starts with the plus.
-    const text = h.text || s.description || '';
-    const parts = text.split(' + ');
-    const tagline = parts.length > 1 ? parts.map((part, i) => `<span class="phrase">${i ? '<span class="plus">+</span>' : ''}${esc(part)}</span>`).join(' ') : esc(text);
     return `<header class="masthead">
   <h1 class="masthead-title">${mark} ${title}</h1>
-  ${tagline ? `<p class="masthead-tagline">${tagline}</p>` : ''}
+  ${h.text ? `<p class="masthead-tagline">${esc(h.text)}</p>` : ''}
 </header>`;
 }
 

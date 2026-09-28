@@ -129,8 +129,8 @@ export interface Appearance {
     backdrop?: { image?: string | null; mobileImage?: string | null; sparkles?: boolean } | null;
     /**
      * The front page's masthead: `title` big after the logo (a title starting with the
-     * site title sets the rest lighter, e.g. "pre.dev blog"), `text` as the tagline
-     * (default: the site description). Without a title the newest post leads the page.
+     * site title sets the rest lighter, e.g. "pre.dev blog") and `text` as a tagline under
+     * it (none when blank). Without a title the newest post leads the page.
      */
     hero?: { title?: string | null; text?: string | null } | null;
     /** A button at the end of the header, e.g. "Sign in" to your product. */

@@ -266,7 +266,7 @@ export function AppearanceEditor({ value, onChange }: { value: Appearance; onCha
                     <Field label="Title" hint="Shown big after the logo. Blank: no masthead; the newest post leads the page.">
                         <input value={hero.title ?? ''} placeholder="Acme blog" onInput={e => onChange({ ...value, hero: { ...hero, title: text(e.currentTarget.value) } })} />
                     </Field>
-                    <Field label="Tagline" hint="Blank: the site description.">
+                    <Field label="Tagline" hint="Blank: none.">
                         <input value={hero.text ?? ''} onInput={e => onChange({ ...value, hero: { ...hero, text: text(e.currentTarget.value) } })} />
                     </Field>
                 </div>

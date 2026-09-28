@@ -177,8 +177,6 @@ kbd { font: 11px/1 var(--mono); padding: 3px 5px; border-radius: 5px; border: 1p
 .masthead-name, .masthead-kind { padding-bottom: 0.1em; background: linear-gradient(to bottom, var(--fg) 25%, var(--title-fade)); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .masthead-kind { font-weight: 300; letter-spacing: -0.03em; background-image: linear-gradient(to bottom, var(--fg-2), var(--faint)); }
 .masthead-tagline { margin: 26px auto 0; max-width: 46rem; font-size: clamp(17px, 2.1vw, 23px); line-height: 1.4; letter-spacing: -0.012em; color: var(--muted); text-wrap: balance; }
-.masthead-tagline .plus { margin-right: 0.3em; color: var(--fg); text-shadow: 0 0 14px var(--mark-glow); }
-.masthead-tagline .phrase { white-space: nowrap; }
 .masthead + .feature-hero { padding-top: 72px; }
 .hero-title { margin: 22px auto 0; max-width: 16ch; font-size: clamp(42px, 6.2vw, 64px); line-height: 1.12; letter-spacing: -0.03em; font-weight: 500; text-wrap: balance; }
 .hero-title, .post-title, .list-title { background: linear-gradient(to bottom, var(--fg), var(--title-fade)); -webkit-background-clip: text; background-clip: text; color: transparent; }
