@@ -3,6 +3,7 @@ import { api, fmtDate } from '../api';
 import { ModelPicker } from '../model-picker';
 import { reloadModels } from '../models';
 import { Button, Dialog, ErrorNote, Field, Loading, PageHead, Pill, errorToast, toast, useLoad } from '../ui';
+import { BackupsPanel } from './backups';
 import { IdeasSettings, type IdeaSettings } from './ideas-settings';
 import { MemoryPanel } from './memory';
 import { AppearanceEditor, FooterEditor, HeaderMenu } from './site-design';
@@ -248,6 +249,8 @@ function SettingsForm({ data, reload, section }: { data: SettingsData; reload: (
                     </tbody>
                 </table>
             </section>
+
+            <BackupsPanel />
             {newKey ? (
                 <Dialog title="Your new key" onClose={() => setNewKey(null)}>
                     <p>Copy it now. It won't be shown again.</p>

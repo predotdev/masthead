@@ -1171,3 +1171,7 @@ html.has-sheet { overflow: hidden; }
 @media (max-width: 640px) {
   .ai-panel-model { display: none; }
 }
+
+/* ------------------------------------------------------------------ Settings, Backups */
+.backups .note { margin: 0; }
+.backups .facts .pill { margin-left: 8px; vertical-align: 1px; }
