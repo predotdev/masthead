@@ -1,5 +1,5 @@
-# Copy to wrangler.toml and fill in your own ids. Keep that copy out of the
-# public repo if it names your account or resources.
+# Copy to wrangler.toml and fill in your own ids (git ignores that copy, since it
+# names your account's resources). Every setting: docs/configuration.md.
 name = "masthead"
 main = "src/index.ts"
 compatibility_date = "2026-09-01"
@@ -37,8 +37,11 @@ not_found_handling = "none"
 [vars]
 SITE_URL = "https://example.com/blog/"
 EMAIL_FROM = "Example <news@example.com>"
-# Until you switch traffic, keep newsletters away from real inboxes:
+# Until you switch traffic, newsletters reach only staff and these addresses or @domains:
 EMAIL_TEST_MODE = "true"
+# EMAIL_TEST_ALLOW = "@example.com"
+# The postal address every newsletter footer carries:
+# POSTAL_ADDRESS = "Example Inc., 1 Main St, Springfield, USA"
 # LINK_TAG = "ref=example.com"
 # Default models for drafting and images; editors can change them in Settings, AI.
 # TEXT_MODEL = "<model id>"
@@ -53,12 +56,16 @@ EMAIL_TEST_MODE = "true"
 # Tell search engines about changes on publish, once SITE_URL serves this blog.
 # INDEXNOW = "true"
 
-# Secrets (wrangler secret put <NAME>):
-#   SECRET            random, 32+ characters: signs links
-#   BOOTSTRAP_TOKEN   random, 32+ characters: first sign-in and the CLI
+# On a custom domain or a path of your site (docs/deploy.md):
+# [[routes]]
+# pattern = "example.com/blog*"
+# zone_name = "example.com"
+
+# Secrets (wrangler secret put <NAME>, or `wrangler deploy --secrets-file <file>`):
+#   SECRET            random, 32+ characters: signs subscriber links
+#   BOOTSTRAP_TOKEN   random, 32+ characters: the owner token, for the first sign-in and the CLI
 #   RESEND_API_KEY    email
 #   RESEND_WEBHOOK_SECRET  from the Resend webhook you point at <base>api/webhooks/email
 #   PREDEV_API_KEY    AI (text, images, video, embeddings)
 #   DENYLIST          optional: names post ideas never mention, newline or comma separated
 #   POSTHOG_PERSONAL_API_KEY  optional: the admin's Analytics page (set POSTHOG_PROJECT_ID too)
-#   PREDEV_API_KEY    AI drafting and images

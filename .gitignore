@@ -4,6 +4,9 @@ dist/
 .env.*
 !.env.example
 *.snapshot.json
+snapshot.json
+members.json
+*.members.json
 snapshots/
 .DS_Store
 .wrangler/
