@@ -54,7 +54,7 @@ Email and AI are one secret each (`RESEND_API_KEY`, `PREDEV_API_KEY`) when you w
 
 ## What you get
 
-**Fast for readers.** Every page is rendered at publish time and served from R2 with ETags, behind Cloudflare's cache on a custom domain. Nothing on the read path touches the database. Pages work without JavaScript; one 7 KB deferred script adds search, the theme toggle and in-place signup. With Cloudflare Images bound, pictures get WebP copies at the widths the page asks for.
+**Fast for readers.** Every page is rendered at publish time and served from R2 with ETags, behind Cloudflare's cache on a custom domain. Nothing on the read path touches the database. Pages work without JavaScript; one 7 KB deferred script adds search, the theme toggle and in-place signup. Pictures in posts carry their real sizes and load as they come into view; with Cloudflare Images bound, they get WebP copies at the widths the page asks for.
 
 **An editor that writes with you.** Markdown with blocks (images, video, embeds, link cards, callouts, buttons, tables, raw HTML kept byte for byte), a slash menu, drag and drop, autosave, scheduling and version history. The AI rewrites a selection or writes at the cursor, grounded in your published posts, the sources you point it at (docs, `llms.txt`, a changelog) and your house style and team memory, and it cites what it used. An assistant panel sees the whole post. Generate or edit covers and short videos in place, and pick the model for each job from a searchable catalog.
 
@@ -62,9 +62,9 @@ Email and AI are one secret each (`RESEND_API_KEY`, `PREDEV_API_KEY`) when you w
 
 **A newsletter you can trust with a list.** Double opt-in, RFC 8058 one-click unsubscribe on every email, recipients frozen when a send is queued, idempotent batches, one worker at a time per send, and a subscription history where an import or a product signup never re-subscribes someone who opted out. Test mode keeps newsletters inside the team until you turn it off.
 
-**Found by search engines and AI assistants.** Canonical URLs, share cards with real image sizes, BlogPosting and breadcrumb structured data, sitemaps with images, a full-text RSS feed, `llms.txt` and `llms-full.txt`, a Markdown copy of every post, heading anchors and IndexNow pings on publish. Any host other than the canonical one answers with `noindex`, so a staging copy never competes with the real site.
+**Found by search engines and AI assistants.** Canonical URLs, share cards with real image sizes (a page without an image gets one drawn in your site's look, with its title), BlogPosting and breadcrumb structured data, sitemaps with images, a full-text RSS feed, `llms.txt` and `llms-full.txt`, a Markdown copy of every post, heading anchors and IndexNow pings on publish. Any host other than the canonical one answers with `noindex`, so a staging copy never competes with the real site.
 
-**A theme that looks like your product.** Header menus with described dropdowns, footer columns, search (`/` or ⌘K, and a search page that works without JavaScript), light and dark with no flash, and an optional night-sky backdrop. All of it is settings, edited in the admin or applied from a file.
+**A theme that looks like your product.** Header menus with described dropdowns, footer columns, search (`/` or ⌘K, and a search page that works without JavaScript), light and dark with no flash, an optional night-sky backdrop, and "Keep reading" suggestions picked by meaning from the AI's embeddings of your posts. All of it is settings, edited in the admin or applied from a file.
 
 ![Light and dark on a phone](docs/screenshots/phones.webp)
 

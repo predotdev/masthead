@@ -290,7 +290,7 @@ async function savePostVectors(env: Env, sums: Map<string, Float32Array>, dims: 
  * the posts it is close to, so publishing one post costs one pass over the posts however large the
  * blog is. A first pass over a large blog stops at the time budget and continues on the next call.
  */
-export async function relatePosts(env: Env, db: D1Database, budgetMs = 10_000): Promise<{ updated: number; remaining: number }> {
+async function relatePosts(env: Env, db: D1Database, budgetMs = 10_000): Promise<{ updated: number; remaining: number }> {
     const deadline = Date.now() + budgetMs;
     const [bin, meta] = await Promise.all([env.BUCKET.get(POSTS_INDEX_KEY), env.BUCKET.get(POSTS_IDS_KEY)]);
     if (!bin || !meta) return { updated: 0, remaining: 0 };
