@@ -38,7 +38,8 @@ for (const n of (sizes.length ? sizes : ['40', '1000', '5000']).map(Number)) {
     let files = 0;
     let bytes = 0;
     const t0 = performance.now();
-    for await (const f of renderSite(snapshot, { theme: defaultTheme, render: { postsPerPage: 25 } }, bodies)) {
+    // Share cards on, as the server publishes.
+    for await (const f of renderSite(snapshot, { theme: defaultTheme, render: { postsPerPage: 25 }, features: { shareCards: { version: 'bench' } } }, bodies)) {
         const data = typeof f.contents === 'string' ? new TextEncoder().encode(f.contents) : f.contents;
         await crypto.subtle.digest('SHA-256', data as BufferSource);
         bytes += data.length;

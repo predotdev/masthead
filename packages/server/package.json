@@ -19,7 +19,9 @@
     "@masthead/core": "workspace:*",
     "@masthead/email-resend": "workspace:*",
     "@masthead/render": "workspace:*",
-    "@masthead/theme-default": "workspace:*"
+    "@masthead/theme-default": "workspace:*",
+    "@resvg/resvg-wasm": "^2.6.2",
+    "satori": "0.32.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250920.0"
