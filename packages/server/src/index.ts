@@ -17,7 +17,7 @@ import { processSends } from './newsletter';
 import { legacyRoute, publicRoutes, serveMedia, serveSearch, serveSite } from './public';
 import { basePath, publishSite, publishUnfinished, releaseScheduled } from './publish';
 import { embedPending, refreshKnowledge } from './knowledge';
-import { HttpError, json } from './util';
+import { HttpError, json, redirect } from './util';
 
 export type { AppOptions, Env } from './env';
 export { publishSite } from './publish';
@@ -102,6 +102,8 @@ export function createApp(options: AppOptions) {
 
 async function serveAdmin(req: Request, env: Env, url: URL, base: string): Promise<Response> {
     if (!env.ASSETS) return new Response('The admin app is not deployed with this Worker.', { status: 404 });
+    // The app loads its files relative to <base>admin/: without the slash none of them load and the page stays blank.
+    if (url.pathname === `${base}admin`) return redirect(`${base}admin/${url.search}`, 308);
     let rest = url.pathname.slice(`${base}admin`.length) || '/';
     if (rest === '/' || !/\.[a-z0-9]+$/i.test(rest)) rest = '/index.html';
     const res = await env.ASSETS.fetch(new Request(new URL(`/admin${rest}`, url.origin), req));

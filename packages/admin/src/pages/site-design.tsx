@@ -28,7 +28,7 @@ interface Appearance {
     invertLogoInLight?: boolean;
     backdrop?: { image?: string | null; mobileImage?: string | null; sparkles?: boolean } | null;
     headerCta?: { label: string; url: string; signedIn?: { cookie: string; label: string; url: string } | null } | null;
-    hero?: { eyebrow?: string | null; title?: string | null; text?: string | null } | null;
+    hero?: { title?: string | null; text?: string | null } | null;
     subscribe?: { title?: string | null; text?: string | null } | null;
 }
 
@@ -261,18 +261,15 @@ export function AppearanceEditor({ value, onChange }: { value: Appearance; onCha
                     </div>
                 </div>
             </Group>
-            <Group title="Front page heading">
+            <Group title="Front page masthead">
                 <div class="grid2">
-                    <Field label="Label above the title">
-                        <input value={hero.eyebrow ?? ''} placeholder="Blog" onInput={e => onChange({ ...value, hero: { ...hero, eyebrow: text(e.currentTarget.value) } })} />
+                    <Field label="Title" hint="Shown big after the logo. Blank: no masthead; the newest post leads the page.">
+                        <input value={hero.title ?? ''} placeholder="Acme blog" onInput={e => onChange({ ...value, hero: { ...hero, title: text(e.currentTarget.value) } })} />
                     </Field>
-                    <Field label="Title" hint="Blank: the site title.">
-                        <input value={hero.title ?? ''} onInput={e => onChange({ ...value, hero: { ...hero, title: text(e.currentTarget.value) } })} />
+                    <Field label="Tagline" hint="Blank: the site description.">
+                        <input value={hero.text ?? ''} onInput={e => onChange({ ...value, hero: { ...hero, text: text(e.currentTarget.value) } })} />
                     </Field>
                 </div>
-                <Field label="Text" hint="Blank: the site description.">
-                    <textarea rows={2} value={hero.text ?? ''} onInput={e => onChange({ ...value, hero: { ...hero, text: text(e.currentTarget.value) } })} />
-                </Field>
             </Group>
             <Group title="Newsletter signup">
                 <div class="grid2">

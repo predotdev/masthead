@@ -89,7 +89,7 @@ export const script = `(function () {
       var base = document.documentElement.getAttribute('data-base') || '/';
       var toProduct = (u.hostname === ph.canonicalHost || u.hostname === 'www.' + ph.canonicalHost) && u.pathname.indexOf(base) !== 0;
       if (!toProduct) return;
-      var section = a.closest('.site-header') ? 'header' : a.closest('.site-footer') ? 'footer' : a.closest('.kg-button-card, .kg-cta-card') ? 'button' : a.closest('.content') ? 'post_body' : a.closest('.hero, .lead-post') ? 'hero' : 'page';
+      var section = a.closest('.site-header') ? 'header' : a.closest('.site-footer') ? 'footer' : a.closest('.kg-button-card, .kg-cta-card') ? 'button' : a.closest('.content') ? 'post_body' : a.closest('.masthead, .feature-hero') ? 'hero' : 'page';
       track('blog_cta_clicked', { cta: (a.textContent || '').trim().slice(0, 60), section: section, href: u.origin + u.pathname });
     }, true);
   }
@@ -105,6 +105,14 @@ export const script = `(function () {
     var t = e.target.closest && e.target.closest('[data-theme-toggle]');
     if (t) setScheme(root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
   });
+
+  // The header is clear over the night sky at the top of the page and turns to glass once the page scrolls.
+  var bar = d.querySelector('.site-header');
+  if (bar) {
+    var glass = function () { bar.classList.toggle('is-scrolled', window.scrollY > 4); };
+    glass();
+    window.addEventListener('scroll', glass, { passive: true });
+  }
 
   // Signed-in readers see the product button their session calls for.
   var cta = d.querySelector('[data-signed-in-cookie]');

@@ -177,17 +177,28 @@ function card(ctx: ThemeContext, item: ListItem): string {
 </a></li>`;
 }
 
-function lead(ctx: ThemeContext, item: ListItem): string {
-    const p = item.post;
-    return `<a class="lead" href="${esc(item.url)}">
-  ${p.featureImage ? `<div class="lead-image"><img src="${esc(p.featureImage)}"${srcset(p.featureImage, ctx)} sizes="(max-width: 960px) 100vw, 680px" alt="${esc(p.featureImageAlt ?? '')}" fetchpriority="high" decoding="async" width="1200" height="675"></div>` : '<div></div>'}
-  <div>
-    ${item.primaryTag ? `<span class="eyebrow">${esc(item.primaryTag.name)}</span>` : ''}
-    <h2 class="lead-title">${esc(p.title)}</h2>
-    <p class="lead-excerpt">${esc(item.excerpt)}</p>
-    ${meta(ctx, { authors: item.authors, publishedAt: p.publishedAt, readingMinutes: item.readingMinutes })}
-  </div>
-</a>`;
+/**
+ * The front page's masthead: the configured title, big, after the logo, and the tagline.
+ * A title that starts with the site's name ("pre.dev blog") sets the name at full strength
+ * and the rest lighter. Without a title, the heading is for screen readers only.
+ */
+function masthead(ctx: ThemeContext): string {
+    const s = ctx.site;
+    const h = s.appearance?.hero;
+    if (!h?.title) return `<h1 class="sr-only">${esc(s.title)}</h1>`;
+    const mark = s.logo ? `<img class="masthead-mark${s.appearance?.invertLogoInLight ? ' brand-mark' : ''}" src="${esc(s.logo)}" alt="" height="96">` : '';
+    const named = !!s.title && h.title.toLowerCase().startsWith(`${s.title.toLowerCase()} `);
+    const title = named
+        ? `<span class="masthead-name">${esc(h.title.slice(0, s.title.length))}</span> <span class="masthead-kind">${esc(h.title.slice(s.title.length + 1))}</span>`
+        : `<span class="masthead-name">${esc(h.title)}</span>`;
+    // "A + B": each phrase stays whole, and a wrapped line starts with the plus.
+    const text = h.text || s.description || '';
+    const parts = text.split(' + ');
+    const tagline = parts.length > 1 ? parts.map((part, i) => `<span class="phrase">${i ? '<span class="plus">+</span>' : ''}${esc(part)}</span>`).join(' ') : esc(text);
+    return `<header class="masthead">
+  <h1 class="masthead-title">${mark} ${title}</h1>
+  ${tagline ? `<p class="masthead-tagline">${tagline}</p>` : ''}
+</header>`;
 }
 
 /** The newest post as the front page's hero: headline, summary, and its cover in a glowing frame. */
@@ -330,24 +341,8 @@ ${v.related.length ? `<section class="related" aria-labelledby="related-title"><
                 ? `<nav class="pager" aria-label="Pages">${v.prevUrl ? `<a href="${esc(v.prevUrl)}">← Newer posts</a>` : '<span></span>'}<span>Page ${v.page} of ${v.pages}</span>${v.nextUrl ? `<a href="${esc(v.nextUrl)}">Older posts →</a>` : '<span></span>'}</nav>`
                 : '';
         if (v.kind === 'index' && v.page === 1) {
-            const h = ctx.site.appearance?.hero;
             const [first, ...rest] = v.items;
-            // With a configured heading, the classic layout; otherwise the newest post is the hero.
-            if (h?.title) {
-                return `<section class="hero">
-  ${h.eyebrow ? `<span class="hero-eyebrow">${esc(h.eyebrow)}</span>` : ''}
-  <h1 class="hero-title">${esc(h.title)}</h1>
-  ${h.text || ctx.site.description ? `<p class="hero-text">${esc(h.text || ctx.site.description)}</p>` : ''}
-  ${topics(ctx)}
-</section>
-${first ? lead(ctx, first) : ''}
-<ul class="cards">
-${rest.map(i => card(ctx, i)).join('\n')}
-</ul>
-${pager}
-${signup(ctx)}`;
-            }
-            return `<h1 class="sr-only">${esc(ctx.site.title)}</h1>
+            return `${masthead(ctx)}
 ${first ? featured(ctx, first) : ''}
 ${mostRead(ctx, v.highlights)}
 <section class="latest" aria-labelledby="latest-title">

@@ -26,6 +26,7 @@ export const css = `:root {
   --card: linear-gradient(180deg, rgba(10, 10, 10, 0.012), rgba(10, 10, 10, 0)), #ffffff;
   --title-fade: rgba(10, 10, 10, 0.72);
   --frame-glow: rgba(10, 10, 10, 0.18);
+  --mark-glow: rgba(10, 10, 10, 0.14);
   --radius: 14px;
   --measure: 44rem;
   --wide: 76rem;
@@ -57,6 +58,7 @@ export const css = `:root {
   --card: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.012)), #050505;
   --title-fade: rgba(255, 255, 255, 0.7);
   --frame-glow: rgba(255, 255, 255, 0.14);
+  --mark-glow: rgba(255, 255, 255, 0.42);
   color-scheme: dark;
 }
 @media (prefers-color-scheme: dark) {
@@ -67,6 +69,7 @@ export const css = `:root {
     --header: rgba(0, 0, 0, 0.78); --code: #0e0e10; --callout: rgba(59, 130, 246, 0.1); --callout-line: rgba(96, 165, 250, 0.3);
     --glow: radial-gradient(60rem 28rem at 50% -8rem, rgba(255, 255, 255, 0.09), transparent 70%);
     --card: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.012)), #050505; --title-fade: rgba(255, 255, 255, 0.7); --frame-glow: rgba(255, 255, 255, 0.14);
+    --mark-glow: rgba(255, 255, 255, 0.42);
     color-scheme: dark;
   }
 }
@@ -99,7 +102,9 @@ button, input { font: inherit; color: inherit; }
 @media (max-width: 767px) { .backdrop { height: 720px; } .backdrop.has-image::before { background-image: var(--backdrop-m, var(--backdrop)); } }
 
 /* ------------------------------------------------------------ header */
-.site-header { position: sticky; top: 0; z-index: 50; background: var(--header); backdrop-filter: saturate(180%) blur(14px); -webkit-backdrop-filter: saturate(180%) blur(14px); border-bottom: 1px solid var(--line); }
+.site-header { position: sticky; top: 0; z-index: 50; background: var(--header); backdrop-filter: saturate(180%) blur(14px); -webkit-backdrop-filter: saturate(180%) blur(14px); border-bottom: 1px solid var(--line); transition: background-color 0.3s ease, border-color 0.3s ease; }
+/* Clear over the night sky at the top of the page, glass once it scrolls (masthead.js sets is-scrolled). */
+.js .site-header:not(.is-scrolled) { background-color: transparent; border-bottom-color: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; }
 .bar { display: flex; align-items: center; gap: 28px; height: 68px; }
 .brand { display: flex; align-items: center; gap: 9px; text-decoration: none; font-size: 20px; letter-spacing: -0.01em; white-space: nowrap; flex: none; }
 .brand img { display: block; height: 24px; width: auto; }
@@ -163,9 +168,18 @@ button, input { font: inherit; color: inherit; }
 kbd { font: 11px/1 var(--mono); padding: 3px 5px; border-radius: 5px; border: 1px solid var(--line-2); color: var(--muted); background: var(--surface); }
 
 /* ------------------------------------------------------------ front page and lists */
-.hero { padding: 104px 0 44px; text-align: center; }
-.hero-eyebrow { display: inline-flex; align-items: center; gap: 10px; padding: 7px 16px; border: 1px solid var(--line-2); border-radius: 999px; font-size: 11.5px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--fg-2); background: var(--pill); backdrop-filter: blur(8px); }
-.hero-eyebrow::before { content: ""; width: 6px; height: 6px; border-radius: 999px; background: var(--fg); box-shadow: 0 0 10px 1px var(--fg); opacity: 0.9; }
+/* The front page's masthead: the blog's name with the logo, big, and its tagline, straight on the night sky. */
+.masthead { padding: 112px 0 0; text-align: center; }
+.masthead-title { margin: 0; font-size: clamp(38px, 13.2vw, 132px); line-height: 1.04; letter-spacing: -0.045em; font-weight: 600; text-wrap: balance; }
+.masthead-mark { display: inline-block; height: 0.8em; width: auto; margin-right: 0.04em; vertical-align: -0.07em; filter: drop-shadow(0 0 0.3em var(--mark-glow)); }
+:root[data-theme="light"] .masthead-mark.brand-mark, :root:not([data-theme]) .masthead-mark.brand-mark { filter: invert(1) drop-shadow(0 0 0.3em var(--mark-glow)); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme]) .masthead-mark.brand-mark { filter: drop-shadow(0 0 0.3em var(--mark-glow)); } }
+.masthead-name, .masthead-kind { padding-bottom: 0.1em; background: linear-gradient(to bottom, var(--fg) 25%, var(--title-fade)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.masthead-kind { font-weight: 300; letter-spacing: -0.03em; background-image: linear-gradient(to bottom, var(--fg-2), var(--faint)); }
+.masthead-tagline { margin: 26px auto 0; max-width: 46rem; font-size: clamp(17px, 2.1vw, 23px); line-height: 1.4; letter-spacing: -0.012em; color: var(--muted); text-wrap: balance; }
+.masthead-tagline .plus { margin-right: 0.3em; color: var(--fg); text-shadow: 0 0 14px var(--mark-glow); }
+.masthead-tagline .phrase { white-space: nowrap; }
+.masthead + .feature-hero { padding-top: 72px; }
 .hero-title { margin: 22px auto 0; max-width: 16ch; font-size: clamp(42px, 6.2vw, 64px); line-height: 1.12; letter-spacing: -0.03em; font-weight: 500; text-wrap: balance; }
 .hero-title, .post-title, .list-title { background: linear-gradient(to bottom, var(--fg), var(--title-fade)); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .hero-text { margin: 18px auto 0; max-width: 40rem; font-size: 18px; color: var(--muted); text-wrap: balance; }
@@ -180,14 +194,6 @@ kbd { font: 11px/1 var(--mono); padding: 3px 5px; border-radius: 5px; border: 1p
 .list-text { margin: 12px auto 0; max-width: 38rem; color: var(--muted); font-size: 17px; }
 .list-count { margin-top: 10px; font-size: 13px; color: var(--faint); }
 
-.lead { display: grid; grid-template-columns: 1.25fr 1fr; gap: 36px; align-items: center; margin: 12px 0 44px; padding: 12px; border: 1px solid var(--line); border-radius: 22px; background: var(--card); text-decoration: none; transition: border-color 0.2s, box-shadow 0.25s; }
-.lead:hover { border-color: var(--line-2); box-shadow: var(--shadow); }
-.lead > div:last-child { padding: 12px 24px 12px 0; }
-.lead-image { aspect-ratio: 16 / 9; border-radius: 14px; overflow: hidden; border: 1px solid var(--line); background: var(--surface); }
-.lead-image img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.4s ease; }
-.lead:hover .lead-image img { transform: scale(1.02); }
-.lead-title { margin: 10px 0 0; font-size: clamp(26px, 3vw, 36px); line-height: 1.18; letter-spacing: -0.025em; font-weight: 550; text-wrap: balance; }
-.lead-excerpt { margin: 14px 0 0; font-size: 17px; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .cards { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; }
 .card-link { display: flex; flex-direction: column; height: 100%; text-decoration: none; border: 1px solid var(--line); border-radius: 18px; background: var(--card); overflow: hidden; transition: border-color 0.2s, transform 0.25s cubic-bezier(0.2, 0.7, 0.2, 1), box-shadow 0.25s; }
 .card-link:hover { border-color: var(--line-2); transform: translateY(-3px); box-shadow: var(--shadow); }
@@ -204,8 +210,8 @@ a.eyebrow:hover { color: var(--fg); }
 .meta .dot::before { content: "\\00b7"; }
 .pager { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 56px 0 0; padding-top: 24px; border-top: 1px solid var(--line); font-size: 14px; color: var(--muted); }
 .pager a { text-decoration: none; }
-@media (max-width: 960px) { .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } .lead { grid-template-columns: 1fr; gap: 20px; } }
-@media (max-width: 640px) { .cards { grid-template-columns: 1fr; gap: 18px; } .hero { padding-top: 64px; } .wrap { padding: 0 18px; } .lead { padding: 10px; } .lead > div:last-child { padding: 4px 10px 12px; } }
+@media (max-width: 960px) { .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .cards { grid-template-columns: 1fr; gap: 18px; } .masthead { padding-top: 72px; } .masthead-tagline { margin-top: 18px; } .masthead + .feature-hero { padding-top: 52px; } .masthead + .feature-hero .feature-title { font-size: clamp(28px, 8vw, 34px); } .wrap { padding: 0 18px; } }
 
 /* The newest post as the front page's hero. */
 .feature-hero { padding: 88px 0 12px; text-align: center; }
