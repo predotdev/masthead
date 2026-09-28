@@ -12,14 +12,16 @@
 import { adminRoutes } from './admin';
 import { checkCsrf, principal } from './auth';
 import { restoring, scheduledBackup } from './backup';
+import { setSetting } from './content';
 import { migrate } from './db';
 import type { AppOptions, Ctx, Env } from './env';
+import { health } from './health';
 import { appUrl, processSends } from './newsletter';
 import { legacyRoute, publicRoutes, serveMedia, serveSearch, serveSite } from './public';
 import { basePath, publishSite, publishUnfinished, releaseScheduled } from './publish';
 import { embedPending, refreshKnowledge } from './knowledge';
 import { IDEAS_MINUTE, scheduledIdeas } from './ideas';
-import { HttpError, json, redirect } from './util';
+import { HttpError, json, now, redirect } from './util';
 
 export type { AppOptions, Env } from './env';
 export { publishSite } from './publish';
@@ -55,6 +57,9 @@ export function createApp(options: AppOptions) {
         }
 
         if (path === `${base}admin` || path.startsWith(`${base}admin/`)) return serveAdmin(req, env, url, base);
+
+        // Before migrations: a monitor should hear that the database is down, not get a bare 500.
+        if (path === `${base}api/health`) return req.method === 'GET' || req.method === 'HEAD' ? health(ctx) : json({ error: 'Method not allowed.' }, 405);
 
         if (path.startsWith(`${base}api/`)) {
             await migrate(env.DB);
@@ -115,6 +120,8 @@ export function createApp(options: AppOptions) {
         /** Every minute: publish scheduled posts, then work through newsletter batches. */
         async scheduled(event: ScheduledController, env: Env, exec: ExecutionContext): Promise<void> {
             await migrate(env.DB);
+            // The health check's proof that the cron runs.
+            await setSetting(env.DB, 'cron_heartbeat', now());
             // While a backup is being restored nothing else runs: it would publish and send from half the rows.
             if (await restoring(env.DB)) return;
             if ((await releaseScheduled(env.DB)) || (await publishUnfinished(env.DB))) await publishSite(env, env.DB, options);

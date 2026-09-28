@@ -134,6 +134,9 @@ export async function batched(db: D1Database, statements: D1PreparedStatement[],
     for (let i = 0; i < statements.length; i += size) await db.batch(statements.slice(i, i + size));
 }
 
+/** The schema version this code migrates to. */
+export const SCHEMA_VERSION = MIGRATIONS.length;
+
 /** The schema version the database is at (0 before the first migration). */
 export async function schemaVersion(db: D1Database): Promise<number> {
     const row = await db.prepare('SELECT MAX(version) AS v FROM schema_migrations').first<{ v: number | null }>();
