@@ -26,7 +26,7 @@ bun run build
 bun scripts/leak-guard.ts
 ```
 
-CI also scans the full git history with [gitleaks](https://github.com/gitleaks/gitleaks). With gitleaks installed, `bun run check:leaks` runs both scans locally.
+CI also scans the full git history with [gitleaks](https://github.com/gitleaks/gitleaks). With gitleaks installed, `bun run check:leaks` runs both, plus a scan of your uncommitted changes.
 
 For changes to reading, writing, members or sending, run the end-to-end check against your local server. It creates what it needs and removes it afterwards:
 

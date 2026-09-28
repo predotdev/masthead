@@ -34,7 +34,7 @@
     "deploy": "bun run build && bun run --cwd apps/worker deploy",
     "masthead": "bun packages/cli/src/index.ts",
     "typecheck": "tsc -p tsconfig.json && tsc -p packages/server/tsconfig.json && tsc -p packages/admin/tsconfig.json",
-    "check:leaks": "bun scripts/leak-guard.ts && gitleaks dir . --no-banner --redact --config .gitleaks.toml",
+    "check:leaks": "bun scripts/leak-guard.ts && gitleaks git . --no-banner --redact --config .gitleaks.toml && gitleaks git . --pre-commit --no-banner --redact --config .gitleaks.toml",
     "smoke": "bun scripts/smoke.ts"
   },
   "devDependencies": {
