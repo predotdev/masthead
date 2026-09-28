@@ -52,6 +52,15 @@ export function eventStream(run: (signal: AbortSignal) => AsyncIterable<SseEvent
         stop();
         close(out);
     });
+    // A body that can't take data any more means the client is gone. The runtime may error the
+    // body rather than cancel it, and then cancel() never runs: this is where the work stops.
+    const send = (controller: ReadableStreamDefaultController<Uint8Array>, text: string) => {
+        try {
+            controller.enqueue(encoder.encode(text));
+        } catch {
+            stop();
+        }
+    };
     const body = new ReadableStream<Uint8Array>({
         start(controller) {
             out = controller;
@@ -61,21 +70,21 @@ export function eventStream(run: (signal: AbortSignal) => AsyncIterable<SseEvent
             // The executor runs at once, so the timer is set before it is cleared.
             let timer!: ReturnType<typeof setTimeout>;
             const quiet = new Promise<null>(resolve => (timer = setTimeout(() => resolve(null), KEEP_ALIVE_MS)));
+            let step: IteratorResult<SseEvent> | null;
             try {
-                const step = await Promise.race([next, quiet]);
-                if (abort.signal.aborted) return;
-                if (step === null) return controller.enqueue(encoder.encode(': keep-alive\n\n'));
-                next = null;
-                if (step.done) return close(controller);
-                controller.enqueue(encoder.encode(frame(step.value)));
+                step = await Promise.race([next, quiet]);
             } catch (err) {
                 next = null;
-                if (abort.signal.aborted) return;
-                controller.enqueue(encoder.encode(frame({ event: 'error', data: errorData(err) })));
-                close(controller);
+                if (!abort.signal.aborted) send(controller, frame({ event: 'error', data: errorData(err) }));
+                return close(controller);
             } finally {
                 clearTimeout(timer);
             }
+            if (abort.signal.aborted) return;
+            if (step === null) return send(controller, ': keep-alive\n\n');
+            next = null;
+            if (step.done) return close(controller);
+            send(controller, frame(step.value));
         },
         cancel() {
             stop();
