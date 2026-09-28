@@ -52,6 +52,24 @@ async function canEdit(ctx: A, post: Post | null, publishing = false) {
     return p;
 }
 
+/**
+ * Saves AI settings. Memory has its own routes, so a form opened before a new memory
+ * never erases it. A new knowledge model or source list re-reads the sources.
+ */
+async function saveAiSettings(ctx: A, input: Record<string, unknown>) {
+    const { memory: _memory, ...ai } = input;
+    const before = await aiSettings(ctx.env, ctx.db);
+    await setSetting(ctx.db, 'ai', { ...(await getSetting(ctx.db, 'ai', {})), ...ai });
+    const after = await aiSettings(ctx.env, ctx.db);
+    // Vectors from another model don't compare: re-read everything, and answer without passages until done.
+    if (after.embeddingModel !== before.embeddingModel) await resetKnowledge(ctx.db);
+    if (after.knowledgeSources.join('\n') !== before.knowledgeSources.join('\n') || after.embeddingModel !== before.embeddingModel) {
+        const provider = ctx.options.ai?.(ctx.env) ?? null;
+        ctx.exec.waitUntil(refreshKnowledge(ctx).then(() => embedPending(ctx.env, ctx.db, provider)).catch(err => console.error('knowledge refresh', err)));
+    }
+    return after;
+}
+
 /** Rebuilds the site after the response; `after` (e.g. tagging) lands first so the rebuild includes it. */
 function republish(ctx: A, after?: Promise<unknown>) {
     const ready = after ? after.catch(() => null) : Promise.resolve();
@@ -542,19 +560,7 @@ export function adminRoutes(): Router<A> {
         }
         if (input.newsletter) await setSetting(ctx.db, 'newsletter', { ...(await getSetting(ctx.db, 'newsletter', {})), ...input.newsletter });
         if (input.ideas) await saveIdeaSettings(ctx.db, input.ideas);
-        if (input.ai) {
-            // Memory has its own routes; a settings form opened before a new memory must not erase it.
-            const { memory: _memory, ...ai } = input.ai;
-            const before = await aiSettings(ctx.env, ctx.db);
-            await setSetting(ctx.db, 'ai', { ...(await getSetting(ctx.db, 'ai', {})), ...ai });
-            const after = await aiSettings(ctx.env, ctx.db);
-            // Vectors from another model don't compare: re-read everything, and answer without passages until done.
-            if (after.embeddingModel !== before.embeddingModel) await resetKnowledge(ctx.db);
-            if (after.knowledgeSources.join('\n') !== before.knowledgeSources.join('\n') || after.embeddingModel !== before.embeddingModel) {
-                const ai = ctx.options.ai?.(ctx.env) ?? null;
-                ctx.exec.waitUntil(refreshKnowledge(ctx).then(() => embedPending(ctx.env, ctx.db, ai)).catch(err => console.error('knowledge refresh', err)));
-            }
-        }
+        if (input.ai) await saveAiSettings(ctx, input.ai);
         return json({ ok: true });
     });
 
@@ -633,6 +639,24 @@ export function adminRoutes(): Router<A> {
 
     // ---------------------------------------------------------- AI studio
     r.get('/ai/models', async (_req, ctx) => (me(ctx), json(await listModels(ctx, (ctx.url.searchParams.get('kind') as ModelKind) || undefined))));
+    /** What the editor's AI panel shows everyone: the default models, the house style and the knowledge sources. */
+    r.get('/ai/settings', async (_req, ctx) => {
+        me(ctx);
+        const [ai, knowledge] = await Promise.all([aiSettings(ctx.env, ctx.db), knowledgeStats(ctx.db)]);
+        return json({ ...ai, knowledge });
+    });
+    /** Changes them from the editor. The knowledge model stays in Settings: changing it re-reads everything. */
+    r.put('/ai/settings', async (req, ctx) => {
+        atLeast(ctx.principal, 'admin');
+        const input = await body(req);
+        const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+        const patch: Record<string, unknown> = {};
+        for (const key of ['textModel', 'imageModel', 'videoModel'] as const) if (key in input) patch[key] = text(input[key]);
+        if ('voice' in input) patch.voice = typeof input.voice === 'string' && input.voice.trim() ? input.voice : null;
+        if (Array.isArray(input.knowledgeSources)) patch.knowledgeSources = [...new Set(input.knowledgeSources.map(String).map((u: string) => u.trim()).filter((u: string) => /^https?:\/\/\S+$/.test(u)))];
+        const ai = await saveAiSettings(ctx, patch);
+        return json({ ...ai, knowledge: await knowledgeStats(ctx.db) });
+    });
     // Each generation answers with one JSON object, or streams server-sent events when asked for text/event-stream.
     r.post('/ai/draft', async (req, ctx) => {
         me(ctx);
