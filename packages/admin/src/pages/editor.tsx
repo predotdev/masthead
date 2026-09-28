@@ -7,6 +7,7 @@ import { Button, Dialog, ErrorNote, Field, Loading, Pill, errorToast, toast, use
 import { AiPreview, AiPrompt, AssistantPanel, QUICK_EDITS, type AiJob } from './ai';
 import { EmbedDialog, HtmlDialog, ImageDialog, VideoDialog } from './media';
 import { HistoryPanel, SearchPanel } from './post-tools';
+import { AutoTagNote, useServerTags, type TaggedPost } from './post-tags';
 import { SendDialog } from './newsletters';
 
 type Draft = Omit<Post, 'id' | 'createdAt' | 'updatedAt' | 'newsletter' | 'type'>;
@@ -51,6 +52,7 @@ function PostEditor({ initial, tags: allTags, staff }: { initial: Post; tags: Ta
     const titleRef = useRef<HTMLTextAreaElement>(null);
     const role = session.value?.user.role;
     const live = post.status === 'published';
+    const serverTags = useServerTags<Draft>(initial, setDraft, setPost);
 
     const touch = () => {
         rev.current += 1;
@@ -101,8 +103,9 @@ function PostEditor({ initial, tags: allTags, staff }: { initial: Post; tags: Ta
         const at = rev.current;
         try {
             const sentSlug = draft.slug;
-            const saved = await api<Post>(`/posts/${post.id}`, { method: 'PUT', body: { ...draft, ...body() } });
+            const saved = await api<TaggedPost>(`/posts/${post.id}`, { method: 'PUT', body: { ...serverTags.outgoing(draft), ...body() } });
             setPost(saved);
+            serverTags.saved(saved);
             // The server may move a draft's slug to follow its title or stay unique.
             if (saved.slug !== sentSlug) setDraft(d => (d.slug === sentSlug ? { ...d, slug: saved.slug } : d));
             // Typing that landed while the save was in flight stays unsaved.
@@ -407,7 +410,7 @@ function PostEditor({ initial, tags: allTags, staff }: { initial: Post; tags: Ta
                 ) : null}
             </div>
 
-            {modal?.kind === 'publish' ? <PublishDialog post={post} onClose={() => setModal(null)} onDone={p => (setPost(p), setModal(null))} /> : null}
+            {modal?.kind === 'publish' ? <PublishDialog post={post} onClose={() => setModal(null)} onDone={p => (setPost(p), serverTags.saved(p), setModal(null))} /> : null}
             {modal?.kind === 'send' ? <SendDialog post={post} onClose={() => setModal(null)} /> : null}
             {modal?.kind === 'draft' ? (
                 <DraftDialog
@@ -513,6 +516,7 @@ function SettingsPanel(props: {
                         );
                     })}
                 </div>
+                <AutoTagNote post={props.post} ids={draft.tags} tags={tags} />
                 <div class="row">
                     <input list="tag-options" placeholder="Add a tag" value={newTag} onInput={e => setNewTag(e.currentTarget.value)} onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addTag())} />
                     <Button onClick={addTag}>Add</Button>
@@ -578,7 +582,7 @@ function SettingsPanel(props: {
                     <textarea rows={3} value={draft.metaDescription ?? ''} onInput={e => update({ metaDescription: e.currentTarget.value || null })} />
                 </Field>
             </div>
-            <SearchPanel draft={draft} getHtml={props.getHtml} />
+            <SearchPanel draft={{ ...draft, tags: draft.tags.filter(id => tags.find(t => t.id === id)?.visibility !== 'internal') }} getHtml={props.getHtml} />
             <HistoryPanel post={props.post} onRestored={props.onRestored} />
             <label class="check">
                 <input type="checkbox" checked={draft.featured} onChange={e => update({ featured: e.currentTarget.checked })} /> Featured
