@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks';
 import { api, fmtDate, session, type Staff } from '../api';
-import { Button, Dialog, ErrorNote, Field, Loading, PageHead, Pill, errorToast, toast, useLoad } from '../ui';
+import { Button, Dialog, ErrorNote, Field, PageHead, Pill, TableSkeleton, errorToast, toast, useLoad } from '../ui';
 
 const ROLES = ['admin', 'editor', 'author', 'contributor'] as const;
 const ROLE_HINT: Record<string, string> = {
@@ -28,16 +28,16 @@ export function StaffPage() {
 
     return (
         <div>
-            <PageHead title="Staff">
+            <PageHead title="Staff" description="Who can sign in, and what each role can do.">
                 {canManage ? (
-                    <Button tone="primary" onClick={() => setInviting(true)}>
+                    <Button tone="primary" icon="userPlus" onClick={() => setInviting(true)}>
                         Invite
                     </Button>
                 ) : null}
             </PageHead>
             {error ? <ErrorNote text={error} /> : null}
             {loading && !data ? (
-                <Loading />
+                <TableSkeleton rows={4} columns={5} />
             ) : (
                 <div class="table-wrap">
                     <table class="table">
