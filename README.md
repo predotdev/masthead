@@ -124,7 +124,7 @@ npx wrangler d1 time-travel info masthead                                       
 npx wrangler d1 time-travel restore masthead --timestamp=2026-09-28T09:00:00Z   # the database as it was then
 ```
 
-**Anything older, or a database that is gone: the nightly export.** Every night at 02:30 UTC the Worker writes every table to R2 in pages, as gzipped JSON lines (`backups/YYYY-MM-DD/<table>.jsonl.gz`), then a `manifest.json` with each table's row count and the schema version. The manifest is written last, so a folder with one is complete. The newest 30 copies are kept, and the first copy of each month for a year. A night that fails or is missed is tried again every 15 minutes, four times; Settings, Backups shows the last copy (and any failure) and has **Back up now**. Media (images, video) lives in the same bucket and is not part of the export.
+**Anything older, or a database that is gone: the nightly export.** Every night at 02:30 UTC the Worker writes every table to R2 in pages, as gzipped JSON lines (`backups/YYYY-MM-DD/<table>.jsonl.gz`), then a `manifest.json` with each table's row count and the schema version. The manifest is written last, so a folder with one is complete. The newest 30 copies are kept, and the first copy of each month for a year. A night the Worker missed runs at the next cron minute, and a failed one is tried again every 15 minutes, four attempts in all; Settings, Backups shows the last copy (and any failure) and has **Back up now**. Media (images, video) lives in the same bucket and is not part of the export.
 
 ```bash
 export MASTHEAD_TOKEN=<BOOTSTRAP_TOKEN>

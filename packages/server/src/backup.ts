@@ -27,7 +27,7 @@ const MANIFEST = 'manifest.json';
 const FORMAT = 'masthead.backup/1';
 /** Longer than a cron run may last (15 minutes); renewed after every table. */
 const LEASE_MS = 20 * 60_000;
-/** A failed nightly backup is tried again 15 minutes later, four times a day at most. */
+/** A failed nightly backup is tried again 15 minutes later: four attempts a day at most. */
 const RETRY_MS = 15 * 60_000;
 const MAX_TRIES = 4;
 /** About this much JSON per read: pages shrink for large rows (post bodies) and grow for small ones. */
