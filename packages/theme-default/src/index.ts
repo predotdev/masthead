@@ -181,7 +181,6 @@ function signup(ctx: ThemeContext): string {
     <button class="btn btn-primary" type="submit">Subscribe</button>
   </form>
   <p class="signup-note" data-subscribe-note role="status" hidden></p>
-  <p class="signup-fine">No spam. Unsubscribe with one click.</p>
 </section>`;
 }
 

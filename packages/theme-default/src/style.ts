@@ -358,7 +358,6 @@ a.eyebrow:hover { color: var(--fg); }
 .signup-form input[type="email"]:focus { outline: none; border-color: var(--fg); }
 .signup-form .btn { height: 44px; }
 .signup-note { margin: 18px auto 0; max-width: 28rem; font-size: 15px; color: var(--fg); }
-.signup-fine { margin-top: 14px; font-size: 12.5px; color: var(--faint); }
 @media (max-width: 520px) { .signup { padding: 36px 20px; } .signup-form { flex-direction: column; } }
 
 /* ------------------------------------------------------------ footer */
