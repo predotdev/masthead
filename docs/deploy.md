@@ -101,12 +101,47 @@ When the blog is ready:
 
 Set `POSTHOG_KEY` (and `POSTHOG_HOST` for the EU cloud or a proxy) to load PostHog on every page after it settles and record signups on the server. For traffic in the admin's Analytics page, add a personal API key with query read access: `bunx wrangler secret put POSTHOG_PERSONAL_API_KEY` and `POSTHOG_PROJECT_ID = "<id>"`. Newsletter and growth numbers work without PostHog.
 
-## Backups
+## Health checks
 
-D1 and R2 are durable, and D1 keeps 30 days of point-in-time history ([Time Travel](https://developers.cloudflare.com/d1/reference/time-travel/)). For a copy of your own:
+For uptime monitors, `GET <blog>/api/health` answers `200` while everything passes or only warns and `503` when a check fails. It is never cached, costs a few small reads, and shows only times, counts and short reasons:
 
-```bash
-bunx wrangler d1 export masthead --remote --output masthead.sql
+```json
+{ "status": "pass", "checks": { "database": { "status": "pass", "schemaVersion": 7 }, "storage": { "status": "pass" }, "cron": { "status": "pass", "lastRunAt": "…" }, "…": {} } }
 ```
 
-The published site can always be rebuilt from D1 with one click (Settings) or `POST <SITE_URL>admin/api/publish`; media lives only in R2.
+| Check | Warns | Fails |
+|---|---|---|
+| `database`, `storage` | migrations pending | no answer, or the front page is missing from storage |
+| `publish` | never published | a publish started 15 minutes ago and never finished |
+| `cron` | last run 3 minutes ago | last run 10 minutes ago (scheduled posts and newsletters wait for it) |
+| `newsletter` | | a send has made no progress for 15 minutes; `pendingBatches` counts what is left |
+| `knowledge` | a passage has waited 3 hours for the AI to read it | |
+| `backup` | none yet, or the last is 26 hours old | the last is 50 hours old (two missed nights) |
+
+## Backups
+
+Two layers, for two kinds of trouble.
+
+**A mistake from the last 30 days: D1 Time Travel.** Cloudflare keeps every minute of the database for 30 days (7 on the free plan), and rolling back is one command. It replaces the database in place, so note the current bookmark first; restoring to it undoes the rollback.
+
+```bash
+bunx wrangler d1 time-travel info masthead                                        # the bookmark for now
+bunx wrangler d1 time-travel restore masthead --timestamp=2026-09-28T09:00:00Z   # the database as it was then
+```
+
+**Anything older, or a database that is gone: the nightly export.** Every night at 02:30 UTC the Worker writes every table to R2 in pages, as gzipped JSON lines (`backups/YYYY-MM-DD/<table>.jsonl.gz`), then a `manifest.json` with each table's row count and the schema version. The manifest is written last, so a folder with one is complete. The newest 30 copies are kept, and the first copy of each month for a year. A night the Worker missed runs at the next cron minute, and a failed one is tried again every 15 minutes, four attempts in all; Settings, Backups shows the last copy (and any failure) and has **Back up now**. Media (images, video) lives in the same bucket and is not part of the export. Backups hold your members' data: keep the bucket private (no r2.dev URL or custom domain). The Worker serves only the site and media from it, and backup files only to the owner.
+
+```bash
+export MASTHEAD_TOKEN=<BOOTSTRAP_TOKEN>
+bun run masthead backup --server https://<worker>/blog/ --list                  # the copies kept
+bun run masthead backup --server https://<worker>/blog/ --out backups/          # back up now and keep a copy off Cloudflare
+```
+
+`--out` reads every downloaded file back and checks its row count against the manifest. To restore, create a new D1 database, point the Worker's `database_id` at it and deploy, then, before anyone signs in:
+
+```bash
+bun run masthead restore --server https://<worker>/blog/ --from 2026-09-28          # a copy in the bucket
+bun run masthead restore --server https://<worker>/blog/ --from backups/2026-09-28  # or one saved with --out
+```
+
+Restore works only on an empty database (settings aside) and resumes where it stopped if you run it again. While it runs, the cron stays still; a newsletter that was going out when the backup was made comes back cancelled, never sent again. It then rebuilds the site and the AI's search index from the restored rows, removes pages the backup doesn't have, and compares every table's row count with the manifest. A backup from an older version restores into a newer one: the migrations' data changes run on its rows.

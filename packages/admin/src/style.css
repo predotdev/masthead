@@ -1554,3 +1554,6 @@ button.issue-main { cursor: pointer; }
 @media (max-width: 480px) {
   .sc-serp-title { font-size: 18px; }
 }
+/* ------------------------------------------------------------------ Settings, Backups */
+.backups .note { margin: 0; }
+.backups .facts .pill { margin-left: 8px; vertical-align: 1px; }

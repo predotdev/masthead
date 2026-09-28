@@ -37,6 +37,7 @@ Masthead reads two kinds of configuration:
 | `EMAIL_TEST_MODE` | var | `"true"`: email reaches only the team (the `EMAIL_TEST_ALLOW` entries, staff, and the provider's test addresses). Newsletters go only to the team members of a segment; confirmations and test sends to anyone else are not sent. Staff sign-in and invites work as usual. Keep it on until you switch traffic. |
 | `EMAIL_TEST_ALLOW` | var | The team in test mode: comma-separated addresses or `@domains`, e.g. `@acme.example`. |
 | `EMAIL_TEST_ADDRESS` | var | Where anything that slips past the team check goes in test mode. Default `delivered@resend.dev`. |
+| `EMAIL_DRY_RUN` | var | `"true"`: nothing is ever delivered, whatever the provider settings; every email is recorded as sent. For staging copies, so they can go through whole newsletter sends. |
 
 ### AI
 
@@ -70,7 +71,7 @@ Masthead reads two kinds of configuration:
 
 ### Scheduled work
 
-`[triggers] crons = ["* * * * *"]` in `wrangler.toml` runs the Worker every minute: it publishes scheduled posts, works through newsletter batches, embeds new knowledge, re-reads knowledge sources once a day at 03:17 UTC, and checks hourly whether the daily ideas refresh is due. Remove it and scheduling and sending stop. Local `wrangler dev` does not run crons; trigger one with `curl "http://localhost:8787/cdn-cgi/local/scheduled"`.
+`[triggers] crons = ["* * * * *"]` in `wrangler.toml` runs the Worker every minute: it publishes scheduled posts, works through newsletter batches, embeds new knowledge, re-reads knowledge sources once a day at 03:17 UTC, backs the database up to R2 at 02:30 UTC ([Backups](deploy.md#backups)), and checks hourly whether the daily ideas refresh is due. Remove it and scheduling and sending stop. Local `wrangler dev` does not run crons; trigger one with `curl "http://localhost:8787/cdn-cgi/local/scheduled"`.
 
 ## Site settings
 

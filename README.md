@@ -50,7 +50,7 @@ bunx wrangler deploy --secrets-file .env.production
 
 Open `/blog/admin/` on your Worker, choose **Use the owner token**, and publish your first post. Later deploys are `bun run deploy` from the repository root; secrets stay in place.
 
-Email and AI are one secret each (`RESEND_API_KEY`, `PREDEV_API_KEY`) when you want them. [docs/deploy.md](docs/deploy.md) covers a custom domain, putting the blog under `/blog` on an existing site, email, analytics and switching traffic.
+Email and AI are one secret each (`RESEND_API_KEY`, `PREDEV_API_KEY`) when you want them. [docs/deploy.md](docs/deploy.md) covers a custom domain, putting the blog under `/blog` on an existing site, email, analytics, switching traffic, health checks and backups.
 
 ## What you get
 
