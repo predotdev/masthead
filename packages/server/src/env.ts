@@ -39,6 +39,11 @@ export interface Env {
     EMAIL_TEST_ALLOW?: string;
     /** Where anything that slips past the team check goes in test mode. Default delivered@resend.dev. */
     EMAIL_TEST_ADDRESS?: string;
+    /**
+     * "true": nothing is ever delivered, whatever the provider settings. Every message is
+     * accepted and recorded as sent, so a staging copy can go through whole newsletter sends.
+     */
+    EMAIL_DRY_RUN?: string;
     POSTAL_ADDRESS?: string;
     RESEND_API_KEY?: string;
     RESEND_WEBHOOK_SECRET?: string;

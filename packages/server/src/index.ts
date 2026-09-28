@@ -9,6 +9,7 @@
  *   <base>admin/       the admin app
  *   <base>admin/api/*  the admin API (session cookie or bearer token)
  */
+import type { EmailTransport } from '@masthead/core';
 import { adminRoutes } from './admin';
 import { checkCsrf, principal } from './auth';
 import { restoring, scheduledBackup } from './backup';
@@ -26,7 +27,9 @@ import { HttpError, json, now, redirect } from './util';
 export type { AppOptions, Env } from './env';
 export { publishSite } from './publish';
 
-export function createApp(options: AppOptions) {
+export function createApp(app: AppOptions) {
+    // EMAIL_DRY_RUN wins over any transport: a staging copy can go through every send and never deliver one.
+    const options: AppOptions = { ...app, email: env => (env.EMAIL_DRY_RUN === 'true' ? dryRun : (app.email?.(env) ?? null)) };
     const admin = adminRoutes();
     const pub = publicRoutes();
 
@@ -144,6 +147,15 @@ export function createApp(options: AppOptions) {
         }
     };
 }
+
+/** EMAIL_DRY_RUN's transport: every message is accepted, none is delivered. */
+const dryRun: EmailTransport = {
+    id: 'dry-run',
+    async send(batch) {
+        if (batch.length) console.log(`email dry run: ${batch.length} message${batch.length === 1 ? '' : 's'} not delivered ("${batch[0].subject}")`);
+        return batch.map(m => ({ idempotencyKey: m.idempotencyKey, ok: true, providerId: `dry-run:${m.idempotencyKey}` }));
+    }
+};
 
 async function serveAdmin(req: Request, env: Env, url: URL, base: string): Promise<Response> {
     if (!env.ASSETS) return new Response('The admin app is not deployed with this Worker.', { status: 404 });

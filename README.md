@@ -59,6 +59,7 @@ All of it comes from the Worker's environment: `[vars]` in `wrangler.toml` for p
 | `BOOTSTRAP_TOKEN` | secret | Owner access for the first sign-in and the CLI. |
 | `EMAIL_FROM`, `EMAIL_REPLY_TO`, `POSTAL_ADDRESS` | var | Newsletter sender, reply address, and the postal address US law requires in the footer. |
 | `EMAIL_TEST_MODE`, `EMAIL_TEST_ADDRESS` | var | `"true"`: newsletters go only to the test address (sign-in and confirmation mail still reach people). |
+| `EMAIL_DRY_RUN` | var | `"true"`: nothing is ever delivered, whatever the provider settings; every email is recorded as sent. For staging copies, so they can go through whole newsletter sends. |
 | `RESEND_API_KEY`, `RESEND_WEBHOOK_SECRET` | secret | Sending, and delivery/open/click events from Resend. |
 | `PREDEV_API_KEY` | secret | AI: text, images, video and embeddings through one key. |
 | `DENYLIST` | secret | Names post ideas never mention (customers, partners, vendors), newline or comma separated. Settings, Ideas adds more. |

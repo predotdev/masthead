@@ -39,6 +39,8 @@ SITE_URL = "https://example.com/blog/"
 EMAIL_FROM = "Example <news@example.com>"
 # Until you switch traffic, keep newsletters away from real inboxes:
 EMAIL_TEST_MODE = "true"
+# A staging copy: every email is recorded as sent and none is delivered.
+# EMAIL_DRY_RUN = "true"
 # LINK_TAG = "ref=example.com"
 # Default models for drafting and images; editors can change them in Settings, AI.
 # TEXT_MODEL = "<model id>"

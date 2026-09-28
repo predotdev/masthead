@@ -544,6 +544,7 @@ export function adminRoutes(): Router<A> {
                 testMode: testMode(ctx.env),
                 emailFrom: ctx.env.EMAIL_FROM ?? null,
                 email: Boolean(ctx.options.email?.(ctx.env)),
+                emailDryRun: ctx.env.EMAIL_DRY_RUN === 'true',
                 ai: Boolean(ctx.options.ai?.(ctx.env)),
                 webhooks: Boolean(ctx.env.RESEND_WEBHOOK_SECRET),
                 linkTag: ctx.env.LINK_TAG ?? null

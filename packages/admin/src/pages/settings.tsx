@@ -14,7 +14,7 @@ interface SettingsData {
     knowledge: { passages: number; pending: number; sources: number; refreshedAt: string | null };
     ideas: IdeaSettings;
     keys: { id: string; name: string; prefix: string; role: string; created_at: string; last_used_at: string | null }[];
-    environment: { siteUrl: string; appUrl: string; testMode: boolean; emailFrom: string | null; email: boolean; ai: boolean; webhooks: boolean; linkTag: string | null };
+    environment: { siteUrl: string; appUrl: string; testMode: boolean; emailFrom: string | null; email: boolean; emailDryRun?: boolean; ai: boolean; webhooks: boolean; linkTag: string | null };
 }
 
 /** Settings; `section` (from #/settings/<section>) scrolls to one panel, e.g. "ai". */
@@ -93,7 +93,7 @@ function SettingsForm({ data, reload, section }: { data: SettingsData; reload: (
                     <dt>Newsletter sending</dt>
                     <dd>{env.testMode ? <Pill tone="amber" dot>Test mode: email reaches only the team</Pill> : <Pill tone="green" dot>Live</Pill>}</dd>
                     <dt>Email</dt>
-                    <dd>{env.email ? `${env.emailFrom ?? 'no sender set'}` : 'Not configured'}</dd>
+                    <dd>{env.emailDryRun ? 'Dry run: every email is recorded as sent and none is delivered' : env.email ? `${env.emailFrom ?? 'no sender set'}` : 'Not configured'}</dd>
                     <dt>Delivery webhooks</dt>
                     <dd>{env.webhooks ? 'Connected' : 'Not connected: bounces and opens are not recorded'}</dd>
                     <dt>AI</dt>
