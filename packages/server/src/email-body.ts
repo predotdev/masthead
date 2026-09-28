@@ -510,12 +510,12 @@ function table(e: El, ctx: Ctx): string {
         const span = `${num(c.attrs.colspan) > 1 ? ` colspan="${num(c.attrs.colspan)}"` : ''}${num(c.attrs.rowspan) > 1 ? ` rowspan="${num(c.attrs.rowspan)}"` : ''}`;
         const inner = blocks(c.kids, { ...ctx, width, tight: true, first: true, last: true, inline: false });
         return c.tag === 'th'
-            ? `<th${span} class="ink ln2" style="padding:${pad};text-align:left;vertical-align:bottom;font-weight:600;color:${INK};border-bottom:1px solid ${LINE2}${align(c)}">${inner}</th>`
-            : `<td${span} class="ln" style="padding:${pad};text-align:left;vertical-align:top;border-bottom:1px solid ${LINE}${align(c)}">${inner}</td>`;
+            ? `<th${span} class="ink ln2 dc" style="padding:${pad};text-align:left;vertical-align:bottom;font-weight:600;color:${INK};border-bottom:1px solid ${LINE2}${align(c)}">${inner}</th>`
+            : `<td${span} class="ln dc" style="padding:${pad};text-align:left;vertical-align:top;border-bottom:1px solid ${LINE}${align(c)}">${inner}</td>`;
     };
     const rows = trs.map(r => `<tr>${r.map(cell).join('')}</tr>`).join('');
     // The fixed outer table holds the column width; a table that is still too wide scrolls inside it where clients allow, instead of widening the email.
-    return `<div style="margin:0 0 ${gap(ctx, 26)}px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="table-layout:fixed"><tr><td><div style="overflow-x:auto"><table cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;font-size:${font}px;line-height:1.5">${rows}</table></div></td></tr></table></div>`;
+    return `<div style="margin:0 0 ${gap(ctx, 26)}px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="table-layout:fixed"><tr><td><div style="overflow-x:auto"><table class="dt" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;font-size:${font}px;line-height:1.5">${rows}</table></div></td></tr></table></div>`;
 }
 
 // ------------------------------------------------------------------ images
