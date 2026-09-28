@@ -298,11 +298,22 @@ export function predevAI(options: PredevAIOptions = {}): AIProvider {
 
 /** The error in a failed response, with the gateway's message and any retry-after. */
 async function failure(res: Response): Promise<PredevAIError> {
-    const body: any = await res.json().catch(() => null);
+    const text = await res.text().catch(() => '');
+    let body: any = null;
+    try {
+        body = JSON.parse(text);
+    } catch {}
     const err = body?.error ?? body ?? {};
-    const message = typeof err.message === 'string' ? err.message : `pre.dev AI returned ${res.status}`;
+    // An HTML block page from the host's firewall, not the gateway's JSON: "403" alone reads like a bad key.
+    const firewall = !body && res.status === 403 && /firewall|blocked/i.test(text);
+    const message =
+        typeof err.message === 'string'
+            ? err.message
+            : firewall
+              ? "The API host's firewall blocked this request. It flags shell commands inside backticks (for example `curl ... | bash`); try the text without that part."
+              : `pre.dev AI returned ${res.status}`;
     const retry = Number(res.headers.get('retry-after'));
-    return new PredevAIError(res.status, err.code, message, Number.isFinite(retry) && retry > 0 ? retry : undefined);
+    return new PredevAIError(res.status, err.code ?? (firewall ? 'blocked_by_firewall' : undefined), message, Number.isFinite(retry) && retry > 0 ? retry : undefined);
 }
 
 /** An error the gateway sends inside a stream that has already started. */
