@@ -520,7 +520,7 @@ function OpportunityRow({
     };
     const searches = post ? (
         <a class="btn ghost sm" href={`#/analytics/post/${post.id}`}>
-            Its searches
+            See its searches
         </a>
     ) : null;
     const actions: ComponentChildren =
@@ -859,7 +859,7 @@ function SnippetDialog({
     const [title, setTitle] = useState<string | null>(null);
     const [desc, setDesc] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
-    const run = useAiRun<{ titles: string[]; descriptions: string[] }>();
+    const run = useAiRun<{ titles: string[]; descriptions: string[]; finishReason?: string }>();
     const ask = (p: Post) =>
         run.start('/ai/meta', {
             title: p.title,
@@ -988,7 +988,9 @@ function SnippetDialog({
                         )}
                         {run.state === 'error' ? <ErrorNote text={run.error ?? ''} /> : null}
                         {run.state === 'stopped' ? <p class="ai-note sc-flush">Stopped.</p> : null}
-                        {run.state === 'done' && !items.length ? <ErrorNote text="The model answered in the wrong shape. Try again." /> : null}
+                        {run.state === 'done' && !items.length ? (
+                            <ErrorNote text={run.result?.finishReason === 'length' ? 'The model stopped before writing any options. Try again.' : 'The model answered in the wrong shape. Try again.'} />
+                        ) : null}
                     </div>
                 </div>
             )}

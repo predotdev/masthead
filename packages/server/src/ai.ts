@@ -280,7 +280,8 @@ function metaJob(input: MetaInput) {
     return {
         task: 'Suggest search and share metadata for the post. Reply with seven lines and nothing else: three lines that start "TITLE: " (titles, at most 60 characters each), three that start "DESCRIPTION: " (search descriptions, at most 155 characters each), then one that starts "EXCERPT: " (one or two sentences for the post listing). No quotes, no numbering.',
         messages: [{ role: 'user' as const, content: `${context.length ? `${context.join('\n\n')}\n\n` : ''}Current title: ${input.title ?? ''}\n\n${(input.markdown ?? '').slice(0, 12000)}` }],
-        maxTokens: 800
+        // Seven short lines, but a reasoning model thinks first and that counts too: at 800 some wrote nothing.
+        maxTokens: 3000
     };
 }
 
