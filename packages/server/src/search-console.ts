@@ -562,8 +562,18 @@ function opportunities(o: {
 }): Opportunity[] {
     const perMonth = (n: number) => (n * 30) / o.days;
     const scale = o.days / 30;
-    const isBrand = (q: string) => o.brand.some(t => compact(q).includes(t));
-    const pureBrand = (q: string) => o.brand.includes(compact(q));
+    // Each search is normalized once, however many pages it shows.
+    const seen = new Map<string, { brand: boolean; pure: boolean; key: string }>();
+    const about = (q: string) => {
+        let a = seen.get(q);
+        if (!a) {
+            const c = compact(q);
+            seen.set(q, (a = { brand: o.brand.some(t => c.includes(t)), pure: o.brand.includes(c), key: queryKey(q) }));
+        }
+        return a;
+    };
+    const isBrand = (q: string) => about(q).brand;
+    const pureBrand = (q: string) => about(q).pure;
     const byPost = new Map<string, Pair[]>();
     for (const p of o.pairs) {
         if (!p.slug || !o.posts.has(p.slug)) continue;
@@ -626,7 +636,7 @@ function opportunities(o: {
     const bySearch = new Map<string, { query: string; shown: number; sum: Sum; bestPost: Pair | null; best: Pair | null }>();
     for (const p of o.pairs) {
         if (isBrand(p.query)) continue;
-        const k = queryKey(p.query);
+        const k = about(p.query).key;
         const g = bySearch.get(k) ?? { query: p.query, shown: 0, sum: zero(), bestPost: null, best: null };
         // The version with the most impressions names the group.
         if (p.impressions > g.shown) (g.query = p.query), (g.shown = p.impressions);
