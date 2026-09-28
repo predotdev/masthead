@@ -1072,3 +1072,61 @@ a.btn { text-decoration: none; }
 .ai-shimmer { background: linear-gradient(100deg, var(--hover) 35%, color-mix(in srgb, var(--ai) 12%, var(--hover)) 50%, var(--hover) 65%); background-size: 300% 100%; animation: ai-shimmer 1.8s ease-in-out infinite; }
 @keyframes ai-shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
 @media (prefers-reduced-motion: reduce) { .ai-caret, .ai-shimmer { animation: none; } }
+
+/* ------------------------------------------------------------------ model picker
+   A select-like button, and a menu of the catalog drawn a screenful at a time (rows are
+   positioned absolutely at fixed heights: 52px, group headings 30px). */
+.model-trigger { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; height: 34px; padding: 0 9px 0 6px; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--input); color: var(--fg); font-size: var(--text-md); text-align: left; cursor: pointer; transition: border-color var(--fast), background-color var(--fast), color var(--fast); }
+.model-trigger:hover:not(:disabled) { border-color: var(--line-3); }
+.model-trigger[aria-expanded="true"] { border-color: color-mix(in srgb, var(--fg) 42%, transparent); outline: 3px solid var(--ring); outline-offset: 0; }
+.model-trigger:disabled { opacity: 0.55; cursor: not-allowed; }
+/* A zero base width: a long model name never widens the column the button sits in, it gets cut instead. */
+.model-trigger-name { flex: 1 1 0; width: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.model-trigger-icon { color: var(--faint); }
+.model-trigger.missing .model-trigger-name { color: var(--muted); }
+.model-trigger.compact { width: auto; max-width: 100%; height: 28px; gap: 6px; padding: 0 8px 0 4px; border-color: transparent; border-radius: var(--radius-full); background: transparent; color: var(--muted); font-size: var(--text-sm); }
+.model-trigger.compact:hover:not(:disabled), .model-trigger.compact[aria-expanded="true"] { border-color: var(--line); background: var(--hover); color: var(--fg); outline: 0; }
+.model-trigger.compact .model-trigger-name { flex: 0 1 auto; width: auto; }
+.model-trigger.compact .model-mark { width: 20px; height: 20px; border-radius: var(--radius-full); font-size: 10px; }
+.model-mark { display: inline-grid; place-items: center; flex: none; width: 22px; height: 22px; border-radius: 6px; background: linear-gradient(145deg, var(--surface-2), var(--active)); box-shadow: inset 0 0 0 1px var(--line-2); color: var(--fg-2); font-size: 11px; font-weight: 600; line-height: 1; }
+.model-mark.site { color: var(--ai); background: var(--ai-bg); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ai) 24%, transparent); }
+.model-tag { flex: none; padding: 0 6px; border-radius: var(--radius-full); background: var(--hover); box-shadow: inset 0 0 0 1px var(--line); color: var(--muted); font-size: 11px; font-weight: 500; line-height: 17px; white-space: nowrap; }
+.model-tag.new { background: var(--ai-bg); color: var(--ai); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ai) 22%, transparent); }
+.model-tag.warn { background: var(--amber-bg); color: var(--amber); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 24%, transparent); }
+
+.model-pop { position: fixed; z-index: 75; display: flex; flex-direction: column; max-height: min(480px, 70vh); overflow: hidden; border: 1px solid var(--line-2); border-radius: var(--radius-lg); background: var(--elevated); box-shadow: var(--shadow-xl), var(--highlight); animation: pop-in 140ms var(--ease-out) backwards; }
+.model-search { display: flex; align-items: center; gap: 8px; flex: none; height: 46px; padding: 0 8px 0 13px; border-bottom: 1px solid var(--line); color: var(--faint); }
+.model-search input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--fg); font-size: var(--text-base); }
+.model-search input:focus-visible { outline: none; }
+.model-search kbd { margin-right: 4px; }
+.model-search .icon-btn { width: 28px; min-width: 28px; }
+/* "Use site default" sits above the scrolling list, in reach however far it scrolls. */
+.model-options { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+.model-site { flex: none; padding: 6px 6px 5px; border-bottom: 1px solid var(--line); }
+.model-site .model-row { position: relative; left: auto; right: auto; }
+.model-body { position: relative; display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+.model-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.model-canvas { position: relative; margin-bottom: 6px; }
+.model-group { position: absolute; left: 0; right: 0; display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; height: 30px; padding: 0 16px 6px; color: var(--faint); font-size: 11.5px; font-weight: 600; letter-spacing: 0.01em; white-space: nowrap; }
+.model-group span { font-weight: 500; font-variant-numeric: tabular-nums; }
+.model-group.pinned { top: 0; z-index: 2; background: var(--elevated); box-shadow: 0 1px 0 var(--line); pointer-events: none; }
+.model-row { position: absolute; left: 6px; right: 6px; display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 8px; border-radius: var(--radius); cursor: pointer; }
+.model-row.active { background: var(--hover); }
+.model-row.selected .model-name { font-weight: 600; }
+.model-main { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
+.model-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.model-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); font-size: var(--text-md); font-weight: 500; line-height: 18px; }
+.model-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 12px; line-height: 15px; }
+.model-price { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex: none; color: var(--fg-2); font-size: 12.5px; line-height: 16px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.model-unit { color: var(--faint); font-size: 11px; line-height: 14px; }
+.model-check { display: grid; place-items: center; flex: none; width: 16px; color: var(--fg); }
+.model-empty { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 32px 20px; color: var(--muted); font-size: var(--text-md); text-align: center; overflow-wrap: anywhere; }
+.model-loading { display: flex; flex-direction: column; gap: 18px; padding: 18px 14px 20px; }
+.model-loading-row { display: flex; align-items: center; gap: 10px; }
+.model-foot { display: flex; justify-content: space-between; gap: 12px; flex: none; padding: 8px 14px; border-top: 1px solid var(--line); background: var(--surface); color: var(--faint); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.model-scrim { position: fixed; inset: 0; z-index: 74; background: var(--scrim); animation: fade-in 160ms var(--ease) backwards; }
+.model-sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex: none; padding: 12px 10px 4px 16px; font-size: var(--text-lg); font-weight: 600; letter-spacing: -0.01em; }
+html.has-sheet { overflow: hidden; }
+/* Phones: a sheet from the bottom, tall enough that filtering doesn't make it jump. */
+.model-pop.sheet { left: 0; right: 0; bottom: 0; height: min(80dvh, 640px); max-height: none; border-bottom: 0; border-radius: 18px 18px 0 0; animation: sheet-in 260ms var(--ease-out) backwards; }
+.model-pop.sheet .model-foot { padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
