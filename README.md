@@ -60,7 +60,7 @@ Email and AI are one secret each (`RESEND_API_KEY`, `PREDEV_API_KEY`) when you w
 
 ![The editor with the AI assistant open](docs/screenshots/editor.webp)
 
-**A newsletter you can trust with a list.** Double opt-in, RFC 8058 one-click unsubscribe on every email, recipients frozen when a send is queued, idempotent batches, one worker at a time per send, and a subscription history where an import or a product signup never re-subscribes someone who opted out. Test mode keeps newsletters inside the team until you turn it off.
+**A newsletter you can trust with a list.** Double opt-in, RFC 8058 one-click unsubscribe on every email, recipients frozen when a send is queued, idempotent batches, one worker at a time per send, and a subscription history where an import or a product signup never re-subscribes someone who opted out. Test mode keeps newsletters inside the team until you turn it off. A welcome series greets each new subscriber with a few emails of the posts people read most, never one they already got, edited beside a live preview.
 
 **Found by search engines and AI assistants.** Canonical URLs, share cards with real image sizes, BlogPosting and breadcrumb structured data, sitemaps with images, a full-text RSS feed, `llms.txt` and `llms-full.txt`, a Markdown copy of every post, heading anchors and IndexNow pings on publish. Any host other than the canonical one answers with `noindex`, so a staging copy never competes with the real site.
 

@@ -155,7 +155,7 @@ export function defaultSequence(id: string): Sequence | null {
                 delay: 0,
                 subject: 'Welcome to {site}',
                 preheader: "Thanks for subscribing. Here's where to start.",
-                intro: "# Welcome to {site}\n\nThanks for subscribing. New posts will land in this inbox as they're published.\n\nUntil the next one, here are the posts readers liked most.",
+                intro: "# Welcome to {site}\n\nThanks for subscribing. New posts will land in this inbox as they're published.\n\nUntil the next one, here are the posts people read most.",
                 posts: { mode: 'best', count: 3, tags: [], pinned: [], heading: 'Start here' }
             }),
             step({
@@ -171,7 +171,7 @@ export function defaultSequence(id: string): Sequence | null {
                 delay: 7 * DAY,
                 subject: 'One more from {site}',
                 preheader: 'The last of the welcome emails.',
-                intro: "# The last welcome email\n\nFrom here on you'll get new posts as they come out. Three more worth your time before then.",
+                intro: "# The last welcome email\n\nFrom here on you'll get new posts as they come out. Here are three more worth your time.",
                 posts: { mode: 'best', count: 3, tags: [], pinned: [], heading: 'Worth your time' },
                 outro: 'Thanks for reading.'
             })
