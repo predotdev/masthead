@@ -52,6 +52,18 @@ export async function serveSite(req: Request, ctx: Ctx): Promise<Response> {
         return new Response(path.slice(base.length, -4), { headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'public, max-age=86400' } });
     }
 
+    // A post asked for as Markdown (Accept: text/markdown) gets its .md copy, the way agents ask for it.
+    if ((req.method === 'GET' || req.method === 'HEAD') && path.endsWith('/') && wantsMarkdown(req.headers.get('accept'))) {
+        const slug = path.slice(base.length, -1);
+        if (slug && !slug.includes('/') && !['page', 'tag', 'author', 'search', 'rss'].includes(slug) && (await ctx.env.BUCKET.head(`${SITE_PREFIX}${base.slice(1)}${slug}.md`))) {
+            const res = await fromStorage(ctx, `${base.slice(1)}${slug}.md`, !robots(ctx)['x-robots-tag'], req, null);
+            const out = new Response(res.body, res);
+            out.headers.set('vary', 'Accept');
+            out.headers.set('content-location', `${base}${slug}.md`);
+            return out;
+        }
+    }
+
     let key: string;
     if (path === `${base}rss/`) key = `${base}rss/index.xml`;
     else if (path.endsWith('/')) key = `${path}index.html`;
@@ -82,6 +94,22 @@ export async function serveSite(req: Request, ctx: Ctx): Promise<Response> {
     return fromStorage(ctx, key, canonical, req, version);
 }
 
+/** True when the reader asks for Markdown ahead of HTML: "text/markdown", or a higher q than text/html. */
+function wantsMarkdown(accept: string | null): boolean {
+    if (!accept) return false;
+    const q = (type: string) => {
+        for (const part of accept.split(',')) {
+            const [t, ...params] = part.trim().split(';');
+            if (t.trim().toLowerCase() !== type) continue;
+            const w = params.map(x => x.trim()).find(x => x.startsWith('q='));
+            return w ? Number(w.slice(2)) || 0 : 1;
+        }
+        return null;
+    };
+    const md = q('text/markdown');
+    return md !== null && md > 0 && md >= (q('text/html') ?? 0);
+}
+
 const EDGE_FRESH_MS = 60_000;
 const EDGE_MAX_STALE_MS = 3_600_000;
 const CACHED_AT = 'x-masthead-cached-at';
@@ -107,6 +135,12 @@ async function fromStorage(ctx: Ctx, key: string, canonical: boolean, req: Reque
     headers.set('etag', `W/${obj.httpEtag}`);
     headers.set('last-modified', obj.uploaded.toUTCString());
     const isHtml = (headers.get('content-type') ?? '').startsWith('text/html');
+    if (isHtml) {
+        headers.set('vary', 'Accept');
+        // A post page points agents at its Markdown copy.
+        const slug = key.startsWith(ctx.basePath.slice(1)) && key.endsWith('/index.html') ? key.slice(ctx.basePath.length - 1, -'/index.html'.length) : '';
+        if (slug && !slug.includes('/') && !['page', 'tag', 'author', 'search', 'rss'].includes(slug)) headers.set('link', `<${ctx.basePath}${slug}.md>; rel="alternate"; type="text/markdown"`);
+    }
     headers.set('cache-control', version ? 'public, max-age=31536000, immutable' : isHtml || key.endsWith('.xml') || key.endsWith('.txt') || key.endsWith('.json') ? 'public, max-age=0, must-revalidate' : 'public, max-age=300');
     if (!('body' in obj)) return new Response(null, { status: 304, headers });
 

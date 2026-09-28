@@ -68,13 +68,13 @@ export async function altText(ctx: Ctx, input: AltInput): Promise<{ alt: string;
         model: chosen.model,
         system: SYSTEM,
         messages: [{ role: 'user', content: context || 'Write the alt text for this image.', images: [await readable(ctx, input.src)] }],
-        maxTokens: 120,
+        maxTokens: 800,
         temperature: 0.2
     });
     let alt = tidyAlt(res.text);
     // Over the limit: ask once for a shorter one rather than cutting a sentence off.
     if (alt.length > ALT_MAX) {
-        const again = await provider(ctx).text({ model: chosen.model, system: SYSTEM, messages: [{ role: 'user', content: `Rewrite this alt text in under ${ALT_MAX - 15} characters, keeping the product and screen names and the point:\n\n${res.text.trim()}` }], maxTokens: 120, temperature: 0.2 });
+        const again = await provider(ctx).text({ model: chosen.model, system: SYSTEM, messages: [{ role: 'user', content: `Rewrite this alt text in under ${ALT_MAX - 15} characters, keeping the product and screen names and the point:\n\n${res.text.trim()}` }], maxTokens: 800, temperature: 0.2 });
         alt = tidyAlt(again.text || alt);
     }
     if (!alt) throw new HttpError(502, 'The model did not describe that image.');

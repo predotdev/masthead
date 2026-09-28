@@ -379,7 +379,7 @@ ${mostRead(ctx, v.highlights)}
   <ul class="cards" data-filterable>
 ${rest.map(i => card(ctx, i)).join('\n')}
   </ul>
-  <p class="filter-more" data-filter-more hidden><a class="btn btn-pill" href="#"></a></p>
+  <p class="filter-more" data-filter-more hidden><a class="btn btn-pill"></a></p>
 </section>
 ${pager}
 ${signup(ctx)}`;

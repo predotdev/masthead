@@ -161,6 +161,11 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
         cards[key] = card;
         return { url: abs(`${basePath}content/cards/${key}.png`), size: CARD_SIZE, alt: card.title };
     };
+    /** A description for a topic or author page that has none: what it is, then its newest post titles. */
+    const collectionSummary = (lead: string, items: { title: string }[]) => {
+        const titles = items.slice(0, 3).map(p => p.title.replace(/[.!?]+$/, ''));
+        return titles.length ? `${lead}: ${titles.join('; ')}.` : `${lead}.`;
+    };
     const postCount = (n: number) => (n === 1 ? '1 post' : `${n} posts`);
 
     // ---------------------------------------------------------- theme files first
@@ -459,7 +464,7 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
         for (const file of listing('tag', urls.tag(t), byTag.get(t.id)!, {
             heading: t.name,
             title: `${t.name} - ${site.title}`,
-            description: t.description,
+            description: t.description || collectionSummary(`Posts about ${t.name} from ${metaSite.title}`, byTag.get(t.id)!),
             type: 'website',
             card: { name: `tag-${t.slug}`, card: { kind: 'tag', title: t.name, eyebrow: 'Topic', text: t.description, meta: postCount(byTag.get(t.id)!.length) } },
             tag: t,
@@ -473,7 +478,7 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
         for (const file of listing('author', urls.author(a), byAuthor.get(a.id)!, {
             heading: a.name,
             title: `${a.name} - ${site.title}`,
-            description: a.bio,
+            description: a.bio || collectionSummary(`Posts by ${a.name} on ${metaSite.title}`, byAuthor.get(a.id)!),
             type: 'profile',
             image: a.profileImage,
             card: { name: `author-${a.slug}`, card: { kind: 'author', title: a.name, eyebrow: 'Author', text: a.bio, image: absolute(a.profileImage), meta: postCount(byAuthor.get(a.id)!.length) } },

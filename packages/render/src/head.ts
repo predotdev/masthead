@@ -30,13 +30,13 @@ export function headTags(h: HeadInput): string {
     const handle = h.site.twitter ? (h.site.twitter.startsWith('@') ? h.site.twitter : `@${h.site.twitter}`) : null;
     const image = h.image ?? h.site.shareImage ?? null;
     const tags: string[] = [
-        h.noindex ? '<meta name="robots" content="noindex">' : '',
+        h.noindex ? '<meta name="robots" content="noindex">' : '<meta name="robots" content="max-image-preview:large, max-snippet:-1, max-video-preview:-1">',
         meta('property', 'og:site_name', h.site.title),
         meta('property', 'og:type', h.type),
         meta('property', 'og:title', h.title),
         meta('property', 'og:description', h.description),
         meta('property', 'og:url', h.canonical),
-        meta('property', 'og:locale', h.site.locale.replace('-', '_')),
+        meta('property', 'og:locale', ogLocale(h.site.locale)),
         image ? meta('property', 'og:image', image) : '',
         image && h.imageAlt ? meta('property', 'og:image:alt', h.imageAlt) : '',
         image && h.imageSize ? meta('property', 'og:image:width', String(h.imageSize.width)) : '',
@@ -61,6 +61,14 @@ export function headTags(h: HeadInput): string {
         ...h.jsonLd.map(o => `<script type="application/ld+json">${JSON.stringify(o).replace(/</g, '\\u003c')}</script>`)
     ];
     return tags.filter(Boolean).join('\n');
+}
+
+/** Open Graph wants a language and a region ("en_US"); a bare language gets its usual region. */
+function ogLocale(locale: string): string {
+    const l = locale.replace('-', '_');
+    if (l.includes('_')) return l;
+    const region: Record<string, string> = { en: 'US', es: 'ES', fr: 'FR', de: 'DE', pt: 'PT', it: 'IT', ja: 'JP', ko: 'KR', zh: 'CN' };
+    return region[l] ? `${l}_${region[l]}` : l;
 }
 
 function meta(attr: 'name' | 'property', key: string, value: string): string {
