@@ -1,98 +1,173 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import { api, fmtDate, fmtNum, type Post, type Staff } from '../api';
-import { Button, Empty, ErrorNote, Loading, PageHead, Pill, errorToast, useLoad } from '../ui';
+import { Icon } from '../icons';
+import { Avatar, Button, Empty, ErrorNote, PageHead, Pill, Segmented, TableSkeleton, errorToast, useLoad } from '../ui';
 
 const STATUS_TONE = { draft: 'neutral', scheduled: 'amber', published: 'green' } as const;
+const FILTERS = [
+    ['', 'All'],
+    ['draft', 'Drafts'],
+    ['scheduled', 'Scheduled'],
+    ['published', 'Published']
+] as const;
 
+/** "drafts", "scheduled pages", "posts": what a filter shows, for empty states. */
+const phrase = (status: string, noun: string) => (status === 'draft' ? 'drafts' : status ? `${status} ${noun}s` : `${noun}s`);
+
+/** Creates an empty post or page and opens it in the editor. */
+export async function createPost(type: 'post' | 'page') {
+    try {
+        const post = await api<Post>('/posts', { body: { type, title: '' } });
+        location.hash = `#/edit/${post.id}`;
+    } catch (err) {
+        errorToast(err);
+    }
+}
+
+/**
+ * Posts and pages on one screen. Most blogs have a page or two (an About),
+ * too few for their own place in the menu; #/pages opens this with Pages picked.
+ */
 export function Posts({ type }: { type: 'post' | 'page' }) {
     const [status, setStatus] = useState('');
+    const [search, setSearch] = useState('');
     const [q, setQ] = useState('');
     const [creating, setCreating] = useState(false);
+    // Search as you type, without a request per keystroke.
+    useEffect(() => {
+        const t = setTimeout(() => setQ(search.trim()), 200);
+        return () => clearTimeout(t);
+    }, [search]);
+
     const { data, error, loading } = useLoad(
-        () =>
-            Promise.all([
-                api<{ items: Post[]; total: number }>(`/posts?type=${type}&limit=200${status ? `&status=${status}` : ''}${q ? `&q=${encodeURIComponent(q)}` : ''}`),
-                api<Staff[]>('/staff'),
-                type === 'post' ? api<{ configured: boolean; posts: { slug: string; views: number }[] }>('/analytics?days=30').catch(() => null) : Promise.resolve(null)
-            ]),
+        () => api<{ items: Post[]; total: number }>(`/posts?type=${type}&limit=200${status ? `&status=${status}` : ''}${q ? `&q=${encodeURIComponent(q)}` : ''}`),
         [type, status, q]
     );
-    const staff = new Map((data?.[1] ?? []).map(s => [s.id, s.name]));
-    const views = data?.[2]?.configured ? new Map(data[2].posts.map(p => [p.slug, p.views])) : null;
+    const people = useLoad(() => api<Staff[]>('/staff'), []);
+    const stats = useLoad(() => (type === 'post' ? api<{ configured: boolean; posts: { slug: string; views: number }[] }>('/analytics?days=30').catch(() => null) : Promise.resolve(null)), [type]);
+    const counts = useLoad(() => Promise.all((['post', 'page'] as const).map(t => api<{ total: number }>(`/posts?type=${t}&limit=1`).then(r => r.total))), []);
+
+    const staff = new Map((people.data ?? []).map(s => [s.id, s]));
+    const views = stats.data?.configured ? new Map(stats.data.posts.map(p => [p.slug, p.views])) : null;
+    const noun = type === 'post' ? 'post' : 'page';
+    const filtered = !!(q || status);
 
     const create = async () => {
         setCreating(true);
-        try {
-            const post = await api<Post>('/posts', { body: { type, title: '' } });
-            location.hash = `#/edit/${post.id}`;
-        } catch (err) {
-            errorToast(err);
-            setCreating(false);
-        }
+        await createPost(type);
+        setCreating(false);
     };
+    const newButton = (
+        <Button tone="primary" icon="plus" onClick={create} busy={creating}>
+            New {noun}
+        </Button>
+    );
 
     return (
-        <div>
-            <PageHead title={type === 'post' ? 'Posts' : 'Pages'}>
-                <Button tone="primary" onClick={create} busy={creating}>
-                    New {type}
-                </Button>
+        <div class="posts">
+            <PageHead title="Posts" description="Write, schedule and publish. Standalone pages, like About, are under Pages.">
+                {newButton}
             </PageHead>
             <div class="toolbar">
-                <div class="tabs" role="tablist">
-                    {[
-                        ['', 'All'],
-                        ['draft', 'Drafts'],
-                        ['scheduled', 'Scheduled'],
-                        ['published', 'Published']
-                    ].map(([v, label]) => (
-                        <button key={v} role="tab" aria-selected={status === v} class={`tab ${status === v ? 'on' : ''}`} onClick={() => setStatus(v)}>
-                            {label}
-                        </button>
-                    ))}
+                <div class="toolbar-group">
+                    <Segmented
+                        label="Show"
+                        value={type}
+                        options={[
+                            { value: 'post', label: 'Posts', count: counts.data?.[0] },
+                            { value: 'page', label: 'Pages', count: counts.data?.[1] }
+                        ]}
+                        onChange={v => (location.hash = v === 'page' ? '#/pages' : '#/posts')}
+                    />
+                    <div class="tabs" role="tablist" aria-label="Status">
+                        {FILTERS.map(([v, label]) => (
+                            <button key={v} role="tab" aria-selected={status === v} class={`tab ${status === v ? 'on' : ''}`} onClick={() => setStatus(v)}>
+                                {label}
+                            </button>
+                        ))}
+                    </div>
                 </div>
-                <input class="search" type="search" placeholder="Search titles" value={q} onInput={e => setQ(e.currentTarget.value)} />
+                <input class="search" type="search" placeholder="Search titles" aria-label="Search titles" value={search} onInput={e => setSearch(e.currentTarget.value)} />
             </div>
             {error ? <ErrorNote text={error} /> : null}
-            {loading && !data ? (
-                <Loading />
-            ) : data && data[0].items.length === 0 ? (
-                <Empty title={q || status ? 'Nothing matches.' : `No ${type}s yet.`} />
-            ) : (
-                <div class="table-wrap">
-                    <table class="table">
-                        <thead>
-                            <tr>
-                                <th>Title</th>
-                                <th>Status</th>
-                                <th>Author</th>
-                                <th>Date</th>
-                                {views ? <th class="num">Views, 30 days</th> : null}
-                                {type === 'post' ? <th class="num">Emailed to</th> : null}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {data?.[0].items.map(p => (
-                                <tr key={p.id} class="row-link" onClick={() => (location.hash = `#/edit/${p.id}`)}>
-                                    <td>
-                                        <a href={`#/edit/${p.id}`} class="title-cell">
-                                            {p.title || 'Untitled'}
-                                        </a>
-                                        {p.bodyFormat === 'html' ? <span class="muted small"> · imported</span> : null}
-                                    </td>
-                                    <td>
-                                        <Pill tone={STATUS_TONE[p.status]}>{p.status}</Pill>
-                                    </td>
-                                    <td class="muted">{p.authors.map(a => staff.get(a) ?? '').filter(Boolean).join(', ')}</td>
-                                    <td class="muted nowrap">{fmtDate(p.publishedAt ?? p.updatedAt)}</td>
-                                    {views ? <td class="num">{p.status === 'published' ? fmtNum(views.get(p.slug) ?? 0) : ''}</td> : null}
-                                    {type === 'post' ? <td class="num muted">{p.newsletter ? fmtNum(p.newsletter.recipients) : ''}</td> : null}
+            {!data && !error ? (
+                <TableSkeleton rows={8} columns={type === 'post' ? 5 : 4} />
+            ) : data && data.items.length === 0 ? (
+                filtered ? (
+                    <Empty icon="search" title="Nothing matches" action={<Button onClick={() => (setSearch(''), setQ(''), setStatus(''))}>Clear filters</Button>}>
+                        {q ? `No ${phrase(status, noun)} match "${q}".` : `No ${phrase(status, noun)}.`}
+                    </Empty>
+                ) : (
+                    <Empty icon="posts" title={`No ${noun}s yet`} action={newButton}>
+                        {type === 'post' ? 'Write the first one. Drafts save as you type.' : 'Pages hold writing that stands on its own, like About or Contact.'}
+                    </Empty>
+                )
+            ) : data ? (
+                <>
+                    <div class={`table-wrap${loading ? ' is-loading' : ''}`}>
+                        <table class="table posts-table">
+                            <thead>
+                                <tr>
+                                    <th class="col-title">Title</th>
+                                    <th class="col-status">Status</th>
+                                    <th class="col-author">Author</th>
+                                    <th class="col-date">Date</th>
+                                    {views ? <th class="num">Views, 30 days</th> : null}
+                                    {type === 'post' ? <th class="num">Emailed to</th> : null}
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            )}
+                            </thead>
+                            <tbody>
+                                {data.items.map(p => {
+                                    const authors = p.authors.map(a => staff.get(a)).filter((s): s is Staff => !!s);
+                                    const when = p.publishedAt ?? p.updatedAt;
+                                    return (
+                                        <tr key={p.id} class="row-link" onClick={() => (location.hash = `#/edit/${p.id}`)}>
+                                            <td class="col-title">
+                                                <span class="post-title">
+                                                    <a href={`#/edit/${p.id}`} class={`title-cell${p.title ? '' : ' untitled'}`} onClick={e => e.stopPropagation()}>
+                                                        {p.title || 'Untitled'}
+                                                    </a>
+                                                    {p.featured ? (
+                                                        <span class="featured" title="Featured">
+                                                            <Icon name="star" size={12} />
+                                                        </span>
+                                                    ) : null}
+                                                </span>
+                                            </td>
+                                            <td class="col-status">
+                                                <Pill tone={STATUS_TONE[p.status]} dot>
+                                                    {p.status}
+                                                </Pill>
+                                            </td>
+                                            <td class="col-author">
+                                                {authors.length ? (
+                                                    <span class="author">
+                                                        <Avatar name={authors[0].name} src={authors[0].profileImage} size={20} />
+                                                        <span class="author-name">
+                                                            {authors[0].name}
+                                                            {authors.length > 1 ? <span class="muted"> +{authors.length - 1}</span> : null}
+                                                        </span>
+                                                    </span>
+                                                ) : (
+                                                    <span class="faint">None</span>
+                                                )}
+                                            </td>
+                                            <td class="col-date nowrap muted" title={`${p.status === 'published' ? 'Published' : p.status === 'scheduled' ? 'Scheduled for' : p.publishedAt ? 'Publish date' : 'Updated'} ${new Date(when).toLocaleString()}`}>
+                                                {fmtDate(when)}
+                                            </td>
+                                            {views ? <td class="num">{p.status === 'published' ? fmtNum(views.get(p.slug) ?? 0) : <span class="faint">–</span>}</td> : null}
+                                            {type === 'post' ? <td class="num muted">{p.newsletter ? fmtNum(p.newsletter.recipients) : <span class="faint">–</span>}</td> : null}
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                    <p class="table-foot">
+                        {data.total > data.items.length ? `Showing ${fmtNum(data.items.length)} of ${fmtNum(data.total)} ${noun}s` : `${fmtNum(data.total)} ${noun}${data.total === 1 ? '' : 's'}`}
+                    </p>
+                </>
+            ) : null}
         </div>
     );
 }
