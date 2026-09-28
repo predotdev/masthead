@@ -11,6 +11,10 @@
     "examples/*"
   ],
   "scripts": {
+    "dev": "bun scripts/dev.ts",
+    "seed": "bun packages/cli/src/index.ts seed",
+    "build": "bun run --cwd packages/admin build",
+    "deploy": "bun run build && bun run --cwd apps/worker deploy",
     "masthead": "bun packages/cli/src/index.ts",
     "typecheck": "tsc -p tsconfig.json && tsc -p packages/server/tsconfig.json && tsc -p packages/admin/tsconfig.json",
     "check:leaks": "bun scripts/leak-guard.ts && gitleaks dir . --no-banner --redact --config .gitleaks.toml",
