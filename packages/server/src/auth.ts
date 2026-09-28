@@ -5,7 +5,7 @@ import { HttpError, cookies, newId, now, randomToken, safeEqual, sha256 } from '
 
 export const SESSION_COOKIE = 'mh_session';
 const SESSION_DAYS = 30;
-const LOGIN_MINUTES = 60;
+export const LOGIN_MINUTES = 60;
 
 const RANK: Record<StaffRole, number> = { contributor: 0, author: 1, editor: 2, admin: 3, owner: 4 };
 

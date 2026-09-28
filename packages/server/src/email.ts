@@ -1,5 +1,6 @@
 import type { Post, SiteSettings, SocialNetwork } from '@masthead/core';
 import { autoExcerpt, readingMinutes } from '@masthead/render';
+import { LOGIN_MINUTES } from './auth';
 import { FAINT, FONT, INK, LINE, MUTED, TEXT, button, emailBody, emailInline, type EmailAssets } from './email-body';
 import { escapeHtml as esc } from './util';
 
@@ -302,15 +303,18 @@ export function confirmEmail(site: SiteSettings, url: string) {
     };
 }
 
+/** How long a sign-in or invite link lasts, in the words the email uses. */
+const linkLifetime = () => (LOGIN_MINUTES % 60 ? `${LOGIN_MINUTES} minutes` : LOGIN_MINUTES === 60 ? 'an hour' : `${LOGIN_MINUTES / 60} hours`);
+
 export function signInEmail(site: SiteSettings, url: string, invite: boolean) {
     return invite
         ? {
               subject: `You're invited to ${site.title}`,
-              ...notice(site, `Join ${site.title}`, 'You have been invited to write and manage the blog. The link below signs you in.', { label: 'Accept invite', url }, 'The link works once and expires in 20 minutes.')
+              ...notice(site, `Join ${site.title}`, 'You have been invited to write and manage the blog. The link below signs you in.', { label: 'Accept invite', url }, `The link works once and expires in ${linkLifetime()}.`)
           }
         : {
               subject: `Sign in to ${site.title}`,
-              ...notice(site, 'Sign in', 'Use the link below to sign in to the blog admin.', { label: 'Sign in', url }, "The link works once and expires in 20 minutes. If you didn't ask for it, ignore this email.")
+              ...notice(site, 'Sign in', 'Use the link below to sign in to the blog admin.', { label: 'Sign in', url }, `The link works once and expires in ${linkLifetime()}. If you didn't ask for it, ignore this email.`)
           };
 }
 

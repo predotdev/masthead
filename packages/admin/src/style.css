@@ -778,6 +778,8 @@ img.avatar { box-shadow: 0 0 0 1px var(--line-2); }
   .posts-table .col-author .avatar { display: none; }
   .posts-table .col-date { order: 2; font-size: var(--text-sm); }
   .posts-table td.num { display: none; }
+  /* After the block rule above, which would otherwise bring back the empty analytics cell as a gap. */
+  .table.posts-table td.col-stats { display: none; }
 }
 @keyframes sheet-in { from { opacity: 0; transform: translateY(32px); } }
 @media (prefers-reduced-motion: reduce) {
