@@ -3,10 +3,11 @@
  *
  * Create a key in the pre.dev dashboard under Integrations -> API Keys.
  * Catalog reads are free; generation is charged in pre.dev credits, reported
- * per call in the x-predev-credits-* response headers.
+ * per call in the x-predev-credits-* response headers. A stream's charge
+ * settles after it ends and is read back with usage(requestId).
  * API reference: https://docs.pre.dev/ai-gateway/overview
  */
-import type { AIProvider, EmbeddingResult, ImageRequest, ImageResult, ModelInfo, ModelKind, TextRequest, TextResult, Usage, VideoJob, VideoRequest } from '@masthead/core';
+import type { AIProvider, EmbeddingResult, ImageRequest, ImageResult, ModelInfo, ModelKind, StreamEnd, TextRequest, TextResult, Usage, VideoJob, VideoRequest } from '@masthead/core';
 
 export interface PredevAIOptions {
     /** Defaults to the PREDEV_API_KEY environment variable. */
@@ -54,26 +55,22 @@ export function predevAI(options: PredevAIOptions = {}): AIProvider {
         return value;
     }
 
-    async function call(path: string, init: RequestInit = {}): Promise<{ body: any; usage: Usage }> {
-        const headers = new Headers(init.headers);
-        headers.set('authorization', `Bearer ${key()}`);
-        headers.set('accept', 'application/json');
-        if (init.body) headers.set('content-type', 'application/json');
+    function headersFor(accept: string, json: boolean): Headers {
+        const headers = new Headers({ authorization: `Bearer ${key()}`, accept });
+        if (json) headers.set('content-type', 'application/json');
         if (options.projectId) headers.set('x-predev-project-id', options.projectId);
+        return headers;
+    }
 
-        const res = await doFetch(`${baseUrl}${path}`, { ...init, headers });
+    async function call(path: string, init: RequestInit = {}): Promise<{ body: any; usage: Usage }> {
+        const res = await doFetch(`${baseUrl}${path}`, { ...init, headers: headersFor('application/json', Boolean(init.body)) });
+        if (!res.ok) throw await failure(res);
         const text = await res.text();
         let body: any = null;
         try {
             body = text ? JSON.parse(text) : null;
         } catch {
             body = null;
-        }
-        if (!res.ok) {
-            const err = body?.error ?? body ?? {};
-            const message = typeof err.message === 'string' ? err.message : `pre.dev AI returned ${res.status}`;
-            const retry = Number(res.headers.get('retry-after'));
-            throw new PredevAIError(res.status, err.code, message, Number.isFinite(retry) && retry > 0 ? retry : undefined);
         }
         const charged = res.headers.get('x-predev-credits-charged');
         const remaining = res.headers.get('x-predev-credits-remaining');
@@ -85,6 +82,24 @@ export function predevAI(options: PredevAIOptions = {}): AIProvider {
                 requestId: res.headers.get('x-predev-request-id') ?? undefined
             }
         };
+    }
+
+    /** Opens a server-sent event stream; the gateway answers errors before it starts as plain JSON. */
+    async function open(path: string, body: unknown, signal?: AbortSignal): Promise<Response> {
+        const res = await doFetch(`${baseUrl}${path}`, { method: 'POST', headers: headersFor('text/event-stream', true), body: JSON.stringify(body), signal });
+        if (!res.ok || !res.body) throw await failure(res);
+        return res;
+    }
+
+    /** Turns image data from the API (base64, or a URL to fetch) into bytes. */
+    async function imageBytes(item: any, signal?: AbortSignal): Promise<Uint8Array> {
+        if (typeof item?.b64_json === 'string') return fromBase64(item.b64_json);
+        if (typeof item?.url === 'string') {
+            const res = await doFetch(item.url, { signal });
+            if (!res.ok) throw new PredevAIError(res.status, undefined, `Could not download the generated image (${res.status}).`);
+            return new Uint8Array(await res.arrayBuffer());
+        }
+        throw new PredevAIError(502, undefined, 'The image response had no image data.');
     }
 
     return {
@@ -126,7 +141,8 @@ export function predevAI(options: PredevAIOptions = {}): AIProvider {
                     max_tokens: request.maxTokens,
                     temperature: request.temperature,
                     response_format: request.json ? { type: 'json_object' } : undefined
-                })
+                }),
+                signal: request.signal
             });
             const content = body?.choices?.[0]?.message?.content;
             const text = typeof content === 'string' ? content : Array.isArray(content) ? content.map((p: any) => p?.text ?? '').join('') : '';
@@ -144,64 +160,96 @@ export function predevAI(options: PredevAIOptions = {}): AIProvider {
         async image(request: ImageRequest): Promise<ImageResult> {
             const model = request.model ?? options.imageModel;
             if (!model) throw new Error('No image model. Pass model, or set imageModel on predevAI().');
-            const { body, usage } = await call('/images', {
-                method: 'POST',
-                body: JSON.stringify({ model, prompt: request.prompt, aspect_ratio: request.aspectRatio, input_references: request.references?.length ? request.references.map(imageRef) : undefined })
-            });
-            const first = body?.data?.[0];
-            let bytes: Uint8Array;
-            if (typeof first?.b64_json === 'string') {
-                bytes = Uint8Array.from(atob(first.b64_json), c => c.charCodeAt(0));
-            } else if (typeof first?.url === 'string') {
-                const res = await doFetch(first.url);
-                if (!res.ok) throw new PredevAIError(res.status, undefined, `Could not download the generated image (${res.status}).`);
-                bytes = new Uint8Array(await res.arrayBuffer());
-            } else {
-                throw new PredevAIError(502, undefined, 'The image response had no image data.');
+            const payload = { model, prompt: request.prompt, aspect_ratio: request.aspectRatio, input_references: request.references?.length ? request.references.map(imageRef) : undefined };
+            if (!request.onPreview) {
+                const { body, usage } = await call('/images', { method: 'POST', body: JSON.stringify(payload), signal: request.signal });
+                const bytes = await imageBytes(body?.data?.[0], request.signal);
+                return { bytes, mimeType: sniffImageType(bytes), model: String(body?.model ?? model), usage };
             }
-            return { bytes, mimeType: sniffImageType(bytes), model: String(body?.model ?? model), usage };
+            // Models that stream send rough versions while they paint, then the image.
+            const res = await open('/images', { ...payload, stream: true, partial_images: 2 }, request.signal);
+            const requestId = res.headers.get('x-predev-request-id') ?? undefined;
+            if (!(res.headers.get('content-type') ?? '').includes('event-stream')) {
+                const body = (await res.json()) as any;
+                const bytes = await imageBytes(body?.data?.[0], request.signal);
+                return { bytes, mimeType: sniffImageType(bytes), model: String(body?.model ?? model), usage: { requestId } };
+            }
+            let final: any = null;
+            let previews = 0;
+            for await (const data of events(res.body!)) {
+                if (data === '[DONE]') break;
+                const event = parse(data);
+                if (event?.error) throw streamError(event.error);
+                if (typeof event?.b64_json !== 'string') continue;
+                if (String(event.type ?? '').includes('partial')) request.onPreview({ dataUrl: `data:${base64Type(event.b64_json)};base64,${event.b64_json}`, index: Number(event.partial_image_index ?? previews++) });
+                else final = event;
+            }
+            if (!final) throw new PredevAIError(502, undefined, 'The image stream ended without an image.');
+            const bytes = await imageBytes(final, request.signal);
+            return {
+                bytes,
+                mimeType: sniffImageType(bytes),
+                model,
+                usage: { requestId, inputTokens: final.usage?.prompt_tokens, outputTokens: final.usage?.completion_tokens }
+            };
         },
 
-        async *stream(request: TextRequest): AsyncIterable<string> {
+        async *stream(request: TextRequest): AsyncGenerator<string, StreamEnd> {
             const model = request.model ?? options.textModel;
             if (!model) throw new Error('No text model. Pass model, or set textModel on predevAI().');
-            const headers = new Headers({ authorization: `Bearer ${key()}`, 'content-type': 'application/json', accept: 'text/event-stream' });
-            if (options.projectId) headers.set('x-predev-project-id', options.projectId);
-            const res = await doFetch(`${baseUrl}/chat/completions`, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify({
+            const res = await open(
+                '/chat/completions',
+                {
                     model,
                     stream: true,
                     messages: [...(request.system ? [{ role: 'system', content: request.system }] : []), ...request.messages],
                     max_tokens: request.maxTokens,
                     temperature: request.temperature
-                })
-            });
-            if (!res.ok || !res.body) {
-                const body = (await res.json().catch(() => null)) as { error?: { code?: string; message?: string } } | null;
-                throw new PredevAIError(res.status, body?.error?.code, body?.error?.message ?? `pre.dev AI returned ${res.status}`);
-            }
-            const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
-            let buffer = '';
-            for (;;) {
-                const { value, done } = await reader.read();
-                if (done) break;
-                buffer += value;
-                let nl: number;
-                while ((nl = buffer.indexOf('\n')) >= 0) {
-                    const line = buffer.slice(0, nl).trim();
-                    buffer = buffer.slice(nl + 1);
-                    if (!line.startsWith('data:')) continue;
-                    const data = line.slice(5).trim();
-                    if (data === '[DONE]') return;
-                    try {
-                        const delta = JSON.parse(data)?.choices?.[0]?.delta?.content;
-                        if (typeof delta === 'string' && delta) yield delta;
-                    } catch {
-                        // Keep-alive comments and partial frames are skipped.
-                    }
+                },
+                request.signal
+            );
+            let id: string | undefined;
+            let used = model;
+            let tokens: any = null;
+            let finish: string | undefined;
+            let ended = false;
+            for await (const data of events(res.body!)) {
+                if (data === '[DONE]') {
+                    ended = true;
+                    break;
                 }
+                const chunk = parse(data);
+                if (!chunk) continue;
+                if (chunk.error) throw streamError(chunk.error);
+                if (typeof chunk.id === 'string') id ??= chunk.id;
+                if (typeof chunk.model === 'string') used = chunk.model;
+                if (chunk.usage) tokens = chunk.usage;
+                const choice = chunk.choices?.[0];
+                if (choice?.finish_reason) finish = String(choice.finish_reason);
+                if (finish === 'error') throw new PredevAIError(502, 'model_error', 'The model stopped with an error.');
+                const delta = choice?.delta?.content;
+                if (typeof delta === 'string' && delta) yield delta;
+            }
+            // A stream that stops without saying so was cut off, not finished.
+            if (!ended && !finish) throw new PredevAIError(502, 'incomplete', 'The answer was cut off before it finished.');
+            return {
+                model: used,
+                finishReason: finish,
+                // The generation id (pdg-...) is what the charge is looked up by.
+                usage: { inputTokens: tokens?.prompt_tokens, outputTokens: tokens?.completion_tokens, requestId: id ?? res.headers.get('x-predev-request-id') ?? undefined }
+            };
+        },
+
+        async usage(requestId: string, signal?: AbortSignal): Promise<Usage | null> {
+            try {
+                const { body } = await call(`/generation?id=${encodeURIComponent(requestId)}`, { signal });
+                const row = body?.data;
+                if (typeof row?.credits !== 'number') return null;
+                return { charged: row.credits, requestId, inputTokens: row.native_tokens_prompt ?? row.tokens_prompt ?? undefined, outputTokens: row.native_tokens_completion ?? row.tokens_completion ?? undefined };
+            } catch (err) {
+                // Stats take a few seconds to appear after a call.
+                if (err instanceof PredevAIError && err.status === 404) return null;
+                throw err;
             }
         },
 
@@ -244,6 +292,76 @@ export function predevAI(options: PredevAIOptions = {}): AIProvider {
     };
 }
 
+/** The error in a failed response, with the gateway's message and any retry-after. */
+async function failure(res: Response): Promise<PredevAIError> {
+    const body: any = await res.json().catch(() => null);
+    const err = body?.error ?? body ?? {};
+    const message = typeof err.message === 'string' ? err.message : `pre.dev AI returned ${res.status}`;
+    const retry = Number(res.headers.get('retry-after'));
+    return new PredevAIError(res.status, err.code, message, Number.isFinite(retry) && retry > 0 ? retry : undefined);
+}
+
+/** An error the gateway sends inside a stream that has already started. */
+function streamError(err: any): PredevAIError {
+    const status = Number(err?.status ?? err?.code);
+    return new PredevAIError(Number.isInteger(status) && status >= 400 ? status : 502, typeof err?.code === 'string' ? err.code : undefined, String(err?.message ?? 'The model stopped with an error.'));
+}
+
+/**
+ * The data of each server-sent event, in order. Comments (the gateway's
+ * keep-alives), event names and ids carry nothing used here. Stopping early
+ * closes the connection.
+ */
+async function* events(body: ReadableStream<Uint8Array>): AsyncGenerator<string> {
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let scanned = 0;
+    let data: string[] = [];
+    try {
+        for (;;) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            let nl: number;
+            // Scan only what's new: a partial image is one data line of a megabyte or more.
+            while ((nl = buffer.indexOf('\n', scanned)) >= 0) {
+                const line = buffer.slice(0, nl).replace(/\r$/, '');
+                buffer = buffer.slice(nl + 1);
+                scanned = 0;
+                if (line === '') {
+                    if (data.length) yield data.join('\n');
+                    data = [];
+                } else if (line.startsWith('data:')) data.push(line.slice(line.startsWith('data: ') ? 6 : 5));
+            }
+            scanned = buffer.length;
+        }
+        if (data.length) yield data.join('\n');
+    } finally {
+        reader.cancel().catch(() => {});
+    }
+}
+
+function parse(data: string): any {
+    try {
+        return JSON.parse(data);
+    } catch {
+        return null;
+    }
+}
+
+function fromBase64(b64: string): Uint8Array {
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+}
+
+/** The image type of base64 data, from its first bytes. */
+function base64Type(b64: string): string {
+    return b64.startsWith('/9j/') ? 'image/jpeg' : b64.startsWith('UklGR') ? 'image/webp' : b64.startsWith('R0lGOD') ? 'image/gif' : 'image/png';
+}
+
 /** The id to poll a job by: the last segment of its polling_url (the documented address), else its id. */
 function jobIdOf(body: any): string {
     const url = typeof body?.polling_url === 'string' ? body.polling_url.replace(/\/+$/, '') : '';
@@ -269,7 +387,8 @@ function supports(row: any): ModelInfo['supports'] {
         durations: list(row.supported_durations)?.filter((d: unknown): d is number => typeof d === 'number').sort((a: number, b: number) => a - b),
         aspectRatios: list(row.supported_aspect_ratios),
         resolutions: list(row.supported_resolutions),
-        frameImages: list(row.supported_frame_images)
+        frameImages: list(row.supported_frame_images),
+        streaming: row.supports_streaming === true || undefined
     };
     return Object.values(out).some(Boolean) ? out : undefined;
 }

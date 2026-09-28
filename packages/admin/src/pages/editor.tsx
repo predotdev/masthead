@@ -3,8 +3,9 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/ho
 import { api, base, session, type Post, type Staff, type Tag, upload } from '../api';
 import { insertAi } from '../editor/assist';
 import { createEditor, slashItems, snapshot, type SelectionState, type SlashState } from '../editor/setup';
+import { Caret, Credits, StopButton, Working, splitDraft, useAiRun } from '../streaming';
 import { Button, Dialog, ErrorNote, Field, Loading, Pill, errorToast, toast, useLoad } from '../ui';
-import { AiPreview, AiPrompt, AssistantPanel, QUICK_EDITS, type AiJob } from './ai';
+import { AiPreview, AiPrompt, AssistantPanel, QUICK_EDITS, liveHtml, type AiJob } from './ai';
 import { EmbedDialog, HtmlDialog, ImageDialog, VideoDialog } from './media';
 import { HistoryPanel, SearchPanel } from './post-tools';
 import { AutoTagNote, useServerTags, type TaggedPost } from './post-tags';
@@ -419,6 +420,7 @@ function PostEditor({ initial, tags: allTags, staff }: { initial: Post; tags: Ta
             {modal?.kind === 'send' ? <SendDialog post={post} onClose={() => setModal(null)} /> : null}
             {modal?.kind === 'draft' ? (
                 <DraftDialog
+                    editor={editorRef.current}
                     onClose={() => setModal(null)}
                     onDraft={(title, md) => {
                         setModal(null);
@@ -641,15 +643,25 @@ function PublishDialog({ post, onClose, onDone }: { post: Post; onClose: () => v
     );
 }
 
-function DraftDialog({ onClose, onDraft, disabled }: { onClose: () => void; onDraft: (title: string, md: string) => void; disabled: boolean }) {
+/** Writes a post from a request, into a preview you watch fill in; it goes into the post when you insert it. */
+function DraftDialog({ editor, onClose, onDraft, disabled }: { editor: Editor | null; onClose: () => void; onDraft: (title: string, md: string) => void; disabled: boolean }) {
     const [prompt, setPrompt] = useState('');
     const [notes, setNotes] = useState('');
-    const [busy, setBusy] = useState(false);
+    const run = useAiRun<{ title: string; markdown: string; finishReason?: string }>();
+    const writing = run.state === 'working';
+    const shown = splitDraft(run.text);
+    const body = useMemo(() => (editor && shown.body ? liveHtml(editor, shown.body, writing && shown.titleDone) : ''), [shown.body, writing, shown.titleDone]);
+    const write = () => run.start('/ai/draft', { prompt, notes });
+    const use = () => {
+        const d = splitDraft(run.all());
+        onDraft(run.result?.title ?? d.title, run.result?.markdown ?? d.body);
+    };
+    const stageText = run.stage === 'reading' || !run.stage ? 'Reading your sources' : run.text ? 'Writing the draft' : 'Thinking';
     return (
         <Dialog title="Draft with AI" onClose={onClose} wide>
             {disabled ? (
                 <p>Go back to the editor from the HTML source first.</p>
-            ) : (
+            ) : run.state === 'idle' ? (
                 <div class="stack">
                     <Field label="What should the post say?">
                         <textarea rows={3} value={prompt} onInput={e => setPrompt(e.currentTarget.value)} placeholder="A launch post for the new publish button: what it does, why it matters, how to use it." />
@@ -658,67 +670,140 @@ function DraftDialog({ onClose, onDraft, disabled }: { onClose: () => void; onDr
                         <textarea rows={7} value={notes} onInput={e => setNotes(e.currentTarget.value)} />
                     </Field>
                 </div>
+            ) : (
+                <div class="ai-draft" aria-busy={writing}>
+                    {writing && !run.text ? <p class="muted small">The draft appears here as it is written.</p> : null}
+                    {shown.title || (writing && !shown.titleDone && run.text) ? (
+                        <h2 class="ai-draft-title">
+                            {shown.title}
+                            {writing && !shown.titleDone ? <Caret /> : null}
+                        </h2>
+                    ) : null}
+                    {body ? <div class="prose-preview ai-draft-body" dangerouslySetInnerHTML={{ __html: body }} /> : null}
+                    {run.state === 'error' ? <ErrorNote text={run.text ? `${run.error} What it wrote before that is above.` : run.error ?? ''} /> : null}
+                    {run.state === 'stopped' ? <p class="ai-note">{run.text ? 'Stopped. You can still insert what it wrote.' : 'Stopped before it wrote anything.'}</p> : null}
+                    {run.result?.finishReason === 'length' ? <p class="ai-note">It reached the length limit, so the end may be missing.</p> : null}
+                    {run.sources.length ? (
+                        <div class="ai-sources">
+                            {run.sources.slice(0, 6).map(s => (
+                                <a key={s.title} href={s.url ?? '#'} target="_blank" rel="noreferrer" title={s.title}>
+                                    {s.title.length > 40 ? `${s.title.slice(0, 38)}…` : s.title}
+                                </a>
+                            ))}
+                        </div>
+                    ) : null}
+                </div>
             )}
             <div class="dialog-actions">
-                <Button onClick={onClose}>Cancel</Button>
-                <Button
-                    tone="primary"
-                    busy={busy}
-                    disabled={disabled || !prompt.trim()}
-                    onClick={async () => {
-                        setBusy(true);
-                        try {
-                            const res = await api<{ title: string; markdown: string }>('/ai/draft', { body: { prompt, notes } });
-                            onDraft(res.title, res.markdown);
-                        } catch (err) {
-                            errorToast(err);
-                            setBusy(false);
-                        }
-                    }}
-                >
-                    Write draft
-                </Button>
+                {run.state === 'idle' ? (
+                    <>
+                        <Button onClick={onClose}>Cancel</Button>
+                        <Button tone="primary" disabled={disabled || !prompt.trim()} onClick={write}>
+                            Write draft
+                        </Button>
+                    </>
+                ) : writing ? (
+                    <>
+                        <Working label={stageText} since={run.startedAt} />
+                        <StopButton onClick={run.stop} />
+                    </>
+                ) : (
+                    <>
+                        <Credits usage={run.usage} />
+                        <Button tone="plain" onClick={run.reset}>
+                            Change the request
+                        </Button>
+                        <Button onClick={write}>Try again</Button>
+                        <Button tone="primary" disabled={!run.all().trim()} onClick={use}>
+                            Insert into the post
+                        </Button>
+                    </>
+                )}
             </div>
         </Dialog>
     );
 }
 
+type MetaKind = 'title' | 'description' | 'excerpt';
+
+/** The suggestions in text that is still arriving, one per line; the last line may be half written. */
+function metaItems(text: string, finished: boolean): { kind: MetaKind; text: string; done: boolean }[] {
+    const lines = text.split('\n');
+    const out: { kind: MetaKind; text: string; done: boolean }[] = [];
+    lines.forEach((line, i) => {
+        const done = finished || i < lines.length - 1;
+        const m = line.replace(/^[\s>*_\-\d.)]+/, '').match(/^(title|description|excerpt)\**\s*:\s*\**\s*(.*)$/i);
+        if (!m) return;
+        let value = m[2].replace(/\**$/, '').trim().replace(/^["“]/, '');
+        // A closing quote is only known once the line is finished.
+        if (done) value = value.replace(/["”]$/, '');
+        value = value.trim();
+        if (value || !done) out.push({ kind: m[1].toLowerCase() as MetaKind, text: value, done });
+    });
+    return out;
+}
+
 function MetaDialog({ draft, onClose, apply }: { draft: Draft; onClose: () => void; apply: (p: Partial<Draft>) => void }) {
-    const { data, error, loading } = useLoad(() => api<{ titles: string[]; descriptions: string[]; excerpt: string }>('/ai/meta', { body: { title: draft.title, markdown: draft.markdown ?? draft.html ?? '' } }), []);
+    const run = useAiRun();
+    const ask = () => run.start('/ai/meta', { title: draft.title, markdown: draft.markdown ?? draft.html ?? '' });
+    useEffect(ask, []);
+    const writing = run.state === 'working';
+    const items = metaItems(run.text, !writing);
+    const actions = (kind: MetaKind, text: string) =>
+        kind === 'title' ? (
+            <span class="row">
+                <Button onClick={() => apply({ title: text })}>Use as title</Button>
+                <Button onClick={() => apply({ metaTitle: text })}>Use for search</Button>
+            </span>
+        ) : kind === 'description' ? (
+            <Button onClick={() => apply({ metaDescription: text })}>Use</Button>
+        ) : (
+            <Button onClick={() => apply({ customExcerpt: text })}>Use as excerpt</Button>
+        );
+    const groups: [MetaKind, string][] = [
+        ['title', 'Titles'],
+        ['description', 'Descriptions'],
+        ['excerpt', 'Excerpt']
+    ];
     return (
         <Dialog title="Suggestions" onClose={onClose} wide>
-            {loading ? <Loading /> : error ? <ErrorNote text={error} /> : null}
-            {data ? (
-                <div class="stack">
-                    <div>
-                        <p class="field-label">Titles</p>
-                        {data.titles.map(t => (
-                            <div class="suggestion" key={t}>
-                                <span>{t}</span>
-                                <span class="row">
-                                    <Button onClick={() => apply({ title: t })}>Use as title</Button>
-                                    <Button onClick={() => apply({ metaTitle: t })}>Use for search</Button>
-                                </span>
-                            </div>
-                        ))}
-                    </div>
-                    <div>
-                        <p class="field-label">Descriptions</p>
-                        {data.descriptions.map(d => (
-                            <div class="suggestion" key={d}>
-                                <span>{d}</span>
-                                <Button onClick={() => apply({ metaDescription: d })}>Use</Button>
-                            </div>
-                        ))}
-                    </div>
-                    {data.excerpt ? (
-                        <div class="suggestion">
-                            <span>{data.excerpt}</span>
-                            <Button onClick={() => apply({ customExcerpt: data.excerpt })}>Use as excerpt</Button>
+            <div class="stack" aria-busy={writing}>
+                {writing && !items.length ? <p class="muted small">Titles, descriptions and an excerpt appear here as they are written.</p> : null}
+                {groups.map(([kind, label]) =>
+                    items.some(i => i.kind === kind) ? (
+                        <div key={kind}>
+                            <p class="field-label">{label}</p>
+                            {items
+                                .filter(i => i.kind === kind)
+                                .map((item, n) => (
+                                    <div class="suggestion" key={n}>
+                                        <span>
+                                            {item.text}
+                                            {item.done ? null : <Caret />}
+                                        </span>
+                                        {item.done ? actions(kind, item.text) : null}
+                                    </div>
+                                ))}
                         </div>
-                    ) : null}
-                </div>
-            ) : null}
+                    ) : null
+                )}
+                {run.state === 'error' ? <ErrorNote text={run.error ?? ''} /> : null}
+                {run.state === 'stopped' ? <p class="ai-note">Stopped.</p> : null}
+                {run.state === 'done' && !items.length ? <ErrorNote text="The model answered in the wrong shape. Try again." /> : null}
+            </div>
+            <div class="dialog-actions">
+                {writing ? (
+                    <>
+                        <Working label={run.stage === 'reading' || !run.stage ? 'Reading the post' : items.length ? 'Writing' : 'Thinking'} since={run.startedAt} />
+                        <StopButton onClick={run.stop} />
+                    </>
+                ) : (
+                    <>
+                        <Credits usage={run.usage} />
+                        <Button onClick={ask}>Suggest again</Button>
+                    </>
+                )}
+            </div>
         </Dialog>
     );
 }

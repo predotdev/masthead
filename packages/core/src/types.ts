@@ -239,8 +239,8 @@ export interface ModelInfo {
     contextLength?: number;
     /** Provider-specific prices, e.g. credits per million tokens or per image. */
     price?: Record<string, number>;
-    /** What a media model accepts, where the catalog says. */
-    supports?: { durations?: number[]; aspectRatios?: string[]; resolutions?: string[]; frameImages?: string[] };
+    /** What a media model accepts, where the catalog says. `streaming`: an image model that sends previews while it paints. */
+    supports?: { durations?: number[]; aspectRatios?: string[]; resolutions?: string[]; frameImages?: string[]; streaming?: boolean };
     /** The site's default model for this kind. */
     isDefault?: boolean;
 }
@@ -258,6 +258,16 @@ export interface TextRequest {
     json?: boolean;
     maxTokens?: number;
     temperature?: number;
+    /** Ends the call early, e.g. when the person who asked for it goes away. */
+    signal?: AbortSignal;
+}
+
+/** How a text stream ended: the value its async generator returns. */
+export interface StreamEnd {
+    model: string;
+    usage: Usage;
+    /** "stop" when the model finished, "length" when it ran out of room. */
+    finishReason?: string;
 }
 
 export interface Usage {
@@ -283,6 +293,9 @@ export interface ImageRequest {
     aspectRatio?: AspectRatio;
     /** Images to edit or draw from: URLs or data: URLs. */
     references?: string[];
+    signal?: AbortSignal;
+    /** Called with rough versions of the image as it forms, on models whose catalog says `supports.streaming`. */
+    onPreview?: (preview: { dataUrl: string; index: number }) => void;
 }
 
 export interface VideoRequest {
@@ -322,8 +335,16 @@ export interface AIProvider {
     listModels(kind?: ModelKind): Promise<ModelInfo[]>;
     text(request: TextRequest): Promise<TextResult>;
     image(request: ImageRequest): Promise<ImageResult>;
-    /** The same as text, token by token. */
+    /**
+     * The same as text, token by token. Written as an async generator it can
+     * return a StreamEnd, which is how callers learn the model and token counts.
+     */
     stream?(request: TextRequest): AsyncIterable<string>;
+    /**
+     * What an earlier call was charged, by the requestId in its usage. A
+     * stream's charge settles after it ends: null until the provider knows it.
+     */
+    usage?(requestId: string, signal?: AbortSignal): Promise<Usage | null>;
     embed?(input: string[], model?: string): Promise<EmbeddingResult>;
     /** Video is asynchronous: submit, poll, then fetch the file. */
     video?: {

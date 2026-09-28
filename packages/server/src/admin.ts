@@ -1,6 +1,6 @@
 import type { AspectRatio, ModelKind, Post, StaffRole } from '@masthead/core';
 import { renderBody, renderSite, tagLinks } from '@masthead/render';
-import { addIdeas, assist, draft, draftIdea, edit, image, listIdeas, listModels, meta, startVideo, unfurl, videoStatus } from './ai';
+import { addIdeas, assist, draft, draftIdea, draftIdeaStream, draftStream, edit, editStream, image, imageStream, listIdeas, listModels, meta, metaStream, saveIdeaDraft, startVideo, unfurl, videoStatus } from './ai';
 import { autoTag, tagUntagged, wantsAutoTags } from './autotag';
 import { atLeast, clearSessionCookie, consumeLoginToken, createApiKey, createLoginToken, createSession, endSession, peekLoginToken, sessionCookie } from './auth';
 import {
@@ -37,6 +37,7 @@ import { appUrl, buildEmail, cancelSend, countSegment, createSend, getSend, list
 import { linkTag, publishSite } from './publish';
 import { MEDIA_PREFIX } from './public';
 import { Router } from './router';
+import { wantsEvents } from './sse';
 import { HttpError, body, csvEscape, html, json, newId, now, parseCsv, redirect, safeEqual, sleep } from './util';
 
 type A = Ctx & { principal?: Principal };
@@ -632,23 +633,35 @@ export function adminRoutes(): Router<A> {
 
     // ---------------------------------------------------------- AI studio
     r.get('/ai/models', async (_req, ctx) => (me(ctx), json(await listModels(ctx, (ctx.url.searchParams.get('kind') as ModelKind) || undefined))));
-    r.post('/ai/draft', async (req, ctx) => (me(ctx), json(await draft(ctx, (await body(req)) as any))));
-    r.post('/ai/edit', async (req, ctx) => (me(ctx), json(await edit(ctx, (await body(req)) as any))));
-    r.post('/ai/meta', async (req, ctx) => (me(ctx), json(await meta(ctx, (await body(req)) as any))));
+    // Each generation answers with one JSON object, or streams server-sent events when asked for text/event-stream.
+    r.post('/ai/draft', async (req, ctx) => {
+        me(ctx);
+        const input = (await body(req)) as any;
+        return wantsEvents(req) ? draftStream(ctx, input, req.signal) : json(await draft(ctx, input));
+    });
+    r.post('/ai/edit', async (req, ctx) => {
+        me(ctx);
+        const input = (await body(req)) as any;
+        return wantsEvents(req) ? editStream(ctx, input, req.signal) : json(await edit(ctx, input));
+    });
+    r.post('/ai/meta', async (req, ctx) => {
+        me(ctx);
+        const input = (await body(req)) as any;
+        return wantsEvents(req) ? metaStream(ctx, input, req.signal) : json(await meta(ctx, input));
+    });
     r.post('/ai/image', async (req, ctx) => {
         me(ctx);
         const input = await body(req);
-        return json(
-            await image(ctx, {
-                prompt: String(input.prompt ?? ''),
-                aspectRatio: input.aspectRatio as AspectRatio,
-                model: input.model ? String(input.model) : undefined,
-                reference: input.reference ? String(input.reference) : undefined
-            })
-        );
+        const args = {
+            prompt: String(input.prompt ?? ''),
+            aspectRatio: input.aspectRatio as AspectRatio,
+            model: input.model ? String(input.model) : undefined,
+            reference: input.reference ? String(input.reference) : undefined
+        };
+        return wantsEvents(req) ? imageStream(ctx, args, req.signal) : json(await image(ctx, args));
     });
     /** The writing assistant, streamed: chat, rewrite a selection, write at the cursor, or continue. */
-    r.post('/ai/assist', async (req, ctx) => (me(ctx), assist(ctx, (await body(req)) as any)));
+    r.post('/ai/assist', async (req, ctx) => (me(ctx), assist(ctx, (await body(req)) as any, req.signal)));
     r.post('/ai/video', async (req, ctx) => {
         const p = me(ctx);
         const input = await body(req);
@@ -686,7 +699,13 @@ export function adminRoutes(): Router<A> {
         const input = await body(req);
         return json(await addIdeas(ctx, Array.isArray(input.ideas) ? input.ideas : [input as any]), 201);
     });
-    r.post('/ideas/:id/draft', async (_req, ctx, { id }) => json(await draftIdea(ctx, id, me(ctx))));
+    /** Writes the idea's draft (streamed on request) and saves it; with markdown in the body, saves that text instead. */
+    r.post('/ideas/:id/draft', async (req, ctx, { id }) => {
+        const p = me(ctx);
+        const input = await body(req);
+        if (input.markdown !== undefined) return json(await saveIdeaDraft(ctx, id, p, { title: input.title, markdown: String(input.markdown) }), 201);
+        return wantsEvents(req) ? draftIdeaStream(ctx, id, p, req.signal) : json(await draftIdea(ctx, id, p));
+    });
     r.put('/ideas/:id', async (req, ctx, { id }) => {
         me(ctx);
         const { status } = await body(req);

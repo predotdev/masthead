@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { api } from '../api';
-import { Button, Dialog, Field, errorToast } from '../ui';
+import { Credits, StopButton, Working, useAiRun } from '../streaming';
+import { Button, Dialog, ErrorNote, Field, errorToast } from '../ui';
 
 interface ModelRow {
     id: string;
@@ -42,7 +43,11 @@ const STYLES: { label: string; style: string }[] = [
 
 const RATIOS = ['16:9', '3:2', '1:1', '4:5', '9:16'];
 
-/** Generate an image, or change an existing one by describing the edit. */
+/**
+ * Generate an image, or change an existing one by describing the edit. An image arrives whole,
+ * so the dialog shows where the work is (and a rough version, from models that send one) with a
+ * running clock; Stop cancels it and everything stays editable meanwhile.
+ */
 export function ImageDialog({ mode, src, title, onClose, onDone }: { mode: 'insert' | 'cover' | 'edit'; src?: string; title: string; onClose: () => void; onDone: (url: string, alt: string) => void }) {
     const models = useModels('image');
     const [prompt, setPrompt] = useState(mode === 'edit' ? '' : mode === 'cover' ? `Cover art for a post titled "${title}".` : '');
@@ -50,20 +55,14 @@ export function ImageDialog({ mode, src, title, onClose, onDone }: { mode: 'inse
     const [ratio, setRatio] = useState('16:9');
     const [model, setModel] = useState('');
     const [url, setUrl] = useState<string | null>(null);
-    const [busy, setBusy] = useState(false);
-    const run = async () => {
-        setBusy(true);
-        try {
-            const res = await api<{ url: string; model: string }>('/ai/image', {
-                body: { prompt: style.trim() ? `${prompt.trim()}\n\nStyle: ${style.trim()}.` : prompt.trim(), aspectRatio: ratio, model: model || undefined, reference: mode === 'edit' ? url ?? src : undefined }
-            });
-            setUrl(res.url);
-        } catch (err) {
-            errorToast(err);
-        } finally {
-            setBusy(false);
-        }
-    };
+    const job = useAiRun<{ url: string; model: string }>();
+    const painting = job.state === 'working';
+    useEffect(() => {
+        if (job.state === 'done' && job.result?.url) setUrl(job.result.url);
+    }, [job.state]);
+    const run = () =>
+        job.start('/ai/image', { prompt: style.trim() ? `${prompt.trim()}\n\nStyle: ${style.trim()}.` : prompt.trim(), aspectRatio: ratio, model: model || undefined, reference: mode === 'edit' ? url ?? src : undefined });
+    const shown = url ?? src ?? null;
     return (
         <Dialog title={mode === 'edit' ? 'Edit image with AI' : mode === 'cover' ? 'Generate a cover' : 'Generate an image'} onClose={onClose} wide>
             <div class="media-grid">
@@ -107,14 +106,40 @@ export function ImageDialog({ mode, src, title, onClose, onDone }: { mode: 'inse
                         </Field>
                     </div>
                 </div>
-                <div class="media-preview">{url || src ? <img src={url ?? src} alt="" /> : <div class="media-empty">{busy ? 'Painting…' : 'Your image appears here'}</div>}</div>
+                <div class="media-preview" aria-busy={painting}>
+                    {painting ? (
+                        <div class="media-working">
+                            {job.preview ? (
+                                <img src={job.preview} alt="" />
+                            ) : shown ? (
+                                <img class="media-dim" src={shown} alt="" />
+                            ) : (
+                                <div class="media-canvas ai-shimmer" style={{ aspectRatio: ratio.replace(':', ' / ') }} />
+                            )}
+                            <div class="media-status">
+                                <Working label={job.stage === 'reading' ? 'Reading the image' : job.stage === 'saving' ? 'Saving' : 'Painting'} since={job.startedAt} />
+                            </div>
+                        </div>
+                    ) : shown ? (
+                        <img src={shown} alt="" />
+                    ) : (
+                        <div class="media-empty">Your image appears here</div>
+                    )}
+                </div>
             </div>
+            {job.state === 'error' ? <ErrorNote text={job.error ?? ''} /> : null}
+            {job.state === 'stopped' ? <p class="ai-note">Stopped. Nothing was saved.</p> : null}
             <div class="dialog-actions">
+                {job.state === 'done' ? <Credits usage={job.usage} /> : null}
                 <Button onClick={onClose}>Cancel</Button>
-                <Button busy={busy} disabled={!prompt.trim()} onClick={run}>
-                    {url ? (mode === 'edit' ? 'Edit again' : 'Try again') : mode === 'edit' ? 'Apply edit' : 'Generate'}
-                </Button>
-                {url ? (
+                {painting ? (
+                    <StopButton onClick={job.stop} />
+                ) : (
+                    <Button disabled={!prompt.trim()} onClick={run}>
+                        {url ? (mode === 'edit' ? 'Edit again' : 'Try again') : mode === 'edit' ? 'Apply edit' : 'Generate'}
+                    </Button>
+                )}
+                {url && !painting ? (
                     <Button tone="primary" onClick={() => onDone(url, prompt.trim().slice(0, 120))}>
                         {mode === 'edit' ? 'Use the edited image' : 'Use this image'}
                     </Button>
@@ -134,10 +159,17 @@ export function VideoDialog({ reference, onClose, onDone }: { reference?: string
     const [useRef_, setUseRef] = useState(false);
     const [job, setJob] = useState<{ id: string; status: string; url?: string; error?: string } | null>(null);
     const [started, setStarted] = useState(0);
-    const [tick, setTick] = useState(0);
+    const [starting, setStarting] = useState(false);
     const timer = useRef<number | null>(null);
+    const open = useRef(true);
 
-    useEffect(() => () => (timer.current ? clearInterval(timer.current) : undefined), []);
+    useEffect(
+        () => () => {
+            open.current = false;
+            if (timer.current) clearInterval(timer.current);
+        },
+        []
+    );
     const chosen = models.find(m => m.id === model) ?? (model ? undefined : models.find(m => m.isDefault));
     const durations = chosen?.supports?.durations ?? [4, 6, 8, 10];
     const ratios = chosen?.supports?.aspectRatios?.filter(r => ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'].includes(r)) ?? ['16:9', '9:16', '1:1'];
@@ -151,14 +183,16 @@ export function VideoDialog({ reference, onClose, onDone }: { reference?: string
     const estimate = perSecond ? Math.round(perSecond * duration * 10) / 10 : null;
 
     const start = async () => {
+        setStarting(true);
+        setStarted(Date.now());
         try {
             const res = await api<{ id: string; status: string }>('/ai/video', { body: { prompt, model: model || undefined, aspectRatio: ratio, duration, reference: useRef_ && canAnimate ? reference : undefined } });
+            // Closed while the job was being submitted: nothing is left to show it.
+            if (!open.current) return;
             setJob(res);
-            setStarted(Date.now());
             // A failed check is retried; five in a row end the wait with the reason.
             let failures = 0;
             timer.current = window.setInterval(async () => {
-                setTick(t => t + 1);
                 try {
                     const s = await api<{ id: string; status: string; url?: string; error?: string }>(`/ai/video/${res.id}`);
                     failures = 0;
@@ -172,19 +206,27 @@ export function VideoDialog({ reference, onClose, onDone }: { reference?: string
             }, 4000);
         } catch (err) {
             errorToast(err);
+        } finally {
+            setStarting(false);
         }
     };
-    const seconds = job ? Math.round((Date.now() - started) / 1000) : 0;
+    // A video can't be cancelled once it starts: closing only stops the wait, so it asks first.
+    const rendering = starting || (!!job && !job.url && job.status !== 'failed');
+    const close = () => {
+        if (rendering && !window.confirm("Stop waiting for this video? It keeps rendering and is still charged, but it won't be added to the post.")) return;
+        onClose();
+    };
+    const animating = useRef_ && canAnimate && !!reference;
     return (
-        <Dialog title="Generate a video" onClose={onClose} wide>
+        <Dialog title="Generate a video" onClose={close} wide>
             <div class="media-grid">
                 <div class="stack">
                     <Field label="Describe the clip">
-                        <textarea rows={4} value={prompt} autoFocus disabled={!!job} placeholder="Slow push-in on a glowing terminal floating in a field of stars." onInput={e => setPrompt(e.currentTarget.value)} />
+                        <textarea rows={4} value={prompt} autoFocus disabled={!!job || starting} placeholder="Slow push-in on a glowing terminal floating in a field of stars." onInput={e => setPrompt(e.currentTarget.value)} />
                     </Field>
                     <div class="grid2">
                         <Field label="Model" hint="Blank: the default from Settings.">
-                            <input list="video-models" value={model} disabled={!!job} onInput={e => setModel(e.currentTarget.value)} placeholder={models.find(m => m.isDefault)?.name ?? 'default'} />
+                            <input list="video-models" value={model} disabled={!!job || starting} onInput={e => setModel(e.currentTarget.value)} placeholder={models.find(m => m.isDefault)?.name ?? 'default'} />
                             <datalist id="video-models">
                                 {models.map(m => (
                                     <option key={m.id} value={m.id}>
@@ -195,12 +237,12 @@ export function VideoDialog({ reference, onClose, onDone }: { reference?: string
                         </Field>
                         <Field label="Shape and length" hint={estimate ? `About ${estimate} credits` : undefined}>
                             <div class="row">
-                                <select value={ratio} disabled={!!job} onChange={e => setRatio(e.currentTarget.value)}>
+                                <select value={ratio} disabled={!!job || starting} onChange={e => setRatio(e.currentTarget.value)}>
                                     {ratios.map(r => (
                                         <option key={r}>{r}</option>
                                     ))}
                                 </select>
-                                <select value={duration} disabled={!!job} onChange={e => setDuration(Number(e.currentTarget.value))}>
+                                <select value={duration} disabled={!!job || starting} onChange={e => setDuration(Number(e.currentTarget.value))}>
                                     {durations.map(d => (
                                         <option key={d} value={d}>
                                             {d} s
@@ -212,26 +254,31 @@ export function VideoDialog({ reference, onClose, onDone }: { reference?: string
                     </div>
                     {reference && canAnimate ? (
                         <label class="check">
-                            <input type="checkbox" checked={useRef_} disabled={!!job} onChange={e => setUseRef(e.currentTarget.checked)} /> Animate the post's cover image
+                            <input type="checkbox" checked={useRef_} disabled={!!job || starting} onChange={e => setUseRef(e.currentTarget.checked)} /> Animate the post's cover image
                         </label>
                     ) : null}
                 </div>
-                <div class="media-preview">
+                <div class="media-preview" aria-busy={rendering}>
                     {job?.url ? (
                         <video src={job.url} controls autoPlay muted loop playsInline />
-                    ) : job ? (
-                        <div class="media-empty">
-                            {job.status === 'failed' ? `It failed: ${job.error ?? 'no reason given'}` : `Rendering… ${seconds}s`}
-                            <span class="tick" data-tick={tick} />
+                    ) : rendering ? (
+                        <div class="media-working">
+                            {/* Animating the cover: the clip starts from it, so it stands in until the video exists. */}
+                            {animating ? <img class="media-dim" src={reference!} alt="" /> : <div class="media-canvas ai-shimmer" style={{ aspectRatio: ratio.replace(':', ' / ') }} />}
+                            <div class="media-status">
+                                <Working label={starting ? 'Starting' : job?.status === 'queued' ? 'Waiting to start' : 'Rendering'} since={started} />
+                            </div>
                         </div>
+                    ) : job?.status === 'failed' ? (
+                        <div class="media-empty">It failed: {job.error ?? 'no reason given'}</div>
                     ) : (
                         <div class="media-empty">Videos take a minute or two to render.</div>
                     )}
                 </div>
             </div>
             <div class="dialog-actions">
-                <Button onClick={onClose}>{job?.url ? 'Close' : 'Cancel'}</Button>
-                {!job || job.status === 'failed' ? (
+                <Button onClick={close}>{job?.url ? 'Close' : rendering ? 'Stop waiting' : 'Cancel'}</Button>
+                {!rendering && (!job || job.status === 'failed') ? (
                     <Button tone={job ? undefined : 'primary'} disabled={!prompt.trim()} onClick={() => (setJob(null), start())}>
                         {job ? 'Try again' : 'Generate'}
                     </Button>

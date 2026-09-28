@@ -1,10 +1,11 @@
-import type { AIProvider, AspectRatio, ModelInfo, ModelKind, TextMessage } from '@masthead/core';
+import type { AIProvider, AspectRatio, ImageResult, ModelInfo, ModelKind, StreamEnd, TextMessage, TextRequest, Usage } from '@masthead/core';
 import { aiSettings, savePost, siteSettings } from './content';
 import type { Ctx, Principal } from './env';
 import { storeImage } from './images';
 import { MEDIA_PREFIX } from './public';
 import { listMemory, retrieve, type Passage } from './knowledge';
-import { HttpError, newId, now } from './util';
+import { eventStream, status, type SseEvent } from './sse';
+import { HttpError, newId, now, sleep } from './util';
 
 /** The configured AI provider; its failures come back as clear 502s instead of server errors. */
 function provider(ctx: Ctx): AIProvider {
@@ -15,12 +16,96 @@ function provider(ctx: Ctx): AIProvider {
         async (...a: A): Promise<R> => {
             try {
                 return await fn(...a);
-            } catch (err: any) {
-                if (err instanceof HttpError) throw err;
-                throw new HttpError(err?.status === 429 ? 429 : 502, `The AI provider said: ${err?.message ?? 'request failed'}`);
+            } catch (err) {
+                throw failed(err);
             }
         };
     return { ...ai, listModels: wrap(ai.listModels.bind(ai)), text: wrap(ai.text.bind(ai)), image: wrap(ai.image.bind(ai)) };
+}
+
+/** A provider failure as people should read it. An abort (the client left) passes through as is. */
+function failed(err: any): unknown {
+    if (err instanceof HttpError || err?.name === 'AbortError') return err;
+    return new HttpError(err?.status === 429 ? 429 : 502, `The AI provider said: ${err?.message ?? 'request failed'}`);
+}
+
+/**
+ * The model's text as it is written, piece by piece; `onEnd` gets the model
+ * and token counts. A provider that cannot stream answers in one piece.
+ */
+async function* write(ai: AIProvider, request: TextRequest, onEnd: (end: StreamEnd) => void): AsyncGenerator<string> {
+    if (!ai.stream) {
+        const res = await ai.text(request);
+        if (res.text) yield res.text;
+        return onEnd({ model: res.model, usage: res.usage });
+    }
+    const pieces = ai.stream(request)[Symbol.asyncIterator]();
+    try {
+        for (;;) {
+            const step = await pieces.next();
+            if (step.done) {
+                const end = (step.value ?? {}) as Partial<StreamEnd>;
+                return onEnd({ model: end.model ?? request.model ?? '', usage: end.usage ?? {}, finishReason: end.finishReason });
+            }
+            yield step.value;
+        }
+    } catch (err) {
+        throw failed(err);
+    } finally {
+        // Stopping early (the client left) closes the provider's connection too.
+        await pieces.return?.();
+    }
+}
+
+interface WritingJob {
+    task: string;
+    /** What to look up in the blog and the knowledge sources; none: no passages. */
+    query?: string;
+    messages: TextMessage[];
+    model: string;
+    maxTokens: number;
+    temperature?: number;
+}
+
+/**
+ * The events of one piece of writing: what it read, then the text as it is
+ * written. Returns the whole text and how the stream ended, for the done event.
+ */
+async function* compose(ctx: Ctx, ai: AIProvider, job: WritingJob, signal: AbortSignal): AsyncGenerator<SseEvent, { text: string; end: StreamEnd }> {
+    yield status('reading');
+    const { prompt, sources } = await system(ctx, job.task, job.query ? { query: job.query, ai } : undefined);
+    if (job.query) yield { event: 'sources', data: sources.map(p => ({ title: p.title, url: p.url })) };
+    yield status('writing');
+    let text = '';
+    let end: StreamEnd = { model: job.model, usage: {} };
+    for await (const t of write(ai, { model: job.model, system: prompt, messages: job.messages, maxTokens: job.maxTokens, temperature: job.temperature, signal }, e => (end = e))) {
+        text += t;
+        yield { data: { t } };
+    }
+    return { text, end };
+}
+
+/** What a finished stream was charged, sent once the provider has settled it (a few seconds after the text ends). */
+async function* settled(ai: AIProvider, usage: Usage, signal: AbortSignal): AsyncGenerator<SseEvent> {
+    if (!ai.usage || !usage.requestId || usage.charged != null) return;
+    for (const wait of [1000, 1500, 2500, 3000]) {
+        await sleep(wait);
+        if (signal.aborted) return;
+        const found = await ai.usage(usage.requestId, signal).catch(() => null);
+        if (found?.charged != null) {
+            yield { event: 'usage', data: { ...usage, charged: found.charged } };
+            return;
+        }
+    }
+}
+
+const unfence = (text: string) => text.trim().replace(/^```(?:markdown)?\n?|```$/g, '');
+
+/** "# Title" on the first line becomes the title; the rest is the body. */
+function splitTitle(raw: string): { title: string; markdown: string } {
+    const text = unfence(raw);
+    const m = text.match(/^#\s+(.+)\n+/);
+    return { title: m ? m[1].trim() : '', markdown: m ? text.slice(m[0].length).trim() : text };
 }
 
 const modelCache = new Map<string, { at: number; list: ModelInfo[] }>();
@@ -65,68 +150,194 @@ async function system(ctx: Ctx, task: string, grounding?: { query: string; ai: A
     return { prompt, sources };
 }
 
-export async function draft(ctx: Ctx, input: { prompt: string; notes?: string }) {
+// ------------------------------------------------------------------ drafts, rewrites, metadata
+//
+// Each answers in one JSON piece, for API clients, or as server-sent events
+// (text as it is written) when the request accepts text/event-stream.
+
+interface DraftInput {
+    prompt: string;
+    notes?: string;
+}
+
+function draftJob(input: DraftInput) {
     if (!input.prompt?.trim()) throw new HttpError(400, 'Describe the post you want.');
-    const ai = provider(ctx);
-    const { prompt } = await system(ctx, 'Write a complete blog post in Markdown. Start with the title as "# Title" on the first line, then the body using ## section headings. Return only the Markdown.', {
+    return {
+        task: 'Write a complete blog post in Markdown. Start with the title as "# Title" on the first line, then the body using ## section headings. Return only the Markdown.',
         query: `${input.prompt}\n${input.notes ?? ''}`,
-        ai
-    });
-    const res = await ai.text({
-        model: await textModel(ctx),
-        system: prompt,
-        messages: [{ role: 'user', content: `${input.prompt.trim()}${input.notes ? `\n\nSource material:\n${input.notes}` : ''}` }],
+        messages: [{ role: 'user' as const, content: `${input.prompt.trim()}${input.notes ? `\n\nSource material:\n${input.notes}` : ''}` }],
         maxTokens: 6000
-    });
-    const text = res.text.trim().replace(/^```(?:markdown)?\n?|```$/g, '');
-    const m = text.match(/^#\s+(.+)\n+/);
-    return { title: m ? m[1].trim() : '', markdown: m ? text.slice(m[0].length).trim() : text, model: res.model, usage: res.usage };
+    };
 }
 
-export async function edit(ctx: Ctx, input: { markdown: string; instruction: string }) {
+export async function draft(ctx: Ctx, input: DraftInput) {
+    const job = draftJob(input);
+    const ai = provider(ctx);
+    const { prompt } = await system(ctx, job.task, { query: job.query, ai });
+    const res = await ai.text({ model: await textModel(ctx), system: prompt, messages: job.messages, maxTokens: job.maxTokens });
+    return { ...splitTitle(res.text), model: res.model, usage: res.usage };
+}
+
+export async function draftStream(ctx: Ctx, input: DraftInput, client?: AbortSignal): Promise<Response> {
+    const job = draftJob(input);
+    const ai = provider(ctx);
+    const model = await textModel(ctx);
+    return eventStream(async function* (signal) {
+        const { text, end } = yield* compose(ctx, ai, { ...job, model }, signal);
+        yield { event: 'done', data: { ...splitTitle(text), model: end.model, usage: end.usage, finishReason: end.finishReason } };
+        yield* settled(ai, end.usage, signal);
+    }, client);
+}
+
+interface EditInput {
+    markdown: string;
+    instruction?: string;
+}
+
+function editJob(input: EditInput) {
     if (!input.markdown?.trim()) throw new HttpError(400, 'Select some text first.');
-    const res = await provider(ctx).text({
-        model: await textModel(ctx),
-        system: (await system(ctx, 'Rewrite the Markdown you are given according to the instruction. Keep facts, links and formatting unless told otherwise. Return only the rewritten Markdown.')).prompt,
-        messages: [{ role: 'user', content: `Instruction: ${input.instruction || 'Tighten it.'}\n\nMarkdown:\n${input.markdown}` }],
+    return {
+        task: 'Rewrite the Markdown you are given according to the instruction. Keep facts, links and formatting unless told otherwise. Return only the rewritten Markdown.',
+        messages: [{ role: 'user' as const, content: `Instruction: ${input.instruction || 'Tighten it.'}\n\nMarkdown:\n${input.markdown}` }],
         maxTokens: 3000
-    });
-    return { markdown: res.text.trim().replace(/^```(?:markdown)?\n?|```$/g, ''), model: res.model, usage: res.usage };
+    };
 }
 
-export async function meta(ctx: Ctx, input: { title?: string; markdown: string }) {
-    const res = await provider(ctx).text({
-        model: await textModel(ctx),
-        system: (
-            await system(
-                ctx,
-                'Suggest search and share metadata for the post. Reply with one JSON object: {"titles": [3 titles, at most 60 characters], "descriptions": [3 descriptions, at most 155 characters], "excerpt": "one or two sentences for the post listing"}.'
-            )
-        ).prompt,
-        messages: [{ role: 'user', content: `Current title: ${input.title ?? ''}\n\n${(input.markdown ?? '').slice(0, 12000)}` }],
-        json: true,
+export async function edit(ctx: Ctx, input: EditInput) {
+    const job = editJob(input);
+    const res = await provider(ctx).text({ model: await textModel(ctx), system: (await system(ctx, job.task)).prompt, messages: job.messages, maxTokens: job.maxTokens });
+    return { markdown: unfence(res.text), model: res.model, usage: res.usage };
+}
+
+export async function editStream(ctx: Ctx, input: EditInput, client?: AbortSignal): Promise<Response> {
+    const job = editJob(input);
+    const ai = provider(ctx);
+    const model = await textModel(ctx);
+    return eventStream(async function* (signal) {
+        const { text, end } = yield* compose(ctx, ai, { ...job, model }, signal);
+        yield { event: 'done', data: { markdown: unfence(text), model: end.model, usage: end.usage, finishReason: end.finishReason } };
+        yield* settled(ai, end.usage, signal);
+    }, client);
+}
+
+interface MetaInput {
+    title?: string;
+    markdown: string;
+}
+
+// One suggestion per line, so each shows up as soon as its line is written.
+function metaJob(input: MetaInput) {
+    return {
+        task: 'Suggest search and share metadata for the post. Reply with seven lines and nothing else: three lines that start "TITLE: " (titles, at most 60 characters each), three that start "DESCRIPTION: " (search descriptions, at most 155 characters each), then one that starts "EXCERPT: " (one or two sentences for the post listing). No quotes, no numbering.',
+        messages: [{ role: 'user' as const, content: `Current title: ${input.title ?? ''}\n\n${(input.markdown ?? '').slice(0, 12000)}` }],
         maxTokens: 800
-    });
-    try {
-        const data = JSON.parse(res.text.replace(/^```(?:json)?\n?|```$/g, ''));
-        return { titles: data.titles ?? [], descriptions: data.descriptions ?? [], excerpt: data.excerpt ?? '', model: res.model, usage: res.usage };
-    } catch {
-        throw new HttpError(502, 'The model did not return valid JSON. Try again.');
-    }
+    };
 }
 
-export async function image(ctx: Ctx, input: { prompt: string; aspectRatio?: AspectRatio; model?: string; reference?: string }) {
+/** Reads the TITLE:, DESCRIPTION: and EXCERPT: lines, forgiving numbering, bold and quotes. */
+export function parseMeta(text: string): { titles: string[]; descriptions: string[]; excerpt: string } {
+    const out = { titles: [] as string[], descriptions: [] as string[], excerpt: '' };
+    for (const line of text.split('\n')) {
+        const m = line.replace(/^[\s>*_\-\d.)]+/, '').match(/^(title|description|excerpt)\**\s*:\s*\**\s*(.+)$/i);
+        const value = m?.[2].replace(/\**$/, '').trim().replace(/^["“](.*)["”]$/, '$1').trim();
+        if (!m || !value) continue;
+        const kind = m[1].toLowerCase();
+        if (kind === 'title') out.titles.push(value);
+        else if (kind === 'description') out.descriptions.push(value);
+        else out.excerpt ||= value;
+    }
+    return out;
+}
+
+export async function meta(ctx: Ctx, input: MetaInput) {
+    const job = metaJob(input);
+    const res = await provider(ctx).text({ model: await textModel(ctx), system: (await system(ctx, job.task)).prompt, messages: job.messages, maxTokens: job.maxTokens });
+    const found = parseMeta(res.text);
+    if (!found.titles.length && !found.descriptions.length && !found.excerpt) throw new HttpError(502, 'The model answered in the wrong shape. Try again.');
+    return { ...found, model: res.model, usage: res.usage };
+}
+
+export async function metaStream(ctx: Ctx, input: MetaInput, client?: AbortSignal): Promise<Response> {
+    const job = metaJob(input);
+    const ai = provider(ctx);
+    const model = await textModel(ctx);
+    return eventStream(async function* (signal) {
+        const { text, end } = yield* compose(ctx, ai, { ...job, model }, signal);
+        yield { event: 'done', data: { ...parseMeta(text), model: end.model, usage: end.usage, finishReason: end.finishReason } };
+        yield* settled(ai, end.usage, signal);
+    }, client);
+}
+
+// ------------------------------------------------------------------ images
+
+interface ImageInput {
+    prompt: string;
+    aspectRatio?: AspectRatio;
+    model?: string;
+    reference?: string;
+}
+
+async function imageModel(ctx: Ctx, input: ImageInput): Promise<string> {
     if (!input.prompt?.trim()) throw new HttpError(400, 'Describe the image.');
-    const s = await aiSettings(ctx.env, ctx.db);
-    const model = input.model || s.imageModel;
+    const model = input.model || (await aiSettings(ctx.env, ctx.db)).imageModel;
     if (!model) throw new HttpError(400, 'Choose an image model in Settings, AI.');
-    const references = input.reference ? [await asDataUrl(ctx, input.reference)] : undefined;
-    const res = await provider(ctx).image({ model, prompt: input.prompt, aspectRatio: input.aspectRatio ?? '16:9', references });
+    return model;
+}
+
+async function keepImage(ctx: Ctx, res: ImageResult): Promise<string> {
     const ext = res.mimeType === 'image/png' ? 'png' : res.mimeType === 'image/webp' ? 'webp' : 'jpg';
     const d = new Date();
     const rel = `content/images/ai/${d.getUTCFullYear()}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${newId()}.${ext}`;
     await storeImage(ctx.env, ctx.db, rel, res.bytes, res.mimeType, `ai:${res.model}`);
-    return { url: `${ctx.basePath}${rel}`, model: res.model, usage: res.usage };
+    return `${ctx.basePath}${rel}`;
+}
+
+export async function image(ctx: Ctx, input: ImageInput) {
+    const model = await imageModel(ctx, input);
+    const references = input.reference ? [await asDataUrl(ctx, input.reference)] : undefined;
+    const res = await provider(ctx).image({ model, prompt: input.prompt, aspectRatio: input.aspectRatio ?? '16:9', references });
+    return { url: await keepImage(ctx, res), model: res.model, usage: res.usage };
+}
+
+/**
+ * An image can't be written piece by piece, so this streams where the work is:
+ * reading the image to edit, painting (with rough previews from models that
+ * send them), saving, then the address of the result.
+ */
+export async function imageStream(ctx: Ctx, input: ImageInput, client?: AbortSignal): Promise<Response> {
+    const model = await imageModel(ctx, input);
+    const ai = provider(ctx);
+    return eventStream(async function* (signal) {
+        let references: string[] | undefined;
+        if (input.reference) {
+            yield status('reading');
+            references = [await asDataUrl(ctx, input.reference)];
+        }
+        yield status('painting');
+        const previews: string[] = [];
+        let wake = () => {};
+        const sendsPreviews = (await listModels(ctx, 'image').catch(() => [])).some(m => m.id === model && m.supports?.streaming);
+        const job = ai.image({
+            model,
+            prompt: input.prompt,
+            aspectRatio: input.aspectRatio ?? '16:9',
+            references,
+            signal,
+            onPreview: sendsPreviews ? p => (previews.push(p.dataUrl), wake()) : undefined
+        });
+        let finished = false;
+        const over = job.then(
+            () => void (finished = true),
+            () => void (finished = true)
+        );
+        while (!finished) {
+            await Promise.race([over, new Promise<void>(resolve => (wake = resolve))]);
+            while (previews.length) yield { event: 'preview', data: { src: previews.shift() } };
+        }
+        const res = await job;
+        yield status('saving');
+        yield { event: 'done', data: { url: await keepImage(ctx, res), model: res.model, usage: res.usage } };
+    }, client);
 }
 
 /** An image the blog stores (or any public URL) as a data: URL, so the model provider needs no access to it. */
@@ -184,16 +395,14 @@ const TASKS: Record<AssistMode, string> = {
     continue: 'Continue the post from the cursor for one to three paragraphs, in the same voice, moving the argument forward. Reply with only the Markdown to insert.'
 };
 
-/** Streams the assistant's reply as server-sent events: sources first, then text deltas, then done. */
-export async function assist(ctx: Ctx, input: AssistInput): Promise<Response> {
+/** Streams the assistant's reply as server-sent events: what it read, the text as it is written, then done. */
+export async function assist(ctx: Ctx, input: AssistInput, client?: AbortSignal): Promise<Response> {
     const ai = provider(ctx);
-    if (!ai.stream) throw new HttpError(501, 'The AI provider cannot stream.');
     const mode: AssistMode = TASKS[input.mode] ? input.mode : 'chat';
     const clip = (s: string | undefined, n: number, fromEnd = false) => (!s ? '' : s.length <= n ? s : fromEnd ? s.slice(-n) : s.slice(0, n));
     const lastUser = [...(input.messages ?? [])].reverse().find(m => m.role === 'user')?.content ?? '';
     // What to look up: the request, plus the text just before the cursor so "continue" finds the topic at hand.
     const query = [input.instruction, input.selection, lastUser, input.title, mode === 'continue' || mode === 'write' ? clip(input.before, 1200, true) : ''].filter(Boolean).join('\n').slice(0, 2400);
-    const { prompt, sources } = await system(ctx, TASKS[mode], { query: query || clip(input.post, 1500), ai });
 
     const context = [
         input.title ? `Post title: ${input.title}` : '',
@@ -219,21 +428,12 @@ export async function assist(ctx: Ctx, input: AssistInput): Promise<Response> {
                   }
               ];
     const model = input.model || (await textModel(ctx));
-    const enc = new TextEncoder();
-    const send = (event: string | null, data: unknown) => enc.encode(`${event ? `event: ${event}\n` : ''}data: ${JSON.stringify(data)}\n\n`);
-    const stream = new ReadableStream<Uint8Array>({
-        async start(controller) {
-            controller.enqueue(send('sources', sources.map(p => ({ title: p.title, url: p.url }))));
-            try {
-                for await (const delta of ai.stream!({ model, system: prompt, messages, maxTokens: mode === 'chat' ? 3000 : 2500, temperature: 0.6 })) controller.enqueue(send(null, { t: delta }));
-                controller.enqueue(send('done', { model }));
-            } catch (err: any) {
-                controller.enqueue(send('error', { message: err?.message ?? 'The model stopped.' }));
-            }
-            controller.close();
-        }
-    });
-    return new Response(stream, { headers: { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-store', 'x-accel-buffering': 'no' } });
+    // The headers go out now; looking up passages happens inside the stream, so the client sees "reading" at once.
+    return eventStream(async function* (signal) {
+        const { end } = yield* compose(ctx, ai, { task: TASKS[mode], query: query || clip(input.post, 1500), messages, model, maxTokens: mode === 'chat' ? 3000 : 2500, temperature: 0.6 }, signal);
+        yield { event: 'done', data: { model: end.model, usage: end.usage, finishReason: end.finishReason } };
+        yield* settled(ai, end.usage, signal);
+    }, client);
 }
 
 // ------------------------------------------------------------------ video
@@ -378,13 +578,50 @@ export async function addIdeas(ctx: Ctx, ideas: { title: string; angle?: string;
     return { added: stmts.length };
 }
 
-export async function draftIdea(ctx: Ctx, id: string, by: Principal) {
+async function ideaFor(ctx: Ctx, id: string) {
     const idea = await ctx.db.prepare('SELECT * FROM ideas WHERE id = ?').bind(id).first<any>();
     if (!idea) throw new HttpError(404, 'Idea not found.');
+    return idea;
+}
+
+function ideaDraftInput(idea: any): DraftInput {
     const sources = JSON.parse(idea.sources || '[]') as { title?: string; url?: string; summary?: string }[];
     const notes = sources.map(s => `- ${s.title ?? ''}${s.url ? ` (${s.url})` : ''}${s.summary ? `: ${s.summary}` : ''}`).join('\n');
-    const d = await draft(ctx, { prompt: `Write the post "${idea.title}". Angle: ${idea.angle ?? 'your call'}.${idea.series ? ` Series: ${idea.series}.` : ''}`, notes });
+    return { prompt: `Write the post "${idea.title}". Angle: ${idea.angle ?? 'your call'}.${idea.series ? ` Series: ${idea.series}.` : ''}`, notes };
+}
+
+/** Saves the text as a new draft post for the idea, and marks the idea drafted. */
+async function keepIdeaDraft(ctx: Ctx, idea: any, by: Principal, d: { title?: string; markdown: string }) {
     const post = await savePost(ctx.db, { title: d.title || idea.title, markdown: d.markdown, bodyFormat: 'markdown', status: 'draft', type: 'post' }, { defaultAuthorId: by.staffId.startsWith('key:') ? undefined : by.staffId });
-    await ctx.db.prepare("UPDATE ideas SET status = 'drafted', post_id = ?, updated_at = ? WHERE id = ?").bind(post.id, now(), id).run();
-    return { post };
+    await ctx.db.prepare("UPDATE ideas SET status = 'drafted', post_id = ?, updated_at = ? WHERE id = ?").bind(post.id, now(), idea.id).run();
+    return post;
+}
+
+export async function draftIdea(ctx: Ctx, id: string, by: Principal) {
+    const idea = await ideaFor(ctx, id);
+    const d = await draft(ctx, ideaDraftInput(idea));
+    return { post: await keepIdeaDraft(ctx, idea, by, d) };
+}
+
+/** Text someone already has (say, a draft they stopped part way) saved as the idea's draft. */
+export async function saveIdeaDraft(ctx: Ctx, id: string, by: Principal, d: { title?: string; markdown?: string }) {
+    if (!d.markdown?.trim()) throw new HttpError(400, 'There is no text to save.');
+    return { post: await keepIdeaDraft(ctx, await ideaFor(ctx, id), by, { title: d.title?.trim(), markdown: d.markdown }) };
+}
+
+/** Writes the idea's draft as events, then saves it as a post once the model finishes. Stopping early saves nothing. */
+export async function draftIdeaStream(ctx: Ctx, id: string, by: Principal, client?: AbortSignal): Promise<Response> {
+    const idea = await ideaFor(ctx, id);
+    const job = draftJob(ideaDraftInput(idea));
+    const ai = provider(ctx);
+    const model = await textModel(ctx);
+    return eventStream(async function* (signal) {
+        const { text, end } = yield* compose(ctx, ai, { ...job, model }, signal);
+        const d = splitTitle(text);
+        if (!d.markdown.trim()) throw new HttpError(502, 'The model wrote nothing. Try again.');
+        yield status('saving');
+        const post = await keepIdeaDraft(ctx, idea, by, d);
+        yield { event: 'done', data: { ...d, post: { id: post.id, slug: post.slug, title: post.title }, model: end.model, usage: end.usage, finishReason: end.finishReason } };
+        yield* settled(ai, end.usage, signal);
+    }, client);
 }

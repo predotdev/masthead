@@ -1,67 +1,7 @@
-import { getHTMLFromFragment, type Editor, type JSONContent } from '@tiptap/core';
-import { base } from '../api';
+import { Editor, getHTMLFromFragment, type JSONContent } from '@tiptap/core';
+import { extensions } from './setup';
 
 export type AssistMode = 'chat' | 'edit' | 'write' | 'continue';
-
-export interface AssistRequest {
-    mode: AssistMode;
-    instruction?: string;
-    selection?: string;
-    before?: string;
-    after?: string;
-    title?: string;
-    post?: string;
-    messages?: { role: 'user' | 'assistant'; content: string }[];
-}
-
-export interface Source {
-    title: string;
-    url: string | null;
-}
-
-/** Streams the writing assistant: calls back with each piece of text and the sources it drew on; resolves with the whole reply. */
-export async function streamAssist(req: AssistRequest, on: { delta: (text: string) => void; sources?: (s: Source[]) => void }, signal?: AbortSignal): Promise<string> {
-    const res = await fetch(`${base}admin/api/ai/assist`, {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'content-type': 'application/json', 'x-masthead': '1' },
-        body: JSON.stringify(req),
-        signal
-    });
-    if (!res.ok || !res.body) {
-        const body = (await res.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(body?.error ?? `The assistant is unavailable (${res.status}).`);
-    }
-    const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
-    let buffer = '';
-    let full = '';
-    for (;;) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += value;
-        let end: number;
-        while ((end = buffer.indexOf('\n\n')) >= 0) {
-            const frame = buffer.slice(0, end);
-            buffer = buffer.slice(end + 2);
-            let event = 'message';
-            let data = '';
-            for (const line of frame.split('\n')) {
-                if (line.startsWith('event:')) event = line.slice(6).trim();
-                else if (line.startsWith('data:')) data += line.slice(5).trim();
-            }
-            if (!data) continue;
-            const payload = JSON.parse(data);
-            if (event === 'sources') on.sources?.((payload as Source[]).filter((x, i, all) => all.findIndex(y => (y.url ?? y.title) === (x.url ?? x.title)) === i));
-            else if (event === 'error') throw new Error(payload.message);
-            else if (event === 'done') return full;
-            else if (typeof payload.t === 'string') {
-                full += payload.t;
-                on.delta(payload.t);
-            }
-        }
-    }
-    return full;
-}
 
 /** Model replies sometimes wrap Markdown in a code fence; the editor wants the Markdown itself. */
 export function unfence(text: string): string {
@@ -99,6 +39,14 @@ export function previewHtml(editor: Editor, text: string): string {
     } catch {
         return text.replace(/&/g, '&amp;').replace(/</g, '&lt;');
     }
+}
+
+let offscreen: Editor | null = null;
+
+/** Markdown as the editor would show it, for pages without an editor (an editor off screen does the parsing). */
+export function renderMarkdown(text: string): string {
+    offscreen ??= new Editor({ element: document.createElement('div'), extensions: extensions(), editable: false });
+    return previewHtml(offscreen, text);
 }
 
 /**
