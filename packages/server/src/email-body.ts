@@ -150,7 +150,8 @@ export function parseHtml(src: string): El {
             pos = textFrom = stop < 0 ? src.length : stop + 1;
             continue;
         }
-        if (!VOID.has(tag) && !selfClosing) stack.push(el);
+        // Past a sane depth, content flows into the parent, so rendering never recurses too deep.
+        if (!VOID.has(tag) && !selfClosing && stack.length < 400) stack.push(el);
     }
     flush(src.length);
     return root;
@@ -286,7 +287,14 @@ const dir = (e: El) => (e.attrs.dir === 'rtl' ? ' dir="rtl"' : '');
 /** Absolute, safe URLs; in-page anchors point at the post on the web. */
 function href(raw: string | undefined, ctx: Ctx): string | null {
     const u = (raw ?? '').trim();
-    if (!u || /^(javascript|vbscript|data):/i.test(u)) return null;
+    // Checked with entities decoded and control characters dropped, as a browser would read it.
+    const char = (n: number) => (n > 0 && n <= 0x10ffff ? String.fromCodePoint(n) : ' ');
+    const probe = u
+        .replace(/&#x([0-9a-f]+);?/gi, (_m, h: string) => char(Number.parseInt(h, 16)))
+        .replace(/&#(\d+);?/g, (_m, d: string) => char(Number(d)))
+        .replace(/&colon;/gi, ':')
+        .replace(/[\s\u0000-\u001f]|&(tab|newline);/gi, '');
+    if (!u || /^(javascript|vbscript|data):/i.test(probe)) return null;
     if (u.startsWith('//')) return `https:${u}`;
     if (u.startsWith('/')) return `${ctx.o.origin}${u}`;
     if (u.startsWith('#')) return `${ctx.o.postUrl.split('#')[0]}${u}`;
