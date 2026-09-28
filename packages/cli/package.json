@@ -3,6 +3,14 @@
   "version": "0.1.0",
   "type": "module",
   "license": "MIT",
+  "description": "The Masthead command line: import from Ghost, push, seed, build, settings and the writing studio.",
+  "homepage": "https://github.com/predotdev/masthead#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/predotdev/masthead.git",
+    "directory": "packages/cli"
+  },
+  "bugs": "https://github.com/predotdev/masthead/issues",
   "bin": {
     "masthead": "./src/index.ts"
   },

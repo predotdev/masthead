@@ -4,6 +4,13 @@
   "type": "module",
   "license": "MIT",
   "description": "The default Masthead theme: fast, readable, no third-party scripts.",
+  "homepage": "https://github.com/predotdev/masthead#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/predotdev/masthead.git",
+    "directory": "packages/theme-default"
+  },
+  "bugs": "https://github.com/predotdev/masthead/issues",
   "exports": {
     ".": "./src/index.ts"
   },

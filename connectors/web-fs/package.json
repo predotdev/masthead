@@ -4,6 +4,13 @@
   "type": "module",
   "license": "MIT",
   "description": "Write the rendered site to a local folder.",
+  "homepage": "https://github.com/predotdev/masthead#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/predotdev/masthead.git",
+    "directory": "connectors/web-fs"
+  },
+  "bugs": "https://github.com/predotdev/masthead/issues",
   "exports": {
     ".": "./src/index.ts"
   },

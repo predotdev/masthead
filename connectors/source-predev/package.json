@@ -4,6 +4,13 @@
   "type": "module",
   "license": "MIT",
   "description": "Projects you build on pre.dev, as a Masthead studio source.",
+  "homepage": "https://github.com/predotdev/masthead#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/predotdev/masthead.git",
+    "directory": "connectors/source-predev"
+  },
+  "bugs": "https://github.com/predotdev/masthead/issues",
   "exports": {
     ".": "./src/index.ts"
   },

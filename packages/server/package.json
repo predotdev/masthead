@@ -4,6 +4,13 @@
   "type": "module",
   "license": "MIT",
   "description": "The Masthead server: public blog, admin API, newsletter and studio, on Cloudflare Workers with D1 and R2.",
+  "homepage": "https://github.com/predotdev/masthead#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/predotdev/masthead.git",
+    "directory": "packages/server"
+  },
+  "bugs": "https://github.com/predotdev/masthead/issues",
   "exports": {
     ".": "./src/index.ts"
   },

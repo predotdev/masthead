@@ -3,6 +3,14 @@
   "version": "0.1.0",
   "type": "module",
   "license": "MIT",
+  "description": "The Masthead content model, config and connector interfaces.",
+  "homepage": "https://github.com/predotdev/masthead#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/predotdev/masthead.git",
+    "directory": "packages/core"
+  },
+  "bugs": "https://github.com/predotdev/masthead/issues",
   "exports": {
     ".": "./src/index.ts",
     "./node": "./src/node.ts"

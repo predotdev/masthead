@@ -4,6 +4,13 @@
   "type": "module",
   "license": "MIT",
   "description": "Send Masthead newsletters and account email through Resend.",
+  "homepage": "https://github.com/predotdev/masthead#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/predotdev/masthead.git",
+    "directory": "connectors/email-resend"
+  },
+  "bugs": "https://github.com/predotdev/masthead/issues",
   "exports": {
     ".": "./src/index.ts"
   },

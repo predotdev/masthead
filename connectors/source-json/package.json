@@ -4,6 +4,13 @@
   "type": "module",
   "license": "MIT",
   "description": "Any JSON feed (a changelog, a status page, an API) as a Masthead studio source.",
+  "homepage": "https://github.com/predotdev/masthead#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/predotdev/masthead.git",
+    "directory": "connectors/source-json"
+  },
+  "bugs": "https://github.com/predotdev/masthead/issues",
   "exports": {
     ".": "./src/index.ts"
   },

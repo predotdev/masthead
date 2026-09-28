@@ -2,8 +2,25 @@
   "name": "masthead",
   "private": true,
   "type": "module",
-  "description": "An open-source blog and newsletter with an AI writing studio.",
+  "description": "The AI-native, Ghost-compatible blog and newsletter that runs on Cloudflare Workers, D1 and R2.",
   "license": "MIT",
+  "homepage": "https://github.com/predotdev/masthead#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/predotdev/masthead.git"
+  },
+  "bugs": "https://github.com/predotdev/masthead/issues",
+  "keywords": [
+    "blog",
+    "newsletter",
+    "ghost",
+    "cms",
+    "cloudflare-workers",
+    "d1",
+    "r2",
+    "ai",
+    "markdown"
+  ],
   "workspaces": [
     "packages/*",
     "connectors/*",

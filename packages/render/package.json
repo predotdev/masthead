@@ -4,6 +4,13 @@
   "type": "module",
   "license": "MIT",
   "description": "Render a Masthead snapshot to a static site: pages, feeds, sitemaps, structured data, llms.txt and markdown copies.",
+  "homepage": "https://github.com/predotdev/masthead#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/predotdev/masthead.git",
+    "directory": "packages/render"
+  },
+  "bugs": "https://github.com/predotdev/masthead/issues",
   "exports": {
     ".": "./src/index.ts"
   },

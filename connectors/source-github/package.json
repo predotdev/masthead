@@ -4,6 +4,13 @@
   "type": "module",
   "license": "MIT",
   "description": "GitHub for the Masthead studio: merged pull requests, releases and structured files from an explicit list of repositories.",
+  "homepage": "https://github.com/predotdev/masthead#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/predotdev/masthead.git",
+    "directory": "connectors/source-github"
+  },
+  "bugs": "https://github.com/predotdev/masthead/issues",
   "exports": {
     ".": "./src/index.ts"
   },

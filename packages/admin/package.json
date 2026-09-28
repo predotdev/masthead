@@ -4,6 +4,13 @@
   "type": "module",
   "license": "MIT",
   "description": "The Masthead admin: editor, members, newsletters, studio.",
+  "homepage": "https://github.com/predotdev/masthead#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/predotdev/masthead.git",
+    "directory": "packages/admin"
+  },
+  "bugs": "https://github.com/predotdev/masthead/issues",
   "scripts": {
     "build": "bun build.ts"
   },

@@ -4,6 +4,13 @@
   "type": "module",
   "license": "MIT",
   "description": "pre.dev AI for Masthead: hundreds of text and image models on one pre.dev API key.",
+  "homepage": "https://github.com/predotdev/masthead#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/predotdev/masthead.git",
+    "directory": "connectors/ai-predev"
+  },
+  "bugs": "https://github.com/predotdev/masthead/issues",
   "exports": {
     ".": "./src/index.ts"
   },

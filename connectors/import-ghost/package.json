@@ -4,6 +4,13 @@
   "type": "module",
   "license": "MIT",
   "description": "Import posts, pages, tags, authors and settings from a Ghost site into a Masthead snapshot.",
+  "homepage": "https://github.com/predotdev/masthead#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/predotdev/masthead.git",
+    "directory": "connectors/import-ghost"
+  },
+  "bugs": "https://github.com/predotdev/masthead/issues",
   "exports": {
     ".": "./src/index.ts"
   },
