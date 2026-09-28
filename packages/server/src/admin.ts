@@ -37,6 +37,7 @@ import { appUrl, buildEmail, cancelSend, countSegment, createSend, getSend, list
 import { linkTag, publishSite } from './publish';
 import { MEDIA_PREFIX } from './public';
 import { Router } from './router';
+import { share, shareStream } from './share';
 import { wantsEvents } from './sse';
 import { saveStyleSettings, styleSettings } from './style';
 import { HttpError, body, csvEscape, html, json, newId, now, parseCsv, redirect, safeEqual, sleep } from './util';
@@ -758,6 +759,15 @@ export function adminRoutes(): Router<A> {
         } catch (err: any) {
             throw err instanceof HttpError ? err : new HttpError(502, `The AI provider said: ${err?.message ?? 'request failed'}`);
         }
+    });
+    /** Posts for X and LinkedIn and newsletter subject lines, to copy (streamed on request). Nothing is posted anywhere. */
+    r.post('/posts/:id/share', async (req, ctx, { id }) => {
+        const post = await getPost(ctx.db, id);
+        if (!post) throw new HttpError(404, 'Post not found.');
+        await canEdit(ctx, post);
+        const input = await body(req);
+        const args = { angle: typeof input.angle === 'string' ? input.angle : undefined, model: typeof input.model === 'string' ? input.model : undefined };
+        return wantsEvents(req) ? shareStream(ctx, post, args, req.signal) : json(await share(ctx, post, args));
     });
 
     // ---------------------------------------------------------- import

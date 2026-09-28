@@ -8,7 +8,7 @@ import { eventStream, status, type SseEvent } from './sse';
 import { HttpError, newId, now, sleep } from './util';
 
 /** The configured AI provider; its failures come back as clear 502s instead of server errors. */
-function provider(ctx: Ctx): AIProvider {
+export function provider(ctx: Ctx): AIProvider {
     const ai = ctx.options.ai?.(ctx.env);
     if (!ai) throw new HttpError(501, 'No AI provider is configured. Set PREDEV_API_KEY.');
     const wrap =
@@ -57,7 +57,7 @@ async function* write(ai: AIProvider, request: TextRequest, onEnd: (end: StreamE
     }
 }
 
-interface WritingJob {
+export interface WritingJob {
     task: string;
     /** What to look up in the blog and the knowledge sources; none: no passages. */
     query?: string;
@@ -74,7 +74,7 @@ interface WritingJob {
  * written. Returns the whole text and how the stream ended, for the done event.
  * The first event names the model that writes, so the page can show it at once.
  */
-async function* compose(ctx: Ctx, ai: AIProvider, job: WritingJob, signal: AbortSignal): AsyncGenerator<SseEvent, { text: string; end: StreamEnd }> {
+export async function* compose(ctx: Ctx, ai: AIProvider, job: WritingJob, signal: AbortSignal): AsyncGenerator<SseEvent, { text: string; end: StreamEnd }> {
     yield status('reading', answeredBy(job.model, job));
     const { prompt, sources } = await system(ctx, job.task, job.query ? { query: job.query, ai } : undefined);
     if (job.query) yield { event: 'sources', data: sources.map(p => ({ title: p.title, url: p.url })) };
@@ -89,7 +89,7 @@ async function* compose(ctx: Ctx, ai: AIProvider, job: WritingJob, signal: Abort
 }
 
 /** What a finished stream was charged, sent once the provider has settled it (a few seconds after the text ends). */
-async function* settled(ai: AIProvider, usage: Usage, signal: AbortSignal): AsyncGenerator<SseEvent> {
+export async function* settled(ai: AIProvider, usage: Usage, signal: AbortSignal): AsyncGenerator<SseEvent> {
     if (!ai.usage || !usage.requestId || usage.charged != null) return;
     for (const wait of [1000, 1500, 2500, 3000]) {
         await sleep(wait);
@@ -132,7 +132,7 @@ export async function listModels(ctx: Ctx, kind?: ModelKind) {
     return list.map(m => (defaults[m.kind] === m.id ? { ...m, isDefault: true } : m));
 }
 
-type Chosen = { model: string; requested?: string };
+export type Chosen = { model: string; requested?: string };
 
 const NO_DEFAULT: Record<'text' | 'image' | 'video', string> = {
     text: 'Choose a text model in Settings, AI.',
@@ -145,7 +145,7 @@ const NO_DEFAULT: Record<'text' | 'image' | 'video', string> = {
  * the site default. A model the catalog doesn't list (or a catalog that can't be read) never
  * fails the request; `requested` then says which model was asked for instead.
  */
-async function chooseModel(ctx: Ctx, kind: 'text' | 'image' | 'video', asked?: unknown): Promise<Chosen> {
+export async function chooseModel(ctx: Ctx, kind: 'text' | 'image' | 'video', asked?: unknown): Promise<Chosen> {
     const s = await aiSettings(ctx.env, ctx.db);
     const fallback = kind === 'text' ? s.textModel : kind === 'image' ? s.imageModel : s.videoModel;
     const want = typeof asked === 'string' ? asked.trim() : '';
@@ -155,7 +155,7 @@ async function chooseModel(ctx: Ctx, kind: 'text' | 'image' | 'video', asked?: u
 }
 
 /** Which model answered, for a result or a done event; `requestedModel` only when the one asked for was not used. */
-const answeredBy = (used: string, chosen: Chosen): { model: string; requestedModel?: string } => (chosen.requested ? { model: used, requestedModel: chosen.requested } : { model: used });
+export const answeredBy = (used: string, chosen: Chosen): { model: string; requestedModel?: string } => (chosen.requested ? { model: used, requestedModel: chosen.requested } : { model: used });
 
 /**
  * Everything the model is told before the task: who it writes for, the house
