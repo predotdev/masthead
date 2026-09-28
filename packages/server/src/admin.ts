@@ -38,7 +38,7 @@ import { appUrl, buildEmail, cancelSend, countSegment, createSend, getSend, list
 import { linkTag, publishSite } from './publish';
 import { MEDIA_PREFIX } from './public';
 import { Router } from './router';
-import { sequenceRoutes } from './sequences';
+import { importSequences, sequenceRoutes } from './sequences';
 import { share, shareStream } from './share';
 import { wantsEvents } from './sse';
 import { saveStyleSettings, styleSettings } from './style';
@@ -571,6 +571,8 @@ export function adminRoutes(): Router<A> {
         if (input.ideas) await saveIdeaSettings(ctx.db, input.ideas);
         if (input.style) await saveStyleSettings(ctx.db, input.style);
         if (input.ai) await saveAiSettings(ctx, input.ai);
+        // Email sequences from a settings file: copy and steps, and the switch only when the file sets it.
+        if (input.sequences) await importSequences(ctx.db, input.sequences);
         return json({ ok: true });
     });
 
