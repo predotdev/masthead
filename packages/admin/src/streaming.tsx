@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { modelLabel } from './models';
 import { streamAi, type Source, type Usage } from './stream';
 import { Button } from './ui';
 
@@ -15,6 +16,10 @@ export interface AiRun<T> {
     preview: string | null;
     result: T | null;
     usage: Usage | null;
+    /** The model answering, once the server names it. */
+    model: string | null;
+    /** The model that was asked for, when it was not available and the site default answered instead. */
+    requestedModel: string | null;
     error: string | null;
     startedAt: number;
     start: (path: string, body: unknown) => void;
@@ -34,6 +39,8 @@ export function useAiRun<T = Record<string, unknown>>(): AiRun<T> {
     const [preview, setPreview] = useState<string | null>(null);
     const [result, setResult] = useState<T | null>(null);
     const [usage, setUsage] = useState<Usage | null>(null);
+    const [model, setModel] = useState<string | null>(null);
+    const [requestedModel, setRequestedModel] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [startedAt, setStartedAt] = useState(0);
     const ctl = useRef<AbortController | null>(null);
@@ -92,6 +99,8 @@ export function useAiRun<T = Record<string, unknown>>(): AiRun<T> {
         setPreview(null);
         setResult(null);
         setUsage(null);
+        setModel(null);
+        setRequestedModel(null);
         setError(null);
     };
 
@@ -116,7 +125,8 @@ export function useAiRun<T = Record<string, unknown>>(): AiRun<T> {
                 stage: s => current() && setStage(s),
                 sources: s => current() && setSources(s),
                 preview: src => current() && setPreview(src),
-                usage: u => current() && setUsage(u)
+                usage: u => current() && setUsage(u),
+                model: (m, requested) => current() && (setModel(m), setRequestedModel(requested ?? null))
             },
             c.signal
         ).then(
@@ -124,8 +134,11 @@ export function useAiRun<T = Record<string, unknown>>(): AiRun<T> {
                 if (!current()) return;
                 setResult(data);
                 // Some results come with their charge already (an image made in one call).
-                const used = (data as { usage?: Usage } | null)?.usage;
-                if (used?.charged != null) setUsage(used);
+                const done = data as { usage?: Usage; model?: string; requestedModel?: string } | null;
+                if (done?.usage?.charged != null) setUsage(done.usage);
+                // The model the server chose (named when it started) reads best; the provider's name for it is the fallback.
+                if (done?.model) setModel(m => m ?? done.model!);
+                if (done?.requestedModel) setRequestedModel(done.requestedModel);
                 complete.current = true;
                 if (!frame.current && shown.current < received.current.length) frame.current = requestAnimationFrame(paint);
                 setState('done');
@@ -150,6 +163,8 @@ export function useAiRun<T = Record<string, unknown>>(): AiRun<T> {
         preview,
         result,
         usage,
+        model,
+        requestedModel,
         error,
         startedAt,
         start,
@@ -228,9 +243,28 @@ export function splitDraft(text: string): { title: string; body: string; titleDo
     return { title: m[1].trim(), body: t.slice(m[0].length).trim(), titleDone: m[2] === '\n' };
 }
 
+const credits = (n: number) => `${n < 0.01 ? 'Under 0.01' : n < 10 ? n.toFixed(2) : Math.round(n)} credits`;
+
 /** What a finished request cost, once the provider has settled it. */
 export function Credits({ usage }: { usage: Usage | null }) {
     const n = usage?.charged;
     if (n == null) return null;
-    return <span class="ai-credits">{n < 0.01 ? 'Under 0.01' : n < 10 ? n.toFixed(2) : Math.round(n)} credits</span>;
+    return <span class="ai-credits">{credits(n)}</span>;
+}
+
+/**
+ * Which model answered and, once the provider has settled it, what it cost. When the model
+ * that was asked for is no longer offered, it says the site default answered instead.
+ */
+export function Answered({ run }: { run: Pick<AiRun<unknown>, 'model' | 'requestedModel' | 'usage'> }) {
+    const n = run.usage?.charged;
+    if (!run.model && n == null) return null;
+    const fallback = run.requestedModel ? `${modelLabel(run.requestedModel)} is not available, so the site default answered.` : undefined;
+    return (
+        <span class={`ai-credits${fallback ? ' fallback' : ''}`} title={fallback ?? run.model ?? undefined}>
+            {run.model ? `${modelLabel(run.model)}${fallback ? ' (site default)' : ''}` : null}
+            {run.model && n != null ? ' · ' : null}
+            {n != null ? credits(n) : null}
+        </span>
+    );
 }

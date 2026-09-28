@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { api, type Post } from '../api';
-import { CARET, Caret, Credits, StopButton, Working, splitDraft, useAiRun, withCaret } from '../streaming';
+import { modelFor } from '../models';
+import { Answered, CARET, Caret, StopButton, Working, splitDraft, useAiRun, withCaret } from '../streaming';
 import { Button, Dialog, ErrorNote, errorToast, toast } from '../ui';
 
 type Render = (markdown: string) => string;
@@ -31,7 +32,8 @@ export function IdeaDraft({ idea, onClose }: { idea: { id: string; title: string
     const [saved, setSaved] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
     const writing = run.state === 'working';
-    const write = () => run.start(`/ideas/${idea.id}/draft`, {});
+    // Written with the model this browser picked in the editor, or the site default.
+    const write = () => run.start(`/ideas/${idea.id}/draft`, { model: modelFor('text') });
     useEffect(write, []);
     useEffect(() => {
         if (run.state === 'done' && run.result?.post) {
@@ -98,7 +100,7 @@ export function IdeaDraft({ idea, onClose }: { idea: { id: string; title: string
                     </>
                 ) : saved ? (
                     <>
-                        <Credits usage={run.usage} />
+                        <Answered run={run} />
                         <Button onClick={() => onClose(true)}>Back to ideas</Button>
                         <Button tone="primary" onClick={() => (location.hash = `#/edit/${saved}`)}>
                             Open the draft

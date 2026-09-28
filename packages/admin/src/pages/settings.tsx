@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { api, fmtDate } from '../api';
+import { ModelPicker } from '../model-picker';
+import { reloadModels } from '../models';
 import { Button, Dialog, ErrorNote, Field, Loading, PageHead, Pill, errorToast, toast, useLoad } from '../ui';
 import { IdeasSettings, type IdeaSettings } from './ideas-settings';
 import { MemoryPanel } from './memory';
@@ -15,14 +17,15 @@ interface SettingsData {
     environment: { siteUrl: string; appUrl: string; testMode: boolean; emailFrom: string | null; email: boolean; ai: boolean; webhooks: boolean; linkTag: string | null };
 }
 
-export function Settings() {
+/** Settings; `section` (from #/settings/<section>) scrolls to one panel, e.g. "ai". */
+export function Settings({ section }: { section?: string }) {
     const { data, error, reload } = useLoad(() => api<SettingsData>('/settings'), []);
     if (error) return <ErrorNote text={error} />;
     if (!data) return <Loading />;
-    return <SettingsForm data={data} reload={reload} />;
+    return <SettingsForm data={data} reload={reload} section={section} />;
 }
 
-function SettingsForm({ data, reload }: { data: SettingsData; reload: () => void }) {
+function SettingsForm({ data, reload, section }: { data: SettingsData; reload: () => void; section?: string }) {
     const [site, setSite] = useState(data.site);
     const [newsletter, setNewsletter] = useState(data.newsletter);
     const [ai, setAi] = useState(() => {
@@ -34,6 +37,9 @@ function SettingsForm({ data, reload }: { data: SettingsData; reload: () => void
     const [busy, setBusy] = useState(false);
     const [newKey, setNewKey] = useState<string | null>(null);
     const env = data.environment;
+    useEffect(() => {
+        if (section) document.getElementById(`settings-${section}`)?.scrollIntoView({ block: 'start' });
+    }, [section]);
 
     const save = async () => {
         setBusy(true);
@@ -45,6 +51,8 @@ function SettingsForm({ data, reload }: { data: SettingsData; reload: () => void
             await api('/settings', { method: 'PUT', body: { site, newsletter, ai: { ...ai, knowledgeSources }, ideas } });
             toast('Saved');
             reload();
+            // Pickers mark the site's defaults; they may have moved.
+            reloadModels();
         } catch (err) {
             errorToast(err);
         } finally {
@@ -156,13 +164,22 @@ function SettingsForm({ data, reload }: { data: SettingsData; reload: () => void
                 </div>
             </section>
 
-            <section class="panel">
+            <section class="panel" id="settings-ai">
                 <h2>AI</h2>
+                <p class="muted small">The defaults for everyone. Writers can pick other models for themselves in the editor.</p>
                 <div class="grid2">
-                    <ModelPicker kind="text" label="Writing model" value={ai.textModel} onChange={v => setAi({ ...ai, textModel: v })} />
-                    <ModelPicker kind="image" label="Image model" value={ai.imageModel} onChange={v => setAi({ ...ai, imageModel: v })} />
-                    <ModelPicker kind="video" label="Video model" value={ai.videoModel} onChange={v => setAi({ ...ai, videoModel: v })} />
-                    <ModelPicker kind="embedding" label="Knowledge model" value={ai.embeddingModel} onChange={v => setAi({ ...ai, embeddingModel: v })} hint="Reads the blog and your sources so answers can cite them. Changing it re-reads everything." />
+                    <Field label="Writing model" hint="Drafts, rewrites, suggestions and the assistant.">
+                        <ModelPicker kind="text" label="Writing model" value={ai.textModel} onChange={v => setAi({ ...ai, textModel: v })} />
+                    </Field>
+                    <Field label="Image model" hint="Covers and images in posts.">
+                        <ModelPicker kind="image" label="Image model" value={ai.imageModel} onChange={v => setAi({ ...ai, imageModel: v })} />
+                    </Field>
+                    <Field label="Video model" hint="Clips in posts.">
+                        <ModelPicker kind="video" label="Video model" value={ai.videoModel} onChange={v => setAi({ ...ai, videoModel: v })} />
+                    </Field>
+                    <Field label="Knowledge model" hint="Reads the blog and your sources so answers can cite them. Changing it re-reads everything.">
+                        <ModelPicker kind="embedding" label="Knowledge model" value={ai.embeddingModel} onChange={v => setAi({ ...ai, embeddingModel: v })} />
+                    </Field>
                 </div>
                 <Field label="House style" hint="Tone, audience and rules every draft follows, e.g. words to avoid or names never to mention.">
                     <textarea rows={6} value={ai.voice ?? ''} onInput={e => setAi({ ...ai, voice: e.currentTarget.value || null })} />
@@ -246,27 +263,5 @@ function SettingsForm({ data, reload }: { data: SettingsData; reload: () => void
                 </Dialog>
             ) : null}
         </div>
-    );
-}
-
-function ModelPicker({ kind, label, value, onChange, hint }: { kind: 'text' | 'image' | 'video' | 'embedding'; label: string; value: string | null; onChange: (v: string | null) => void; hint?: string }) {
-    const [models, setModels] = useState<{ id: string; name: string }[] | null>(null);
-    useEffect(() => {
-        api<{ id: string; name: string }[]>(`/ai/models?kind=${kind}`)
-            .then(setModels)
-            .catch(() => setModels([]));
-    }, [kind]);
-    const listId = `models-${kind}`;
-    return (
-        <Field label={label} hint={models ? `${hint ? `${hint} ` : ''}${models.length} available.` : 'Loading models…'}>
-            <input list={listId} value={value ?? ''} onInput={e => onChange(e.currentTarget.value || null)} placeholder="Start typing a model name" />
-            <datalist id={listId}>
-                {(models ?? []).map(m => (
-                    <option key={m.id} value={m.id}>
-                        {m.name}
-                    </option>
-                ))}
-            </datalist>
-        </Field>
     );
 }

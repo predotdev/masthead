@@ -450,6 +450,7 @@ img.avatar { box-shadow: 0 0 0 1px var(--line-2); }
 .page-desc { margin: 6px 0 0; max-width: 68ch; color: var(--muted); font-size: var(--text-base); }
 .page-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .page-head + .lead, .lead { margin: -12px 0 24px; max-width: 72ch; }
+.settings > .panel { scroll-margin-top: 112px; }
 .settings > .page-head { position: sticky; top: var(--sticky-top, 0px); z-index: 6; margin: -28px -40px 24px; padding: 24px 40px 16px; background: var(--glass); -webkit-backdrop-filter: blur(16px) saturate(1.5); backdrop-filter: blur(16px) saturate(1.5); }
 /* A hairline under the sticky header once the page scrolls beneath it (where scroll-driven animations exist). */
 @supports (animation-timeline: scroll()) {
@@ -700,6 +701,8 @@ img.avatar { box-shadow: 0 0 0 1px var(--line-2); }
 .media-preview img, .media-preview video { display: block; width: 100%; height: auto; }
 .media-empty { color: var(--muted); font-size: 13px; padding: 24px; text-align: center; }
 .chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.media-options { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 12px; }
+.media-warn { margin: -6px 0 0; color: var(--amber); }
 .chip.on { background: var(--fg); color: var(--bg); border-color: var(--fg); }
 .embed-preview { margin-top: 14px; }
 .embed-preview .embed-view { max-height: 420px; overflow: auto; }
@@ -1057,6 +1060,8 @@ a.btn { text-decoration: none; }
 .ai-stop-icon { width: 8px; height: 8px; border-radius: 1.5px; background: currentColor; }
 .ai-note { margin: 8px 16px 0; color: var(--muted); font-size: 12.5px; }
 .ai-credits { margin-right: auto; color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; }
+/* The model asked for is not offered, so the site default answered. */
+.ai-credits.fallback { color: var(--amber); }
 .dialog-actions .ai-working { margin-right: auto; }
 .turn-note { margin: 0; color: var(--muted); font-size: 12px; }
 .turn-note.error { color: var(--red); }

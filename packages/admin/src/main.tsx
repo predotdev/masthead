@@ -120,7 +120,7 @@ function Page() {
         case 'staff':
             return <StaffPage />;
         case 'settings':
-            return <Settings />;
+            return <Settings section={arg} />;
         default:
             return <Posts type="post" />;
     }

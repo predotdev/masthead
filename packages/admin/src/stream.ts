@@ -22,6 +22,8 @@ export interface StreamHandlers {
     /** A rough version of an image being painted, as a data: URL. */
     preview?: (src: string) => void;
     usage?: (usage: Usage) => void;
+    /** The model doing the work, as soon as the server names it; `requested` when the one asked for was not available. */
+    model?: (model: string, requested?: string) => void;
 }
 
 export class StreamError extends Error {
@@ -59,8 +61,10 @@ export async function streamAi<T = Record<string, unknown>>(path: string, body: 
     return new Promise<T>((resolve, reject) => {
         let finished = false;
         const handle = (event: string, data: any) => {
-            if (event === 'status') on.stage?.(String(data.stage ?? ''));
-            else if (event === 'sources') on.sources?.((data as Source[]).filter((x, i, all) => all.findIndex(y => (y.url ?? y.title) === (x.url ?? x.title)) === i));
+            if (event === 'status') {
+                on.stage?.(String(data.stage ?? ''));
+                if (data.model) on.model?.(String(data.model), data.requestedModel ? String(data.requestedModel) : undefined);
+            } else if (event === 'sources') on.sources?.((data as Source[]).filter((x, i, all) => all.findIndex(y => (y.url ?? y.title) === (x.url ?? x.title)) === i));
             else if (event === 'preview') on.preview?.(String(data.src));
             else if (event === 'usage') on.usage?.(data as Usage);
             else if (event === 'error') throw new StreamError(String(data.message ?? 'The AI stopped.'), Number(data.status) || 0);

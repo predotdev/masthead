@@ -1,22 +1,15 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { api } from '../api';
-import { Credits, StopButton, Working, useAiRun } from '../streaming';
+import { ModelPicker } from '../model-picker';
+import { myModels, setMyModel, useModels, type ChoiceKind, type Model } from '../models';
+import { Answered, StopButton, Working, useAiRun } from '../streaming';
 import { Button, Dialog, ErrorNote, Field, errorToast } from '../ui';
 
-interface ModelRow {
-    id: string;
-    name: string;
-    price?: Record<string, number>;
-    supports?: { durations?: number[]; aspectRatios?: string[]; resolutions?: string[]; frameImages?: string[] };
-    isDefault?: boolean;
-}
-
-function useModels(kind: 'image' | 'video') {
-    const [models, setModels] = useState<ModelRow[]>([]);
-    useEffect(() => {
-        api<ModelRow[]>(`/ai/models?kind=${kind}`).then(setModels, () => setModels([]));
-    }, [kind]);
-    return models;
+/** The model a media dialog uses: this browser's choice (shared with the editor's AI panel), else the site default. */
+function useChosen(kind: ChoiceKind): { value: string | null; chosen: Model | undefined; set: (id: string | null) => void } {
+    const { models } = useModels(kind);
+    const value = myModels.value[kind] ?? null;
+    return { value, chosen: value ? models?.find(m => m.id === value) : models?.find(m => m.isDefault), set: id => setMyModel(kind, id) };
 }
 
 /** Starting points for the style field, which takes any style in words. Blank sends the description as written. */
@@ -49,19 +42,25 @@ const RATIOS = ['16:9', '3:2', '1:1', '4:5', '9:16'];
  * running clock; Stop cancels it and everything stays editable meanwhile.
  */
 export function ImageDialog({ mode, src, title, onClose, onDone }: { mode: 'insert' | 'cover' | 'edit'; src?: string; title: string; onClose: () => void; onDone: (url: string, alt: string) => void }) {
-    const models = useModels('image');
+    const model = useChosen('image');
     const [prompt, setPrompt] = useState(mode === 'edit' ? '' : mode === 'cover' ? `Cover art for a post titled "${title}".` : '');
     const [style, setStyle] = useState('');
     const [ratio, setRatio] = useState('16:9');
-    const [model, setModel] = useState('');
     const [url, setUrl] = useState<string | null>(null);
+    // The shapes the model takes, when the catalog says; an edit needs a model that takes an image.
+    const takes = model.chosen?.supports?.aspectRatios;
+    const ratios = takes?.length ? (RATIOS.some(r => takes.includes(r)) ? RATIOS.filter(r => takes.includes(r)) : takes.slice(0, 5)) : RATIOS;
+    const cantEdit = mode === 'edit' && model.chosen?.supports?.references === false;
+    useEffect(() => {
+        if (!ratios.includes(ratio)) setRatio(ratios.includes('16:9') ? '16:9' : ratios[0]);
+    }, [model.chosen?.id]);
     const job = useAiRun<{ url: string; model: string }>();
     const painting = job.state === 'working';
     useEffect(() => {
         if (job.state === 'done' && job.result?.url) setUrl(job.result.url);
     }, [job.state]);
     const run = () =>
-        job.start('/ai/image', { prompt: style.trim() ? `${prompt.trim()}\n\nStyle: ${style.trim()}.` : prompt.trim(), aspectRatio: ratio, model: model || undefined, reference: mode === 'edit' ? url ?? src : undefined });
+        job.start('/ai/image', { prompt: style.trim() ? `${prompt.trim()}\n\nStyle: ${style.trim()}.` : prompt.trim(), aspectRatio: ratio, model: model.value ?? undefined, reference: mode === 'edit' ? url ?? src : undefined });
     const shown = url ?? src ?? null;
     return (
         <Dialog title={mode === 'edit' ? 'Edit image with AI' : mode === 'cover' ? 'Generate a cover' : 'Generate an image'} onClose={onClose} wide>
@@ -86,25 +85,19 @@ export function ImageDialog({ mode, src, title, onClose, onDone }: { mode: 'inse
                             </button>
                         ))}
                     </div>
-                    <div class="grid2">
+                    <div class="media-options">
                         <Field label="Shape">
                             <select value={ratio} onChange={e => setRatio(e.currentTarget.value)}>
-                                {RATIOS.map(r => (
+                                {ratios.map(r => (
                                     <option key={r}>{r}</option>
                                 ))}
                             </select>
                         </Field>
-                        <Field label="Model" hint="Blank: the default from Settings.">
-                            <input list="image-models" value={model} onInput={e => setModel(e.currentTarget.value)} placeholder={models.find(m => m.isDefault)?.name ?? 'default'} />
-                            <datalist id="image-models">
-                                {models.map(m => (
-                                    <option key={m.id} value={m.id}>
-                                        {m.name}
-                                    </option>
-                                ))}
-                            </datalist>
+                        <Field label="Model">
+                            <ModelPicker kind="image" allowDefault value={model.value} onChange={model.set} label="Image model" disabled={painting} />
                         </Field>
                     </div>
+                    {cantEdit ? <p class="field-hint media-warn">This model makes new images but can't change one. Pick a model marked Edits images.</p> : null}
                 </div>
                 <div class="media-preview" aria-busy={painting}>
                     {painting ? (
@@ -130,12 +123,12 @@ export function ImageDialog({ mode, src, title, onClose, onDone }: { mode: 'inse
             {job.state === 'error' ? <ErrorNote text={job.error ?? ''} /> : null}
             {job.state === 'stopped' ? <p class="ai-note">Stopped. Nothing was saved.</p> : null}
             <div class="dialog-actions">
-                {job.state === 'done' ? <Credits usage={job.usage} /> : null}
+                {job.state === 'done' ? <Answered run={job} /> : null}
                 <Button onClick={onClose}>Cancel</Button>
                 {painting ? (
                     <StopButton onClick={job.stop} />
                 ) : (
-                    <Button disabled={!prompt.trim()} onClick={run}>
+                    <Button disabled={!prompt.trim() || cantEdit} onClick={run}>
                         {url ? (mode === 'edit' ? 'Edit again' : 'Try again') : mode === 'edit' ? 'Apply edit' : 'Generate'}
                     </Button>
                 )}
@@ -151,9 +144,8 @@ export function ImageDialog({ mode, src, title, onClose, onDone }: { mode: 'inse
 
 /** Generate a short video clip, optionally animating an image. */
 export function VideoDialog({ reference, onClose, onDone }: { reference?: string | null; onClose: () => void; onDone: (url: string) => void }) {
-    const models = useModels('video');
+    const model = useChosen('video');
     const [prompt, setPrompt] = useState('');
-    const [model, setModel] = useState('');
     const [ratio, setRatio] = useState('16:9');
     const [duration, setDuration] = useState(6);
     const [useRef_, setUseRef] = useState(false);
@@ -170,7 +162,7 @@ export function VideoDialog({ reference, onClose, onDone }: { reference?: string
         },
         []
     );
-    const chosen = models.find(m => m.id === model) ?? (model ? undefined : models.find(m => m.isDefault));
+    const chosen = model.chosen;
     const durations = chosen?.supports?.durations ?? [4, 6, 8, 10];
     const ratios = chosen?.supports?.aspectRatios?.filter(r => ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'].includes(r)) ?? ['16:9', '9:16', '1:1'];
     const canAnimate = !chosen?.supports || !!chosen.supports.frameImages?.includes('first_frame');
@@ -186,7 +178,7 @@ export function VideoDialog({ reference, onClose, onDone }: { reference?: string
         setStarting(true);
         setStarted(Date.now());
         try {
-            const res = await api<{ id: string; status: string }>('/ai/video', { body: { prompt, model: model || undefined, aspectRatio: ratio, duration, reference: useRef_ && canAnimate ? reference : undefined } });
+            const res = await api<{ id: string; status: string }>('/ai/video', { body: { prompt, model: model.value ?? undefined, aspectRatio: ratio, duration, reference: useRef_ && canAnimate ? reference : undefined } });
             // Closed while the job was being submitted: nothing is left to show it.
             if (!open.current) return;
             setJob(res);
@@ -225,15 +217,8 @@ export function VideoDialog({ reference, onClose, onDone }: { reference?: string
                         <textarea rows={4} value={prompt} autoFocus disabled={!!job || starting} placeholder="Slow push-in on a glowing terminal floating in a field of stars." onInput={e => setPrompt(e.currentTarget.value)} />
                     </Field>
                     <div class="grid2">
-                        <Field label="Model" hint="Blank: the default from Settings.">
-                            <input list="video-models" value={model} disabled={!!job || starting} onInput={e => setModel(e.currentTarget.value)} placeholder={models.find(m => m.isDefault)?.name ?? 'default'} />
-                            <datalist id="video-models">
-                                {models.map(m => (
-                                    <option key={m.id} value={m.id}>
-                                        {m.name}
-                                    </option>
-                                ))}
-                            </datalist>
+                        <Field label="Model">
+                            <ModelPicker kind="video" allowDefault value={model.value} onChange={model.set} label="Video model" disabled={!!job || starting} />
                         </Field>
                         <Field label="Shape and length" hint={estimate ? `About ${estimate} credits` : undefined}>
                             <div class="row">
