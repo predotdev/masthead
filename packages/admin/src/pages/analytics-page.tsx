@@ -12,7 +12,10 @@ import {
     Switch,
     Toolbar,
     channelName,
+    countryName,
+    flag,
     isEditor,
+    pageName,
     periodText,
     useReport,
     vsText,
@@ -23,6 +26,7 @@ import {
     type WebData,
     type WebReport
 } from './analytics-shared';
+import { SearchTab } from './analytics-search';
 import { PostAnalytics } from './post-analytics';
 
 function useRange(): [RangeKey, (r: RangeKey) => void] {
@@ -57,37 +61,12 @@ function useHash(): string {
     return hash;
 }
 
-/** Pages the analytics saw, named the way writers know them. */
-function pageName(path: string, titles: WebReport['titles']): { label: string; post?: { id: string; type: string } } {
-    const rest = path.startsWith(base) ? path.slice(base.length) : path;
-    if (!rest) return { label: 'Front page' };
-    const slug = rest.replace(/\/$/, '');
-    const found = titles?.[slug];
-    if (found) return { label: found.title, post: found };
-    const m = rest.match(/^(tag|author)\/([^/]+)/);
-    if (m) return { label: `${m[1] === 'tag' ? 'Tag' : 'Author'}: ${decodeURIComponent(m[2])}` };
-    if (/^page\/\d+/.test(rest)) return { label: `Front page, page ${rest.split('/')[1]}` };
-    if (rest.startsWith('search')) return { label: 'Search' };
-    return { label: path };
-}
-
-const flag = (code: string) => (/^[A-Z]{2}$/.test(code) ? String.fromCodePoint(...[...code].map(c => 0x1f1e6 + c.charCodeAt(0) - 65)) : '');
-let regions: Intl.DisplayNames | null = null;
-function countryName(code: string): string {
-    if (!code) return 'Unknown';
-    try {
-        regions ??= new Intl.DisplayNames(undefined, { type: 'region' });
-        return regions.of(code) ?? code;
-    } catch {
-        return code;
-    }
-}
-
 // ------------------------------------------------------------------ the page
 
 const TABS: { key: string; label: string; editor?: boolean }[] = [
     { key: '', label: 'Overview' },
     { key: 'traffic', label: 'Web traffic' },
+    { key: 'search', label: 'Search' },
     { key: 'newsletters', label: 'Newsletters', editor: true },
     { key: 'growth', label: 'Growth', editor: true }
 ];
@@ -112,6 +91,8 @@ export function Analytics() {
             </nav>
             {tab === 'traffic' ? (
                 <Traffic range={range} setRange={setRange} />
+            ) : tab === 'search' ? (
+                <SearchTab range={range} setRange={setRange} />
             ) : tab === 'newsletters' ? (
                 <Newsletters range={range} setRange={setRange} />
             ) : tab === 'growth' ? (

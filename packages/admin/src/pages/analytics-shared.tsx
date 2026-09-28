@@ -194,6 +194,32 @@ export function useReport<T>(path: string | null) {
     return { ...state, reload: load };
 }
 
+/** Pages the analytics saw, named the way writers know them. */
+export function pageName(path: string, titles: Record<string, { id: string; title: string; type: string }> | undefined): { label: string; post?: { id: string; type: string } } {
+    const rest = path.startsWith(base) ? path.slice(base.length) : path;
+    if (!rest) return { label: 'Front page' };
+    const slug = rest.replace(/\/$/, '');
+    const found = titles?.[slug];
+    if (found) return { label: found.title, post: found };
+    const m = rest.match(/^(tag|author)\/([^/]+)/);
+    if (m) return { label: `${m[1] === 'tag' ? 'Tag' : 'Author'}: ${decodeURIComponent(m[2])}` };
+    if (/^page\/\d+/.test(rest)) return { label: `Front page, page ${rest.split('/')[1]}` };
+    if (rest.startsWith('search')) return { label: 'Search' };
+    return { label: path };
+}
+
+export const flag = (code: string) => (/^[A-Z]{2}$/.test(code) ? String.fromCodePoint(...[...code].map(c => 0x1f1e6 + c.charCodeAt(0) - 65)) : '');
+let regions: Intl.DisplayNames | null = null;
+export function countryName(code: string): string {
+    if (!code) return 'Unknown';
+    try {
+        regions ??= new Intl.DisplayNames(undefined, { type: 'region' });
+        return regions.of(code) ?? code;
+    } catch {
+        return code;
+    }
+}
+
 export const vsText = (r: Range | undefined) => (r?.days ? `vs the ${r.days} days before` : '');
 export const periodText = (r: Range | undefined) => (!r ? '' : r.days ? `the last ${r.days} days` : 'all time');
 
@@ -207,8 +233,20 @@ export function ago(iso: string): string {
 
 export const isEditor = () => ['owner', 'admin', 'editor'].includes(session.value?.user.role ?? '');
 
-/** The range picker, and when the PostHog numbers are from. */
-export function Toolbar({ range, setRange, web, onRefresh }: { range: RangeKey; setRange: (r: RangeKey) => void; web?: FromPosthog<unknown> | null; onRefresh?: () => void }) {
+/** The range picker, and when the PostHog numbers are from (or `status`, for another source). */
+export function Toolbar({
+    range,
+    setRange,
+    web,
+    onRefresh,
+    status
+}: {
+    range: RangeKey;
+    setRange: (r: RangeKey) => void;
+    web?: FromPosthog<unknown> | null;
+    onRefresh?: () => void;
+    status?: ComponentChildren;
+}) {
     return (
         <div class="an-toolbar">
             <div class="an-toolbar-range">
@@ -221,7 +259,9 @@ export function Toolbar({ range, setRange, web, onRefresh }: { range: RangeKey; 
                 </div>
                 {range !== 'all' ? <span class="an-updated">Changes compare with the {range} days before.</span> : null}
             </div>
-            {web?.status === 'ok' && web.updatedAt ? (
+            {status ? (
+                <span class="an-updated">{status}</span>
+            ) : web?.status === 'ok' && web.updatedAt ? (
                 <span class="an-updated">
                     Traffic from PostHog, {ago(web.updatedAt)}
                     {web.stale && !web.error ? ', updating' : ''}

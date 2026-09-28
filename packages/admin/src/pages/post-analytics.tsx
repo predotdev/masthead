@@ -20,6 +20,7 @@ import {
     type Range,
     type SendRow
 } from './analytics-shared';
+import { PostSearch } from './analytics-search';
 
 interface PostTotals {
     visitors: number;
@@ -140,6 +141,7 @@ export function PostAnalytics({ id, range, setRange }: { id: string; range: Rang
                     <Loading />
                 )}
             </section>
+            <PostSearch id={id} range={range} />
             <div class="an-grid">
                 {d ? (
                     <Panel title="Where readers came from">
