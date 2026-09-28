@@ -9,6 +9,7 @@ import { exportGhostAudience, importGhost } from '@masthead/import-ghost';
 import { buildSite } from '@masthead/render';
 import { defaultTheme } from '@masthead/theme-default';
 import { webFs } from '@masthead/web-fs';
+import { backup, restore } from './backup';
 import { compare } from './compare';
 import { push } from './push';
 import { collectSignals, generateIdeas, printSignals } from './studio';
@@ -42,6 +43,15 @@ const HELP = `masthead <command>
   push --server <url> [--snapshot <file>] [--members <file>] [--media]
                                    Load an import into a running server and publish
                                    (token from MASTHEAD_TOKEN or --token)
+  backup --server <url> [--out <dir>] [--date <YYYY-MM-DD>] [--list]
+                                   Back up the database now (the server also does
+                                   every night); --out downloads it, or the one from
+                                   --date, and reads every file back; --list shows
+                                   the copies the server keeps
+  restore --server <url> --from <YYYY-MM-DD | dir>
+                                   Load a backup (from the server's storage, or a
+                                   folder saved with backup --out) into an empty
+                                   database, then compare row counts
 
   --config <file>   Config file (default: masthead.config.ts if present)`;
 
@@ -177,6 +187,21 @@ async function main() {
             if (!server || !token) throw new Error('Usage: masthead push --server <url> --snapshot <file> [--members <file>] [--media], with MASTHEAD_TOKEN set');
             const readJson = async (f: string | undefined) => (f ? JSON.parse(await readFile(f, 'utf8')) : undefined);
             await push({ server, token, snapshot: await readJson(str(flags.snapshot)), audience: await readJson(str(flags.members)), media: flags.media === true });
+            return;
+        }
+        case 'backup': {
+            const server = str(flags.server);
+            const token = str(flags.token) ?? process.env.MASTHEAD_TOKEN;
+            if (!server || !token) throw new Error('Usage: masthead backup --server <url> [--out <dir>] [--date <YYYY-MM-DD>] [--list], with MASTHEAD_TOKEN set');
+            await backup({ server, token, out: str(flags.out), date: str(flags.date), list: flags.list === true });
+            return;
+        }
+        case 'restore': {
+            const server = str(flags.server);
+            const token = str(flags.token) ?? process.env.MASTHEAD_TOKEN;
+            const from = str(flags.from);
+            if (!server || !token || !from) throw new Error('Usage: masthead restore --server <url> --from <YYYY-MM-DD | dir>, with MASTHEAD_TOKEN set');
+            await restore({ server, token, from });
             return;
         }
         case 'studio': {
