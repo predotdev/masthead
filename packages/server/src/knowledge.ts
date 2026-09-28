@@ -91,6 +91,8 @@ export function chunkText(text: string, size = CHUNK): string[] {
 /** HTML as text that keeps its paragraph breaks, so passages split between paragraphs. */
 function blockText(html: string): string {
     return html
+        // Comments first: page source notes are not the page's content.
+        .replace(/<!--[\s\S]*?-->/g, ' ')
         .replace(/<(script|style)[\s\S]*?<\/\1>/gi, ' ')
         .replace(/<\/(?:p|h[1-6]|li|blockquote|pre|figure|figcaption|div|tr|table|ul|ol|section)>|<br\s*\/?>/gi, '\n\n')
         .split(/\n{2,}/)
