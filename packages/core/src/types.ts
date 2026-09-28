@@ -594,6 +594,11 @@ export interface Theme {
     css: string;
     /** Extra files served from ThemeContext.assetsHref, e.g. a small script. Paths are relative to it. */
     assets?: OutputFile[];
+    /**
+     * How wide the theme lays out images in a post body, as values for their sizes attribute,
+     * so browsers fetch the smallest copy that stays sharp. Defaults to the full viewport.
+     */
+    bodyImageSizes?: { content: string; wide: string; full: string };
     document(ctx: ThemeContext, meta: PageMeta, main: string): string;
     post(ctx: ThemeContext, view: PostView): string;
     list(ctx: ThemeContext, view: ListView): string;

@@ -167,8 +167,9 @@ export async function serveMedia(req: Request, ctx: Ctx): Promise<Response> {
             return new Response(req.method === 'HEAD' ? null : webp, { headers });
         }
     }
-    // A resized variant that was never made: serve the original, briefly cached, until one exists.
-    const variant = obj === null ? rel.match(/^content\/images\/size\/w\d+(?:h\d+)?\/(.+)$/) : null;
+    // A resized variant that was never made (or a WebP copy that can't be, without the Images binding):
+    // serve the original, briefly cached, until one exists. Browsers take any image format from a <source>.
+    const variant = obj === null ? rel.match(/^content\/images\/size\/w\d+(?:h\d+)?\/(?:format\/[a-z0-9]+\/)?(.+)$/) : null;
     if (variant) obj = await ctx.env.BUCKET.get(`${MEDIA_PREFIX}content/images/${variant[1]}`, { onlyIf: req.headers, range: req.headers });
     if (obj === null) return new Response('Not found', { status: 404 });
     const headers = new Headers(SECURITY_HEADERS);

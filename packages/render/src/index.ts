@@ -1,6 +1,8 @@
 export { buildSite, renderSite } from './site';
 export type { BodySource, BuildOptions, BuildResult, BuildStats, Route } from './site';
 export { renderBody, renderMarkdown } from './body';
+export { IMAGE_WIDTHS, responsiveImages } from './images';
+export type { BodyImageSizes, ResponsiveImageOptions } from './images';
 export { headTags, blogPostingLd, breadcrumbLd, blogLd, collectionLd, profileLd, personLd } from './head';
 export { rss, urlset, sitemapIndex } from './feeds';
 export { llmsFull, llmsTxt, markdownCopy } from './llms';

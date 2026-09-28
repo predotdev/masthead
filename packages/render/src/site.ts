@@ -2,6 +2,7 @@ import type { AnalyticsConfig, Author, ListItem, ListView, OutputFile, PageMeta,
 import { renderBody } from './body';
 import { rss, sitemapIndex, urlset } from './feeds';
 import { blogLd, blogPostingLd, breadcrumbLd, collectionLd, headTags, profileLd } from './head';
+import { responsiveImages } from './images';
 import { llmsFull, llmsTxt, markdownCopy } from './llms';
 import { autoExcerpt, fileFor, ownLinks, plainText, readingMinutes, shortHash, tagLinks, wordCount } from './util';
 
@@ -114,6 +115,13 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
     const absolute = (u: string | null | undefined) => (u && u.startsWith('/') && !u.startsWith('//') ? `${base.origin}${u}` : (u ?? null));
     // Stored images' sizes, for img width/height and og:image:width/height.
     const imageSizeOf = (u: string | null | undefined) => (u ? (snapshot.imageSizes?.[u.startsWith(base.origin) ? u.slice(base.origin.length) : u] ?? null) : null);
+    // Body images on pages (not in feeds or the Markdown copies): WebP, resized copies, lazy loading.
+    const bodyImages = {
+        basePath,
+        origin: base.origin,
+        sizeOf: (path: string) => snapshot.imageSizes?.[path] ?? null,
+        sizes: theme.bodyImageSizes ?? { content: '100vw', wide: '100vw', full: '100vw' }
+    };
     const metaSite: SiteSettings = {
         ...site,
         logo: absolute(site.logo),
@@ -225,7 +233,7 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
         const view: PostView = {
             post: p,
             url: urls.post(p),
-            html: body,
+            html: responsiveImages(body, { ...bodyImages, eagerFirst: !p.featureImage }),
             excerpt: f.excerpt,
             readingMinutes: f.minutes,
             authors: authors.map(a => ({ ...a, url: urls.author(a) })),
