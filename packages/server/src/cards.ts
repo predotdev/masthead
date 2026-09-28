@@ -43,7 +43,8 @@ export async function drawCard(ctx: Ctx, key: string): Promise<Uint8Array | null
 }
 
 /** One card as a PNG, stored nowhere (the editor's preview uses it as is). */
-export async function paintCard(ctx: Ctx, site: ShareCardSite, card: ShareCard): Promise<Uint8Array> {
+export async function paintCard(ctx: Ctx, raw: ShareCardSite, card: ShareCard): Promise<Uint8Array> {
+    const site: ShareCardSite = { ...raw, title: drawable(raw.title), wordmark: raw.wordmark && drawable(raw.wordmark) };
     const clean: ShareCard = {
         ...card,
         title: drawable(card.title) || drawable(site.title),

@@ -191,7 +191,9 @@ export function cardTree(site: ShareCardSite, card: ShareCard, art: { sky: CardI
 
     let middle: CardNode;
     if (card.kind === 'home') {
-        middle = el('div', { flexDirection: 'column', alignItems: 'center' }, lockup(site, art.logo, 112), text(32, 100));
+        // As large as the front page's masthead, smaller for a long name, so it stays on one line.
+        const words = [...(site.wordmark?.trim() || site.title)].length;
+        middle = el('div', { flexDirection: 'column', alignItems: 'center' }, lockup(site, art.logo, Math.min(112, Math.floor(1000 / (0.58 * words + (art.logo ? 1.7 : 0))))), text(32, 100));
     } else {
         const portrait = art.portrait ? 132 : 0;
         // Room for the title: the card less the lockup, byline, kicker, portrait and text around it.
