@@ -133,3 +133,21 @@ export function migrate(db: D1Database): Promise<void> {
 export async function batched(db: D1Database, statements: D1PreparedStatement[], size = 100): Promise<void> {
     for (let i = 0; i < statements.length; i += size) await db.batch(statements.slice(i, i + size));
 }
+
+/** The schema version the database is at (0 before the first migration). */
+export async function schemaVersion(db: D1Database): Promise<number> {
+    const row = await db.prepare('SELECT MAX(version) AS v FROM schema_migrations').first<{ v: number | null }>();
+    return Number(row?.v ?? 0);
+}
+
+/**
+ * The data changes (UPDATE, INSERT, DELETE) of migrations after `version`. A restore
+ * loads an older backup into tables that are already current and runs these on its
+ * rows, as if they had lived through those migrations.
+ */
+export function dataStatements(version: number): string[] {
+    return MIGRATIONS.slice(Math.max(0, version))
+        .flat()
+        .filter(sql => /^\s*(UPDATE|INSERT|DELETE|REPLACE)\b/i.test(sql))
+        .map(sql => sql.replace(/\s+/g, ' '));
+}

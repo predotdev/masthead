@@ -11,6 +11,7 @@
  */
 import { adminRoutes } from './admin';
 import { checkCsrf, principal } from './auth';
+import { restoring, scheduledBackup } from './backup';
 import { migrate } from './db';
 import type { AppOptions, Ctx, Env } from './env';
 import { appUrl, processSends } from './newsletter';
@@ -114,6 +115,8 @@ export function createApp(options: AppOptions) {
         /** Every minute: publish scheduled posts, then work through newsletter batches. */
         async scheduled(event: ScheduledController, env: Env, exec: ExecutionContext): Promise<void> {
             await migrate(env.DB);
+            // While a backup is being restored nothing else runs: it would publish and send from half the rows.
+            if (await restoring(env.DB)) return;
             if ((await releaseScheduled(env.DB)) || (await publishUnfinished(env.DB))) await publishSite(env, env.DB, options);
             exec.waitUntil(processSends(env, env.DB, options, 50_000));
             // The writing assistant's knowledge: embed what is queued; re-read every source once a day.
@@ -129,6 +132,8 @@ export function createApp(options: AppOptions) {
                 const ctx: Ctx = { env, db: env.DB, exec, options, url: new URL(env.SITE_URL), basePath: basePath(env) };
                 exec.waitUntil(scheduledIdeas(ctx, at).catch(err => console.error('idea refresh failed', err)));
             }
+            // The nightly backup (backup.ts), and its retries.
+            exec.waitUntil(scheduledBackup(env, env.DB, at).catch(err => console.error('backup failed', err)));
         }
     };
 }

@@ -2,6 +2,7 @@ import type { AspectRatio, ModelKind, Post, StaffRole } from '@masthead/core';
 import { renderBody, renderSite, tagLinks } from '@masthead/render';
 import { addIdeas, assist, draft, draftIdea, draftIdeaStream, draftStream, edit, editStream, image, imageStream, listIdeas, listModels, meta, metaStream, saveIdeaDraft, startVideo, unfurl, videoStatus } from './ai';
 import { autoTag, tagUntagged, wantsAutoTags } from './autotag';
+import { backupRoutes } from './backup';
 import { atLeast, clearSessionCookie, consumeLoginToken, createApiKey, createLoginToken, createSession, endSession, peekLoginToken, sessionCookie } from './auth';
 import {
     aiSettings,
@@ -577,6 +578,9 @@ export function adminRoutes(): Router<A> {
     });
 
     r.post('/publish', async (_req, ctx) => (atLeast(ctx.principal, 'editor'), json(await publishSite(ctx.env, ctx.db, ctx.options))));
+
+    // ---------------------------------------------------------- backups
+    backupRoutes(r);
 
     // ---------------------------------------------------------- analytics
     // Reader traffic comes from PostHog when it is connected; newsletters and growth come from here.

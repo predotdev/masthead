@@ -230,7 +230,8 @@ function permanent(err: unknown): boolean {
     return status >= 400 && status < 500 && status !== 408 && status !== 429;
 }
 
-async function rebuildIndex(env: Env, db: D1Database): Promise<void> {
+/** Packs every stored vector into the R2 index lookups read (also after a restore, into a bucket without one). */
+export async function rebuildIndex(env: Env, db: D1Database): Promise<void> {
     const ids: number[] = [];
     const parts: Float32Array[] = [];
     for (let offset = 0; ; offset += 400) {
