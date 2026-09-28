@@ -62,6 +62,10 @@ export interface Env {
     /** Admin stats read PostHog with a personal API key (query read access) for this project id. */
     POSTHOG_PERSONAL_API_KEY?: string;
     POSTHOG_PROJECT_ID?: string;
+    /** Where the admin sends those queries. Default: POSTHOG_HOST's app host (https://us.posthog.com); set it when POSTHOG_HOST is a proxy. */
+    POSTHOG_API_HOST?: string;
+    /** Your product's signup event, for "signups after reading" (it carries blog_ref_post_slug). Default auth_signup_success. */
+    POSTHOG_SIGNUP_EVENT?: string;
 }
 
 export interface Principal {
