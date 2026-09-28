@@ -3,6 +3,7 @@ import { TableKit } from '@tiptap/extension-table';
 import Placeholder from '@tiptap/extension-placeholder';
 import { Markdown } from '@tiptap/markdown';
 import StarterKit from '@tiptap/starter-kit';
+import { CommentMark, withoutCommentAnchors } from './comments';
 import { Bookmark, ButtonCard, Callout, Embed, Figure, HtmlCard, prepareHtml, publishHtml, Video, type MediaBridge } from './nodes';
 import { StyleCheck } from './style-check';
 
@@ -52,7 +53,8 @@ export function extensions(bridge: MediaBridge | null = null) {
         ButtonCard,
         HtmlCard.configure({ bridge }),
         // House-style underlines belong to the editor people write in, not to previews.
-        ...(bridge ? [StyleCheck] : [])
+        ...(bridge ? [StyleCheck] : []),
+        CommentMark
     ];
 }
 
@@ -146,9 +148,9 @@ export function createEditor(element: HTMLElement, content: { html?: string | nu
     return editor;
 }
 
-/** What gets saved: publishable HTML and a Markdown copy of the same document. */
+/** What gets saved: publishable HTML and a Markdown copy of the same document (comment anchors stay behind). */
 export function snapshot(editor: Editor): { html: string; markdown: string } {
-    return { html: publishHtml(editor.getHTML()), markdown: editor.getMarkdown() };
+    return { html: publishHtml(withoutCommentAnchors(editor.getHTML())), markdown: editor.getMarkdown() };
 }
 
 /** The document around the cursor, as Markdown, for the AI. */
