@@ -3,8 +3,9 @@ export type { BodySource, BuildOptions, BuildResult, BuildStats, Route } from '.
 export { renderBody, renderMarkdown } from './body';
 export { IMAGE_WIDTHS, responsiveImages } from './images';
 export type { BodyImageSizes, ResponsiveImageOptions } from './images';
-export { headTags, blogPostingLd, breadcrumbLd, blogLd, collectionLd, profileLd, personLd } from './head';
+export { headTags, blogPostingLd, breadcrumbLd, blogLd, collectionLd, profileLd, personLd, organizationLd, organizationId, websiteLd } from './head';
 export { rss, urlset, sitemapIndex } from './feeds';
 export { llmsFull, llmsTxt, markdownCopy } from './llms';
+export type { LlmsEntry, LlmsLinks } from './llms';
 export { escapeHtml, plainText, autoExcerpt, readingMinutes, wordCount, tagLinks, shortHash } from './util';
 export { postShareCard, shareCardSite, themeAssetsVersion } from './site';

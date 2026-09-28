@@ -1,10 +1,11 @@
 import type { AnalyticsConfig, Author, ListItem, ListView, OutputFile, PageMeta, Post, PostView, RenderOptions, SearchEntry, ShareCard, ShareCardSite, SiteSettings, Snapshot, Tag, Theme, ThemeContext } from '@masthead/core';
+import { isThinPage } from '@masthead/core';
 import { renderBody } from './body';
 import { rss, sitemapIndex, urlset } from './feeds';
-import { blogLd, blogPostingLd, breadcrumbLd, collectionLd, headTags, profileLd } from './head';
+import { blogLd, blogPostingLd, breadcrumbLd, collectionLd, headTags, organizationLd, profileLd, websiteLd } from './head';
 import { responsiveImages } from './images';
 import { llmsFull, llmsTxt, markdownCopy } from './llms';
-import { autoExcerpt, fileFor, ownLinks, plainText, readingMinutes, shortHash, tagLinks, wordCount } from './util';
+import { autoExcerpt, fileFor, isTruncated, ownLinks, plainText, readingMinutes, sentenceSummary, shortHash, tagLinks, wordCount } from './util';
 
 export interface BuildOptions {
     theme: Theme;
@@ -202,9 +203,9 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
             words: wordCount(html),
             minutes: readingMinutes(html),
             excerpt: own(p.customExcerpt || autoExcerpt(html)),
-            summary: own(p.metaDescription || p.customExcerpt || autoExcerpt(html, 160)),
+            summary: own(cleanSummary(p, html)),
             text: own(text.slice(0, searchText)),
-            empty: !text && !p.featureImage,
+            empty: isThinPage(p, text),
             html: keep ? html : undefined,
             markdown: keep ? (p.markdown ?? undefined) : undefined
         });
@@ -277,8 +278,10 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
     const home = { name: site.publisher?.name ?? site.title, url: `${base.origin}/` };
 
     // ---------------------------------------------------------- pass 2: posts and pages
-    const renderPost = (p: Post, body: string, markdown: string | null | undefined): OutputFile[] => {
-        const f = facts.get(p.id)!;
+    const renderPost = (post: Post, body: string, markdown: string | null | undefined): OutputFile[] => {
+        const f = facts.get(post.id)!;
+        // An untitled stub reads as its address ("about" becomes "About"), never "(Untitled)".
+        const p = /^\(?untitled\)?$/i.test(post.title.trim()) || !post.title.trim() ? { ...post, title: titleFromSlug(post.slug) } : post;
         const url = abs(urls.post(p));
         const tags = publicTags(p);
         const authors = postAuthors(p);
@@ -337,6 +340,7 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
                         tags,
                         rss: abs(urls.rss),
                         markdown: abs(urls.markdown(p)),
+                        noindex: f.empty,
                         jsonLd
                     })
                 },
@@ -344,7 +348,7 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
             ),
             {
                 path: fileFor(urls.markdown(p)),
-                contents: markdownCopy({ title: p.title, url, authors: authors.map(a => a.name), publishedAt: p.publishedAt, updatedAt: p.updatedAt, markdown: markdown ?? plainText(body) }),
+                contents: markdownCopy({ title: p.title, url, authors: authors.map(a => a.name), publishedAt: p.publishedAt, updatedAt: p.updatedAt, markdown: markdown ?? plainText(body) }, metaSite),
                 contentType: 'text/markdown; charset=utf-8'
             }
         ];
@@ -436,14 +440,14 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
         highlights: mostRead.length === 3 ? mostRead : undefined,
         heading: site.title,
         title: site.metaTitle || site.title,
-        pagedTitle: site.title,
+        pagedTitle: site.metaTitle || site.title,
         description: site.metaDescription || site.description,
         shareTitle: site.ogTitle,
-        shareDescription: site.ogDescription,
+        shareDescription: homeShareDescription(site),
         type: 'website',
         // The front page's share image is the site's, when it has one.
-        card: site.shareImage ? undefined : { name: 'home', card: { kind: 'home', title: site.appearance?.hero?.title || site.title, text: site.ogDescription || site.metaDescription || site.description } },
-        jsonLd: [blogLd(metaSite)]
+        card: site.shareImage ? undefined : { name: 'home', card: { kind: 'home', title: site.appearance?.hero?.title || site.title, text: homeShareDescription(site) || site.description } },
+        jsonLd: [blogLd(metaSite), websiteLd(metaSite, abs(urls.search)), organizationLd(metaSite)]
     }))
         (yield file, count++);
 
@@ -551,13 +555,13 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
     const entry = (p: Post) => ({ title: p.title, url: abs(urls.markdown(p)), summary: facts.get(p.id)!.summary });
     rest.push({
         path: fileFor(`${basePath}llms.txt`),
-        contents: llmsTxt(site, posts.filter(listed).map(entry), pages.filter(listed).map(entry), abs(`${basePath}llms-full.txt`)),
+        contents: llmsTxt(metaSite, posts.filter(listed).map(entry), pages.filter(listed).map(entry), { full: abs(`${basePath}llms-full.txt`), rss: feedUrl, sitemap: abs(`${basePath}sitemap.xml`) }),
         contentType: 'text/plain; charset=utf-8'
     });
     rest.push({
         path: fileFor(`${basePath}llms-full.txt`),
         contents: llmsFull(
-            site,
+            metaSite,
             posts.slice(0, LLMS_FULL_POSTS).map(p => {
                 const f = facts.get(p.id)!;
                 return { title: p.title, url: abs(urls.post(p)), authors: postAuthors(p).map(a => a.name), publishedAt: p.publishedAt, updatedAt: p.updatedAt, markdown: f.markdown ?? plainText(f.html ?? '') };
@@ -581,6 +585,23 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
         routes,
         stats: { posts: posts.length, pages: pages.length, tags: tagsWithPosts.length, authors: authorsWithPosts.length, files: count }
     };
+}
+
+/** A post's description: its meta description, else its excerpt, else opening sentences; never one a tool cut off mid-thought. */
+function cleanSummary(p: Post, html: string): string {
+    const whole = [p.metaDescription, p.customExcerpt].find(c => c && !isTruncated(c));
+    return whole || sentenceSummary(html, 200);
+}
+
+/** The front page's share description: the site's own, unless that is only the tagline and a fuller description exists. */
+function homeShareDescription(site: SiteSettings): string | null | undefined {
+    const og = site.ogDescription;
+    if (og && og.trim() !== site.description.trim() && og.trim().length >= 60) return og;
+    return site.metaDescription || og;
+}
+
+function titleFromSlug(slug: string): string {
+    return slug.replace(/[-_]+/g, ' ').trim().replace(/^./, c => c.toUpperCase()) || 'Page';
 }
 
 /**

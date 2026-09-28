@@ -35,7 +35,7 @@ ${it.image ? `      <media:content url="${escapeXml(it.image)}" medium="image"/>
 <rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/">
   <channel>
     <title>${cdata(site.title)}</title>
-    <description>${cdata(site.description)}</description>
+    <description>${cdata(site.about || site.description)}</description>
     <link>${escapeXml(site.url)}</link>
     <atom:link href="${escapeXml(feedUrl)}" rel="self" type="application/rss+xml"/>
     <language>${escapeXml(site.locale)}</language>

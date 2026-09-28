@@ -138,7 +138,9 @@ It saves `site`, `newsletter`, `ai`, `style` and `workflow`, adds `memory` entri
 | `appearance.backdrop` | A backdrop behind the header: an `image`, an optional `mobileImage` and twinkling `sparkles`. Inverted in the light scheme. |
 | `appearance.headerCta` | A button at the end of the header, with an optional `signedIn` variant chosen by a cookie your product sets. |
 | `appearance.subscribe` | Title and text of the signup band. |
-| `publisher` | The organization in structured data: `name`, `url`, `logo`, `sameAs`. Defaults to the site. |
+| `publisher` | The organization in structured data: `name`, `url`, `logo`, `sameAs`, `description`, `knowsAbout`. Defaults to the site. Every page carries it as a short entity with a stable `@id`; the front page carries the full one. |
+| `about` | A short paragraph on who publishes the blog and what they do. It leads `llms.txt` and `llms-full.txt`, closes every post's Markdown copy, and is the RSS channel description, so a model that reads any one of them knows who is speaking. |
+| `offerings` | What the publisher offers, as `{ name, url, description }`. Listed under About in `llms.txt` and published as offers on the organization. |
 
 ### `newsletter`
 

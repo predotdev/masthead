@@ -45,6 +45,23 @@ export function autoExcerpt(html: string, max = 200): string {
     return `${cut.slice(0, Math.max(cut.lastIndexOf(' '), 0)).replace(/[,;:.\s]+$/, '')}…`;
 }
 
+/** True for a description a tool cut short (it ends in an ellipsis). */
+export function isTruncated(s: string): boolean {
+    return /(…|\.\.\.)\s*$/.test(s.trim());
+}
+
+/**
+ * A description that reads as whole sentences: the opening sentences that fit in `max`
+ * characters, or a word-boundary cut when the first sentence alone is longer.
+ */
+export function sentenceSummary(html: string, max = 200): string {
+    const text = plainText(html);
+    if (text.length <= max) return text;
+    const cut = text.slice(0, max);
+    const end = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('? '), cut.lastIndexOf('! '));
+    return end >= 60 ? cut.slice(0, end + 1) : autoExcerpt(html, max);
+}
+
 export function rfc822(iso: string): string {
     return new Date(iso).toUTCString();
 }

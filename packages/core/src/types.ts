@@ -173,7 +173,22 @@ export interface SiteSettings {
     footer?: FooterSettings | null;
     appearance?: Appearance | null;
     /** The organization that publishes the blog; defaults to the site origin. */
-    publisher?: { name: string; url: string; logo?: string | null; sameAs?: string[] };
+    publisher?: { name: string; url: string; logo?: string | null; sameAs?: string[]; description?: string | null; knowsAbout?: string[] };
+    /**
+     * A short paragraph on who publishes this blog and what they do. It leads llms.txt and
+     * llms-full.txt, and closes every post's Markdown copy, so a model that reads any one of
+     * them learns who is speaking.
+     */
+    about?: string | null;
+    /** What the publisher offers, each with a page. Listed under About in llms.txt and as offers in structured data. */
+    offerings?: { name: string; url: string; description: string }[];
+}
+
+/** A page with no title and nothing to read: an untitled stub left over from an import. It never belongs in an index. */
+export function isThinPage(p: { title?: string | null; type?: string; featureImage?: string | null }, text: string): boolean {
+    const title = (p.title ?? '').trim();
+    const untitled = !title || /^\(?untitled\)?$/i.test(title);
+    return (untitled && !text.trim()) || (!text.trim() && !p.featureImage);
 }
 
 /** A complete, portable copy of a publication. Importers produce it; builds read it. */

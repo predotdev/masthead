@@ -20,6 +20,8 @@ export interface HeadInput {
     markdown?: string;
     prev?: string;
     next?: string;
+    /** Keep the page out of search indexes. */
+    noindex?: boolean;
     jsonLd: object[];
 }
 
@@ -28,6 +30,7 @@ export function headTags(h: HeadInput): string {
     const handle = h.site.twitter ? (h.site.twitter.startsWith('@') ? h.site.twitter : `@${h.site.twitter}`) : null;
     const image = h.image ?? h.site.shareImage ?? null;
     const tags: string[] = [
+        h.noindex ? '<meta name="robots" content="noindex">' : '',
         meta('property', 'og:site_name', h.site.title),
         meta('property', 'og:type', h.type),
         meta('property', 'og:title', h.title),
@@ -66,22 +69,72 @@ function meta(attr: 'name' | 'property', key: string, value: string): string {
 
 // ------------------------------------------------------------------ structured data
 
-function publisher(site: SiteSettings) {
-    const p = site.publisher ?? { name: site.title, url: new URL(site.url).origin, logo: site.logo };
+type Publisher = NonNullable<SiteSettings['publisher']>;
+
+function publisherOf(site: SiteSettings): Publisher {
+    return site.publisher ?? { name: site.title, url: new URL(site.url).origin, logo: site.logo };
+}
+
+/** The publisher's stable id, so every page's structured data points at the same entity. */
+export function organizationId(site: SiteSettings): string {
+    return `${publisherOf(site).url.replace(/\/$/, '')}/#organization`;
+}
+
+/**
+ * The publisher as an entity. Every page carries the short form (a stable @id with name, logo and
+ * profiles); the front page carries the full one (what it is, what it offers), once.
+ */
+function organization(site: SiteSettings, full = false) {
+    const p = publisherOf(site);
+    if (!full) {
+        return {
+            '@type': 'Organization',
+            '@id': organizationId(site),
+            name: p.name,
+            url: p.url,
+            ...(p.logo ? { logo: { '@type': 'ImageObject', url: p.logo } } : {}),
+            ...(p.sameAs?.length ? { sameAs: p.sameAs } : {})
+        };
+    }
+    const offers = (site.offerings ?? []).map(o => ({ '@type': 'Offer', itemOffered: { '@type': 'Service', name: o.name, url: o.url, description: o.description } }));
     return {
         '@type': 'Organization',
+        '@id': organizationId(site),
         name: p.name,
         url: p.url,
+        ...(p.description || site.about ? { description: p.description || site.about } : {}),
         ...(p.logo ? { logo: { '@type': 'ImageObject', url: p.logo } } : {}),
+        ...(p.knowsAbout?.length ? { knowsAbout: p.knowsAbout } : {}),
+        ...(offers.length ? { makesOffer: offers } : {}),
         ...(p.sameAs?.length ? { sameAs: p.sameAs } : {})
     };
 }
 
-export function personLd(author: Author, url: string) {
+/** The organization on a page of its own, for the front page. */
+export function organizationLd(site: SiteSettings) {
+    return { '@context': 'https://schema.org', ...organization(site, true) };
+}
+
+/** The blog as a website with a search box, for the front page. */
+export function websiteLd(site: SiteSettings, searchUrl?: string) {
+    return {
+        '@context': 'https://schema.org',
+        '@type': 'WebSite',
+        '@id': `${site.url}#website`,
+        name: site.title,
+        url: site.url,
+        inLanguage: site.locale,
+        publisher: { '@id': organizationId(site) },
+        ...(searchUrl ? { potentialAction: { '@type': 'SearchAction', target: { '@type': 'EntryPoint', urlTemplate: `${searchUrl}?q={search_term_string}` }, 'query-input': 'required name=search_term_string' } } : {})
+    };
+}
+
+export function personLd(author: Author, url: string, affiliation?: object) {
     return {
         '@type': 'Person',
         name: author.name,
         url,
+        ...(affiliation ? { worksFor: affiliation } : {}),
         ...(author.profileImage ? { image: author.profileImage } : {}),
         ...(sameAs(author).length ? { sameAs: sameAs(author) } : {})
     };
@@ -116,8 +169,8 @@ export function blogPostingLd(p: {
         ...(p.image ? { image: { '@type': 'ImageObject', url: p.image, ...(p.imageSize ? { width: p.imageSize.width, height: p.imageSize.height } : {}) } } : {}),
         datePublished: p.post.publishedAt,
         dateModified: p.post.updatedAt,
-        author: p.authors.map(a => personLd(a.author, a.url)),
-        publisher: publisher(p.site),
+        author: p.authors.map(a => personLd(a.author, a.url, { '@id': organizationId(p.site) })),
+        publisher: organization(p.site),
         ...(p.tags.length ? { keywords: p.tags.map(t => t.name).join(', '), articleSection: p.tags[0].name } : {}),
         wordCount: p.words,
         inLanguage: p.site.locale,
@@ -142,7 +195,7 @@ export function blogLd(site: SiteSettings) {
         url: site.url,
         description: site.description,
         inLanguage: site.locale,
-        publisher: publisher(site)
+        publisher: organization(site)
     };
 }
 
