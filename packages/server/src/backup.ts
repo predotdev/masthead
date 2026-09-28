@@ -121,16 +121,7 @@ export async function runBackup(env: Env, db: D1Database, trigger: BackupRun['tr
         if (leftover.length) await env.BUCKET.delete(leftover);
         const manifest: BackupManifest = { format: FORMAT, date, trigger, startedAt, finishedAt: now(), schemaVersion: version, tables: entries, schema };
         await env.BUCKET.put(`${folder}${MANIFEST}`, JSON.stringify(manifest, null, 1), { httpMetadata: { contentType: 'application/json' } });
-        const run: BackupRun = {
-            date,
-            trigger,
-            startedAt,
-            finishedAt: manifest.finishedAt,
-            ms: Date.now() - t0,
-            tables: entries.length,
-            rows: entries.reduce((n, e) => n + e.rows, 0),
-            bytes: entries.reduce((n, e) => n + e.bytes, 0)
-        };
+        const run = summary(manifest, Date.now() - t0);
         await setSetting(db, 'backup', { last: run, failed: null } satisfies BackupState);
         await prune(env.BUCKET).catch(err => console.error('removing old backups failed', err));
         return run;
@@ -138,11 +129,29 @@ export async function runBackup(env: Env, db: D1Database, trigger: BackupRun['tr
         const state = await backupState(db).catch((): BackupState => ({ last: null, failed: null }));
         const tries = state.failed?.date === date ? state.failed.tries + 1 : 1;
         const error = (err instanceof Error ? err.message : String(err)).slice(0, 500);
-        await setSetting(db, 'backup', { ...state, failed: { date, at: now(), error, tries } } satisfies BackupState).catch(() => {});
+        // A run that fails has taken today's copy with it: the last backup is now the newest copy still whole
+        // (which also lets the nightly retries run again today).
+        const last = state.last?.date === date ? await newestCopy(env.BUCKET).catch(() => null) : state.last;
+        await setSetting(db, 'backup', { last, failed: { date, at: now(), error, tries } } satisfies BackupState).catch(() => {});
         throw err;
     } finally {
         await release(db, lease).catch(() => {});
     }
+}
+
+function summary(m: BackupManifest, ms: number): BackupRun {
+    const rows = m.tables.reduce((n, t) => n + t.rows, 0);
+    const bytes = m.tables.reduce((n, t) => n + t.bytes, 0);
+    return { date: m.date, trigger: m.trigger, startedAt: m.startedAt, finishedAt: m.finishedAt, ms, tables: m.tables.length, rows, bytes };
+}
+
+/** The newest complete copy in storage. */
+async function newestCopy(bucket: R2Bucket): Promise<BackupRun | null> {
+    const folder = (await listBackups(bucket)).find(f => f.complete);
+    const obj = folder ? await bucket.get(`${BACKUP_PREFIX}${folder.date}/${MANIFEST}`) : null;
+    if (!obj) return null;
+    const m = await obj.json<BackupManifest>();
+    return summary(m, Date.parse(m.finishedAt) - Date.parse(m.startedAt));
 }
 
 /**
@@ -468,7 +477,16 @@ export function backupRoutes(r: Router<A>): void {
         });
     });
 
-    r.post('/backups', async (_req, ctx) => (atLeast(ctx.principal, 'admin'), json(await runBackup(ctx.env, ctx.db, 'manual'), 201)));
+    r.post('/backups', async (_req, ctx) => {
+        atLeast(ctx.principal, 'admin');
+        try {
+            return json(await runBackup(ctx.env, ctx.db, 'manual'), 201);
+        } catch (err) {
+            // The person who pressed the button sees why, as Settings will.
+            if (err instanceof HttpError) throw err;
+            throw new HttpError(500, `The backup failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
+    });
 
     /** One file of a backup, for `masthead backup --out` and `masthead restore`. Personal data: the owner only. */
     r.get('/backups/:date/:file', async (_req, ctx, { date, file }) => {
