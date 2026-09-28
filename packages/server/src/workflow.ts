@@ -1,6 +1,7 @@
-/** Admin API for review before publishing, comments and notifications. */
+/** Admin API for review before publishing, comments, notifications and the content calendar. */
 import type { Post } from '@masthead/core';
 import { atLeast } from './auth';
+import { calendarItems, planIdea, setTargetDate } from './calendar';
 import { addReply, createThread, deleteComment, editComment, getComment, getThread, listThreads, setThreadStatus } from './comments';
 import { getPost } from './content';
 import type { Ctx, Principal } from './env';
@@ -118,5 +119,25 @@ export function workflowRoutes(r: Router<A>, canEdit: CanEdit): void {
         if (typeof input.email !== 'boolean') throw new HttpError(400, 'Pass email: true or false.');
         await setEmailPref(ctx.db, p.staffId, input.email);
         return json({ email: input.email });
+    });
+
+    // ---------------------------------------------------------- calendar
+    r.get('/calendar', async (_req, ctx) => {
+        const p = me(ctx);
+        const s = ctx.url.searchParams;
+        const own = p.role === 'author' || p.role === 'contributor';
+        const items = await calendarItems(ctx.db, { from: s.get('from') ?? '', to: s.get('to') ?? '', start: s.get('start') ?? '', end: s.get('end') ?? '' }, own ? p.staffId : undefined);
+        return json({ items });
+    });
+    r.put('/calendar/posts/:id', async (req, ctx, { id }) => {
+        const post = await postFor(ctx, id);
+        await canEdit(ctx, post);
+        const input = await body(req);
+        await setTargetDate(ctx.db, post, input.targetDate ?? null);
+        return json({ ok: true, targetDate: input.targetDate ?? null });
+    });
+    r.post('/calendar/ideas/:id', async (req, ctx, { id }) => {
+        const p = me(ctx);
+        return json(await planIdea(ctx, id, (await body(req)).targetDate, p), 201);
     });
 }
