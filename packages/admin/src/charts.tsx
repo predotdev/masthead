@@ -188,6 +188,7 @@ export function TrendChart({
     series,
     kind = 'area',
     fit = false,
+    invert = false,
     format = fmtInt,
     percent = false,
     height = 240,
@@ -202,6 +203,8 @@ export function TrendChart({
     kind?: 'area' | 'bars';
     /** A line whose axis starts near its lowest value, for totals such as subscribers; drawn without a fill. */
     fit?: boolean;
+    /** Smaller is better and drawn higher, e.g. a search position (1 is the top); implies fit. */
+    invert?: boolean;
     format?: (n: number) => string;
     percent?: boolean;
     height?: number;
@@ -218,14 +221,15 @@ export function TrendChart({
     const upValues = up.flatMap(s => s.values.filter((v): v is number => v !== null && v !== undefined));
     const dataMax = Math.max(0, ...upValues);
     const dataMin = upValues.length ? Math.min(...upValues) : 0;
-    const fitted = fit && !bars && dataMax > 0;
+    const fitted = (fit || invert) && !bars && dataMax > 0;
     const ticks = fitted ? niceTicks(dataMax, !percent, Math.max(0, dataMin - (dataMax - dataMin) * 0.15)) : niceTicks(dataMax, !percent);
     const step = ticks[1] - ticks[0];
     const downMax = down ? Math.max(0, ...down.values.map(v => v ?? 0)) : 0;
     const below = down ? Array.from({ length: Math.max(1, Math.ceil(downMax / step - 1e-9)) }, (_, i) => -(i + 1) * step) : [];
     const top = ticks[ticks.length - 1];
     const bottom = below.length ? below[below.length - 1] : ticks[0];
-    const axisLabel = (v: number) => (percent ? pct(Math.abs(v), 0) : compact(Math.abs(v)));
+    // Whole percents unless the ticks fall between them (2.5%, 7.5%).
+    const axisLabel = (v: number) => (percent ? pct(Math.abs(v), Math.abs(step * 100 - Math.round(step * 100)) > 1e-9 ? 1 : 0) : compact(Math.abs(v)));
     const summary = `${label}. ${main ? `${main.name}: highest ${format(Math.max(0, ...main.values.map(v => v ?? 0)))}` : ''}`;
 
     const tipFor = (i: number): Tip => ({
@@ -277,7 +281,7 @@ export function TrendChart({
                 const pad = { l: padL, r: 8, t: 12, b: 28 };
                 const pw = Math.max(1, width - pad.l - pad.r);
                 const ph = height - pad.t - pad.b;
-                const y = (v: number) => pad.t + ((top - v) / (top - bottom || 1)) * ph;
+                const y = (v: number) => pad.t + ((invert ? v - bottom : top - v) / (top - bottom || 1)) * ph;
                 const band = pw / Math.max(1, n);
                 const x = (i: number) => (bars ? pad.l + band * (i + 0.5) : pad.l + (n > 1 ? (pw * i) / (n - 1) : pw / 2));
                 const barW = Math.max(1, Math.min(24, band - 2));
@@ -320,7 +324,7 @@ export function TrendChart({
                         <svg width={width} height={height} aria-hidden="true" onPointerMove={(e: PointerEvent) => pick(e.clientX, (e.currentTarget as SVGSVGElement).getBoundingClientRect())}>
                             {[...ticks, ...below].map(t => (
                                 <g key={t}>
-                                    <line class={t === (below.length ? 0 : ticks[0]) ? 'an-base' : 'an-gridline'} x1={pad.l} x2={width - pad.r} y1={y(t)} y2={y(t)} />
+                                    <line class={t === (below.length ? 0 : invert ? top : ticks[0]) ? 'an-base' : 'an-gridline'} x1={pad.l} x2={width - pad.r} y1={y(t)} y2={y(t)} />
                                     <text class="an-axis" x={pad.l - 8} y={y(t)} text-anchor="end" dominant-baseline="middle">
                                         {axisLabel(t)}
                                     </text>
@@ -359,7 +363,7 @@ export function TrendChart({
                             )}
                             {active !== null && !bars ? (
                                 <>
-                                    <line class="an-cross" x1={x(active)} x2={x(active)} y1={pad.t} y2={y(bottom)} />
+                                    <line class="an-cross" x1={x(active)} x2={x(active)} y1={pad.t} y2={pad.t + ph} />
                                     {series.map(s =>
                                         s.values[active] === null || s.values[active] === undefined ? null : (
                                             <circle key={s.name} class={`an-dot tone-${s.tone ?? 'main'}`} cx={x(active)} cy={y(s.values[active]!)} r={4} />
