@@ -94,3 +94,27 @@ export const fmtDate = (iso: string | null | undefined) =>
     iso ? new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
 
 export const fmtNum = (n: number | null | undefined) => (n ?? 0).toLocaleString();
+
+/** "now", "5m", "3h", "2d", then the date: for comments and notifications. */
+export function fmtAgo(iso: string | null | undefined): string {
+    if (!iso) return '';
+    const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000);
+    if (s < 60) return 'now';
+    if (s < 3600) return `${Math.floor(s / 60)}m`;
+    if (s < 86400) return `${Math.floor(s / 3600)}h`;
+    if (s < 7 * 86400) return `${Math.floor(s / 86400)}d`;
+    const d = new Date(iso);
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', ...(d.getFullYear() === new Date().getFullYear() ? {} : { year: 'numeric' }) });
+}
+
+/** "just now", "5 minutes ago", "yesterday", "on Sep 3": for sentences. */
+export function fmtSince(iso: string | null | undefined): string {
+    if (!iso) return '';
+    const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000);
+    if (s < 60) return 'just now';
+    const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
+    if (s < 3600) return rtf.format(-Math.floor(s / 60), 'minute');
+    if (s < 86400) return rtf.format(-Math.floor(s / 3600), 'hour');
+    if (s < 7 * 86400) return rtf.format(-Math.floor(s / 86400), 'day');
+    return `on ${fmtDate(iso)}`;
+}

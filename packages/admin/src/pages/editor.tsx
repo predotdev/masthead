@@ -10,10 +10,12 @@ import { Button, Dialog, ErrorNote, Field, Loading, Pill, errorToast, toast, use
 import { AiPreview, AiPrompt, AssistantPanel, QUICK_EDITS, liveHtml, type AiJob } from './ai';
 import { AiPanel, AiPanelButton } from './ai-panel';
 import { ChecksPanel, PublishStyleNote, StyleButton, StyleFixMenu, TitleChecks } from './checks';
+import { CommentsToggle, useComments } from './comments';
 import { EmbedDialog, HtmlDialog, ImageDialog, VideoDialog } from './media';
 import { HistoryPanel, SearchPanel } from './post-tools';
 import { AutoTagNote, useServerTags, type TaggedPost } from './post-tags';
 import { SendDialog } from './newsletters';
+import { ReviewCta, ReviewPanel, ReviewPill, useReview } from './review';
 import { ShareButton, ShareDialog } from './share';
 
 type Draft = Omit<Post, 'id' | 'createdAt' | 'updatedAt' | 'newsletter' | 'type'>;
@@ -38,7 +40,7 @@ function PostEditor({ initial, tags: allTags, staff }: { initial: Post; tags: Ta
     const [draft, setDraft] = useState<Draft>(() => pick(initial));
     const [dirty, setDirty] = useState(false);
     const [saving, setSaving] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-    const [side, setSide] = useState<null | 'settings' | 'assistant' | 'ai' | 'checks'>(null);
+    const [side, setSide] = useState<null | 'settings' | 'assistant' | 'ai' | 'checks' | 'review'>(null);
     const [modal, setModal] = useState<Modal>(null);
     const [tags, setTags] = useState<Tag[]>(allTags);
     const [slash, setSlash] = useState<SlashState | null>(null);
@@ -102,6 +104,11 @@ function PostEditor({ initial, tags: allTags, staff }: { initial: Post; tags: Ta
         };
     }, [source, reloadKey]);
 
+    // Review and comments: after the editor exists, so comment marks land in it.
+    const openReview = () => setSide('review');
+    const review = useReview(post);
+    const comments = useComments(post, editorRef, `${source}:${reloadKey}`, openReview);
+
     const body = () => (editorRef.current ? { bodyFormat: 'html' as const, ...snapshot(editorRef.current) } : {});
 
     const save = async (explicit = false): Promise<Post | null> => {
@@ -109,7 +116,7 @@ function PostEditor({ initial, tags: allTags, staff }: { initial: Post; tags: Ta
         const at = rev.current;
         try {
             const sentSlug = draft.slug;
-            const saved = await api<TaggedPost>(`/posts/${post.id}`, { method: 'PUT', body: { ...serverTags.outgoing(draft), ...body() } });
+            const saved = await api<TaggedPost>(`/posts/${post.id}`, { method: 'PUT', body: { ...serverTags.outgoing(draft), ...body(), commentAnchors: comments.anchors() } });
             setPost(saved);
             serverTags.saved(saved);
             // The server may move a draft's slug to follow its title or stay unique.
@@ -267,6 +274,7 @@ function PostEditor({ initial, tags: allTags, staff }: { initial: Post; tags: Ta
                     ← {post.type === 'page' ? 'Pages' : 'Posts'}
                 </a>
                 <Pill tone={post.status === 'published' ? 'green' : post.status === 'scheduled' ? 'amber' : 'neutral'}>{post.status}</Pill>
+                {live ? null : <ReviewPill review={review} onClick={openReview} />}
                 <span class="save-state">{saving === 'saving' ? 'Saving…' : saving === 'error' ? 'Not saved' : dirty ? (live ? 'Unpublished changes' : 'Editing') : saving === 'saved' ? 'Saved' : ''}</span>
                 <div class="grow" />
                 <StyleButton postId={post.id} title={draft.title} open={side === 'checks'} onClick={() => setSide(side === 'checks' ? null : 'checks')} />
@@ -276,6 +284,7 @@ function PostEditor({ initial, tags: allTags, staff }: { initial: Post; tags: Ta
                 </Button>
                 <Button onClick={() => setModal({ kind: 'draft' })}>Draft with AI</Button>
                 <Button onClick={async () => ((dirty && (await save())), window.open(`${base}admin/api/posts/${post.id}/preview`, '_blank'))}>Preview</Button>
+                <CommentsToggle count={comments.openCount} pressed={side === 'review'} onClick={() => setSide(side === 'review' ? null : 'review')} />
                 <Button onClick={() => setSide(side === 'settings' ? null : 'settings')} aria-pressed={side === 'settings'}>
                     Settings
                 </Button>
@@ -292,10 +301,15 @@ function PostEditor({ initial, tags: allTags, staff }: { initial: Post; tags: Ta
                             Update
                         </Button>
                     </>
-                ) : role === 'contributor' ? null : (
-                    <Button tone="primary" onClick={async () => ((dirty && (await save())), setModal({ kind: 'publish' }))}>
-                        {post.status === 'scheduled' ? 'Reschedule' : 'Publish'}
-                    </Button>
+                ) : role === 'contributor' || review.blocked ? (
+                    <ReviewCta review={review} primary onOpen={openReview} />
+                ) : (
+                    <>
+                        <ReviewCta review={review} onOpen={openReview} />
+                        <Button tone="primary" onClick={async () => ((dirty && (await save())), setModal({ kind: 'publish' }))}>
+                            {post.status === 'scheduled' ? 'Reschedule' : 'Publish'}
+                        </Button>
+                    </>
                 )}
             </div>
 
@@ -375,6 +389,9 @@ function PostEditor({ initial, tags: allTags, staff }: { initial: Post; tags: Ta
                                     <button onClick={() => editorRef.current?.chain().focus().toggleCode().run()}>Code</button>
                                     <button onClick={() => editorRef.current?.chain().focus().toggleHeading({ level: 2 }).run()}>H2</button>
                                     <button onClick={() => editorRef.current?.chain().focus().toggleBlockquote().run()}>Quote</button>
+                                    <button onClick={comments.startOnSelection} title="Comment (⌘⌥M)">
+                                        Comment
+                                    </button>
                                     <span class="sep" />
                                     <button class="ai-btn" onClick={() => setAiMenu(!aiMenu)}>
                                         ✦ AI
@@ -439,6 +456,8 @@ function PostEditor({ initial, tags: allTags, staff }: { initial: Post; tags: Ta
                     <AiPanel />
                 ) : side === 'checks' ? (
                     <ChecksPanel postId={post.id} title={draft.title} onTitle={title => update({ title })} onRewrite={rewrite} />
+                ) : side === 'review' ? (
+                    <ReviewPanel review={review} comments={comments} live={live} />
                 ) : null}
             </div>
 
