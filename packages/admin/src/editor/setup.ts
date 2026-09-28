@@ -38,7 +38,9 @@ const EMBEDDABLE = /^https?:\/\/(?:www\.)?(?:youtube\.com\/(?:watch|shorts|live)
 /** The editor's blocks and marks. Without a bridge, image and HTML cards have no edit buttons (fine for rendering). */
 export function extensions(bridge: MediaBridge | null = null) {
     return [
-        StarterKit.configure({ heading: { levels: [1, 2, 3, 4] }, link: { openOnClick: false, autolink: true } }),
+        // Links keep only what the writer set: TipTap's default adds target=_blank and rel=nofollow to every
+        // link, which tells search engines not to follow the blog's own links to posts and the product.
+        StarterKit.configure({ heading: { levels: [1, 2, 3, 4] }, link: { openOnClick: false, autolink: true, HTMLAttributes: { target: null, rel: null } } }),
         Placeholder.configure({ placeholder: 'Write, or press / for blocks, ⌘J for AI' }),
         Markdown,
         TableKit.configure({ table: { resizable: false } }),

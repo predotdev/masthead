@@ -59,6 +59,19 @@ export function fileFor(urlPath: string, index = 'index.html'): string {
  * Adds ?param=value to outbound links in a rendered body. Links into the blog
  * itself, and links that already carry ref, source or utm_source, are left alone.
  */
+/**
+ * Links to the site's own pages open in place and pass on their value. The editor used to save every link
+ * with target="_blank" and rel="noopener noreferrer nofollow", which tells search engines not to follow them.
+ */
+export function ownLinks(html: string, siteUrl: string): string {
+    const origin = new URL(siteUrl).origin;
+    return html.replace(/<a\b[^>]*>/gi, tag => {
+        const href = /\bhref="([^"]*)"/i.exec(tag)?.[1] ?? '';
+        const own = (href.startsWith('/') && !href.startsWith('//')) || href.startsWith('#') || href === origin || href.startsWith(`${origin}/`);
+        return own ? tag.replace(/\s+target="_blank"/i, '').replace(/\s+rel="[^"]*"/i, '') : tag;
+    });
+}
+
 export function tagLinks(html: string, siteUrl: string, tag?: { param: string; value: string }): string {
     if (!tag) return html;
     return html.replace(/(<a\b[^>]*?\bhref=")(https?:\/\/[^"]+)(")/gi, (whole, pre: string, href: string, post: string) => {

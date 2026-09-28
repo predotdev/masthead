@@ -3,7 +3,7 @@ import { renderBody } from './body';
 import { rss, sitemapIndex, urlset } from './feeds';
 import { blogLd, blogPostingLd, breadcrumbLd, collectionLd, headTags, profileLd } from './head';
 import { llmsFull, llmsTxt, markdownCopy } from './llms';
-import { autoExcerpt, fileFor, plainText, readingMinutes, shortHash, tagLinks, wordCount } from './util';
+import { autoExcerpt, fileFor, ownLinks, plainText, readingMinutes, shortHash, tagLinks, wordCount } from './util';
 
 export interface BuildOptions {
     theme: Theme;
@@ -152,7 +152,7 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
             const loaded = bodies ? await bodies.load(chunk.map(p => p.id)) : null;
             for (const p of chunk) {
                 const full = loaded ? { ...p, ...(loaded.get(p.id) ?? {}) } : p;
-                yield { post: full, html: headingIds(demoteHeadings(tagLinks(renderBody(full), site.url, options.render?.linkTag))) };
+                yield { post: full, html: headingIds(demoteHeadings(ownLinks(tagLinks(renderBody(full), site.url, options.render?.linkTag), site.url))) };
             }
         }
     };
