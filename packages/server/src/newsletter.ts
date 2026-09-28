@@ -3,7 +3,9 @@ import { renderBody, tagLinks } from '@masthead/render';
 import { getPost, listStaff, listTags, newsletterSettings, setPostNewsletter, siteSettings } from './content';
 import { batched } from './db';
 import { UNSUBSCRIBE_PLACEHOLDER, newsletterEmail, type NewsletterEmail } from './email';
+import { loadEmailAssets } from './email-body';
 import type { AppOptions, Env, Principal } from './env';
+import { imageSize } from './images';
 import { memberToken, suppress } from './members';
 import { linkTag } from './publish';
 import { distinctId } from './analytics';
@@ -83,6 +85,7 @@ export async function buildEmail(env: Env, db: D1Database, post: Post): Promise<
     const body = settings.utm === false ? tagged : utmLinks(tagged, { utm_source: 'email', utm_medium: 'newsletter', utm_campaign: post.slug });
     const tags = post.tags.length ? await listTags(db) : [];
     const tag = post.tags.map(id => tags.find(t => t.id === id && t.visibility === 'public')?.name).find(Boolean) ?? null;
+    const [assets, sizes] = await Promise.all([loadEmailAssets(body, { sizes: srcs => storedSizes(db, srcs) }), imageSizes(db, [post.featureImage, site.logo])]);
     const email = newsletterEmail({
         site,
         post,
@@ -93,9 +96,76 @@ export async function buildEmail(env: Env, db: D1Database, post: Post): Promise<
         origin: new URL(appUrl(env)).origin,
         authors,
         tag,
-        postalAddress
+        postalAddress,
+        assets: { ...assets, images: { ...assets.images, ...sizes } }
     });
     return { ...email, slug: post.slug };
+}
+
+type Size = { width: number; height: number };
+
+/** Sizes of stored images (…/content/images/…), from the media table. */
+async function storedSizes(db: D1Database, srcs: string[]): Promise<Record<string, Size>> {
+    const keys = new Map<string, string>();
+    for (const src of srcs.slice(0, 90)) {
+        const m = /\/(content\/(?:images|media)\/[^?#]+)/.exec(src.replace(/&amp;/g, '&'));
+        if (m) keys.set(src, decodeURIComponent(m[1]));
+    }
+    if (!keys.size) return {};
+    const list = [...new Set(keys.values())];
+    const { results } = await db
+        .prepare(`SELECT key, width, height FROM media WHERE width > 0 AND height > 0 AND key IN (${list.map(() => '?').join(',')})`)
+        .bind(...list)
+        .all<{ key: string } & Size>();
+    const out: Record<string, Size> = {};
+    for (const [src, key] of keys) {
+        const r = results.find(x => x.key === key);
+        if (r) out[src] = { width: r.width, height: r.height };
+    }
+    return out;
+}
+
+/** Sizes for the cover and logo: stored ones from the media table, others read from the first bytes of the file. */
+async function imageSizes(db: D1Database, srcs: (string | null | undefined)[]): Promise<Record<string, Size>> {
+    const wanted = srcs.filter((s): s is string => !!s);
+    const out = await storedSizes(db, wanted).catch(() => ({}) as Record<string, Size>);
+    await Promise.all(
+        wanted
+            .filter(src => !out[src] && /^https:\/\//.test(src))
+            .map(async src => {
+                const size = await remoteSize(src);
+                if (size) out[src] = size;
+            })
+    );
+    return out;
+}
+
+async function remoteSize(url: string): Promise<Size | null> {
+    const res = await fetch(url, { headers: { range: 'bytes=0-65535' }, signal: AbortSignal.timeout(2500) }).catch(() => null);
+    if (!res?.ok || !res.body) return null;
+    // At most 64 KB, even from a server that ignores the range.
+    const reader = res.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    try {
+        while (total < 65_536) {
+            const { done, value } = await reader.read();
+            if (done || !value) break;
+            chunks.push(value);
+            total += value.length;
+        }
+    } catch {
+        return null;
+    } finally {
+        reader.cancel().catch(() => undefined);
+    }
+    const bytes = new Uint8Array(total);
+    let at = 0;
+    for (const c of chunks) {
+        bytes.set(c, at);
+        at += c.length;
+    }
+    return imageSize(bytes);
 }
 
 export type Segment = 'all' | 'engaged' | `label:${string}`;
