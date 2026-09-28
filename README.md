@@ -1,154 +1,129 @@
 # Masthead
 
-An open-source blog and newsletter with an AI writing studio, built to replace Ghost.
+**The AI-native, Ghost-compatible blog and newsletter that runs on Cloudflare Workers, D1 and R2.**
 
-Readers get static pages with no JavaScript, served from the edge. Writers get Markdown, a fast editor that stays out of the way, and a studio that proposes and drafts posts from your own sources. Subscribers get double opt-in, one-click unsubscribe and a history that is never overwritten. Everything outside the core (models, storage, email, where ideas come from) is a small connector you can swap.
+Pages are rendered when you publish and served straight from storage, so readers get a front page that is 21 KB before images and scores 100 in Lighthouse. Writers get a Markdown editor with an AI that knows your blog. Subscribers get double opt-in, one-click unsubscribe and a history that is never overwritten. When you leave Ghost, your URLs, images, members and old unsubscribe links come with you.
+
+[Try it](#try-it-in-two-minutes) · [Deploy](#deploy-to-cloudflare) · [Features](#what-you-get) · [Numbers](#numbers) · [Move from Ghost](docs/ghost.md) · [Configuration](docs/configuration.md) · [Architecture](docs/architecture.md)
+
+![The Acme sample blog's front page, served by Masthead](docs/screenshots/front.webp)
+
+## Try it in two minutes
+
+You need [Bun](https://bun.sh) and Node.js 22 or newer (Wrangler runs on it). No Cloudflare account: the Worker, D1 and R2 all run on your machine.
+
+```bash
+git clone https://github.com/predotdev/masthead && cd masthead
+bun install
+bun run dev
+```
+
+`bun run dev` builds the admin, writes local secrets to `apps/worker/.dev.vars` and serves the blog at [localhost:8787/blog/](http://localhost:8787/blog/). In a second terminal, load the sample blog:
+
+```bash
+bun run seed
+```
+
+That is Acme, a fictional company with seven posts, three authors, covers and a newsletter history. Read it at [localhost:8787/blog/](http://localhost:8787/blog/), then write at [localhost:8787/blog/admin/](http://localhost:8787/blog/admin/): choose **Use the owner token** and paste the `BOOTSTRAP_TOKEN` from `apps/worker/.dev.vars`. The first sign-in creates your owner account.
+
+## Deploy to Cloudflare
+
+About ten minutes. You need a Cloudflare account on the Workers Paid plan ($5 a month): the Free plan's 10 ms of CPU per request is too little for publishing.
+
+```bash
+cd apps/worker
+npx wrangler login
+npx wrangler d1 create masthead                 # prints the database_id
+npx wrangler r2 bucket create masthead
+cp wrangler.example.toml wrangler.toml          # paste the database_id; set SITE_URL and EMAIL_FROM
+```
+
+`SITE_URL` is the blog's public address, such as `https://example.com/blog/`. No domain yet? Use `https://masthead.<your-subdomain>.workers.dev/blog/`, the address `wrangler deploy` prints, and change it later.
+
+Two secrets are required. Keep them in a file git ignores; `BOOTSTRAP_TOKEN` is your owner token, so save a copy somewhere safe:
+
+```bash
+printf 'SECRET=%s\nBOOTSTRAP_TOKEN=%s\n' "$(openssl rand -hex 32)" "$(openssl rand -hex 32)" > .env.production
+bun run --cwd ../.. build
+npx wrangler deploy --secrets-file .env.production
+```
+
+Open `/blog/admin/` on your Worker, choose **Use the owner token**, and publish your first post. Later deploys are `bun run deploy` from the repository root; secrets stay in place.
+
+Email and AI are one secret each (`RESEND_API_KEY`, `PREDEV_API_KEY`) when you want them. [docs/deploy.md](docs/deploy.md) covers a custom domain, putting the blog under `/blog` on an existing site, email, analytics and switching traffic.
 
 ## What you get
 
-- **Fast for readers, at any size.** A post page is about 10 KB compressed plus one 5 KB script (search, theme toggle); analytics load only after the page settles. Pages are rendered at publish time and served from storage, revalidated with ETags and Last-Modified. One Worker sustained 3,200 requests a second in a load test with no errors, and publishing streams: 10,000 posts publish in about 6 seconds within 30 MB of memory (`bun scripts/bench-build.ts <snapshot> 1000 10000` measures yours).
-- **Found by search and by AI.** Canonical links, share cards with real image sizes, BlogPosting and breadcrumb structured data with author profiles, image sitemaps, a full-content RSS feed, `llms.txt` and `llms-full.txt`, a Markdown copy of every post, section anchors on every heading, IndexNow pings on publish, responsive images, and redirects for the address shapes Ghost used.
-- **A newsletter you can trust with a list.** Recipients are frozen when a send is queued, batches carry idempotency keys, one worker at a time holds a send, every email has RFC 8058 one-click unsubscribe, and adding an existing person (a product signup, an import) never re-subscribes someone who opted out.
-- **A theme that looks like your product.** Header menu with described dropdowns, a footer with columns, legal links and social icons, search (⌘K or /, and a no-JavaScript search page), light and dark with a remembered toggle, and an optional night-sky backdrop with twinkling sparkles. All of it is settings, editable in the admin or applied from a file with `masthead settings`.
-- **An editor that writes with you.** Blocks (images, video, embeds, link cards, callouts, buttons, tables, raw HTML kept byte for byte), a slash menu, paste or drop media, autosave, scheduling and version history. AI rewrites a selection or writes at the cursor, grounded in your posts and knowledge sources (docs, `llms.txt`, a changelog) and in team memory, and cites what it used; an assistant panel sees the whole post. Generate or edit images and short videos in place. A search and AI readiness checklist and the link card people will see sit next to the post.
-- **Analytics that join up with your product.** Newsletters and growth come from Masthead's own records, so they work from day one: opens, clicks, unsubscribes and the links people clicked for every send (and the numbers Ghost kept for older ones), subscribers over time, and where each signup came from (the post, the spot on the page, and whether the reader arrived from search, an AI assistant, social, email or your product). With PostHog connected, the same page adds visitors, sources, countries, devices, campaigns, read-through, clicks into your product and product signups after reading, all compared with the period before; every post has its own page too. PostHog is asked at most every ten minutes per view, and only production pages count.
-- **A studio that reads only what you allow.** Sources (repositories, a changelog, product data) turn into post ideas grounded in real work; a denylist policy keeps private names out of every signal and draft; anyone on the team drafts an idea with one click.
-- **One key for AI.** The pre.dev connector lists hundreds of text, image, video and embedding models and calls any of them with a single pre.dev API key. Writers pick the models for their own drafts, images and video in the editor, from a searchable list that shows each model's context, price and strengths; Settings keeps the defaults for everyone.
-- **Easy to leave Ghost.** Posts, pages, drafts, tags, staff with roles, newsletter settings, members with their full subscription history, and every image come across with their URLs intact, and old Ghost unsubscribe links keep working.
+**Fast for readers.** Every page is rendered at publish time and served from R2 with ETags, behind Cloudflare's cache on a custom domain. Nothing on the read path touches the database. Pages work without JavaScript; one 7 KB deferred script adds search, the theme toggle and in-place signup. With Cloudflare Images bound, pictures get WebP copies at the widths the page asks for.
 
-## Run it on Cloudflare
+**An editor that writes with you.** Markdown with blocks (images, video, embeds, link cards, callouts, buttons, tables, raw HTML kept byte for byte), a slash menu, drag and drop, autosave, scheduling and version history. The AI rewrites a selection or writes at the cursor, grounded in your published posts, the sources you point it at (docs, `llms.txt`, a changelog) and your house style and team memory, and it cites what it used. An assistant panel sees the whole post. Generate or edit covers and short videos in place, and pick the model for each job from a searchable catalog.
 
-The server is one Worker with D1 (the database), R2 (pages and media) and a cron trigger. Everything lives under your blog's path, so putting it on an existing site is one route.
+![The editor with the AI assistant open](docs/screenshots/editor.webp)
 
-```bash
-bun install
-bun run --cwd packages/admin build
+**A newsletter you can trust with a list.** Double opt-in, RFC 8058 one-click unsubscribe on every email, recipients frozen when a send is queued, idempotent batches, one worker at a time per send, and a subscription history where an import or a product signup never re-subscribes someone who opted out. Test mode keeps newsletters inside the team until you turn it off.
 
-cd apps/worker
-cp wrangler.example.toml wrangler.toml          # fill in ids; keep this file out of git
-npx wrangler d1 create masthead
-npx wrangler r2 bucket create masthead
-npx wrangler deploy
-npx wrangler secret put SECRET                  # 32+ random characters: signs member links
-npx wrangler secret put BOOTSTRAP_TOKEN         # 32+ random characters: first sign-in and the CLI
-npx wrangler secret put RESEND_API_KEY          # email
-npx wrangler secret put PREDEV_API_KEY          # AI drafting, editing and images
-```
+**Found by search engines and AI assistants.** Canonical URLs, share cards with real image sizes, BlogPosting and breadcrumb structured data, sitemaps with images, a full-text RSS feed, `llms.txt` and `llms-full.txt`, a Markdown copy of every post, heading anchors and IndexNow pings on publish. Any host other than the canonical one answers with `noindex`, so a staging copy never competes with the real site.
 
-Everything else is configuration; see [Configuration](#configuration).
+**A theme that looks like your product.** Header menus with described dropdowns, footer columns, search (`/` or ⌘K, and a search page that works without JavaScript), light and dark with no flash, and an optional night-sky backdrop. All of it is settings, edited in the admin or applied from a file.
 
-Keep `EMAIL_TEST_MODE = "true"` until you switch traffic: every newsletter and member email then goes to the provider's test inbox. Pages served from any host other than `SITE_URL` answer with `noindex`, so a staging copy never competes with your live site.
+![Light and dark on a phone](docs/screenshots/phones.webp)
+
+**Analytics from day one.** Opens, clicks and unsubscribes for every send, subscribers over time and where each signup came from, straight from D1. Connect PostHog and the same page adds visitors, sources, read-through and product signups after reading.
+
+**A studio that suggests what to write.** Point it at your repositories, a changelog or any JSON feed. It proposes posts grounded in real work, keeps names on your denylist out of every prompt and draft, and drafts one in your house style with a click.
+
+**Easy to leave Ghost.** One command imports posts, pages, drafts, tags, staff with roles, newsletter settings, members with their full history and every image, keeping every URL. Old Ghost unsubscribe links keep working. See [Move from Ghost](docs/ghost.md).
+
+## Numbers
+
+pre.dev's blog, the same 39 posts on both systems, measured on 2026-09-28 with a cold Chrome visit and Lighthouse 12.8.2 on the mobile profile. Masthead is at `pre.dev/blog-new/`; Ghost 6 with its Casper theme is at `pre.dev/blog/`.
+
+| Front page | Masthead | Ghost |
+| --- | ---: | ---: |
+| Transferred, including images | 242 KB | 2,125 KB |
+| JavaScript | 105 KB | 784 KB |
+| Requests | 15 | 26 |
+| Lighthouse performance / accessibility / best practices | 100 / 100 / 100 | 72 / 95 / 100 |
+| Largest contentful paint | 1.1 s | 7.8 s |
+
+Masthead's own script is 7 KB. The other 98 KB is PostHog, which pre.dev turns on and Masthead loads after the page settles; without it the page is about 145 KB. The Acme sample above has no analytics: 73 KB in 12 requests, 21 KB before images, and 100 in all four Lighthouse categories on phone and desktop.
+
+Publishing streams files from the renderer, so memory stays flat as a blog grows. `bun scripts/bench-build.ts <snapshot.json> 1000 10000` repeats a snapshot's posts to 10,000 and renders them the way the server does: on an M2 Max laptop that is about 10 seconds and under 50 MB, well inside a Worker's 128 MB. In a load test, one deployment served about 3,200 requests a second with no errors, without the edge cache.
+
+## How it works
+
+One Worker serves everything under the blog's path. Publishing renders the whole site (pages, feeds, sitemaps, `llms.txt`, Markdown copies and a search index) and writes only the files that changed to R2. Readers are served from R2 without touching D1. The admin is a Preact app served by the same Worker, and a cron trigger each minute publishes scheduled posts, works through newsletter batches and keeps the AI's knowledge current.
 
 | Path under the blog | What it serves |
-|---|---|
-| `/` and every page | the published site, from R2 (and Cloudflare's edge cache on a custom domain) |
+| --- | --- |
+| `/` and every page | the published site, from R2 |
 | `content/…` | images and media, with range requests |
-| `api/…` | subscribe, confirm, unsubscribe, delivery webhooks |
+| `api/…` | subscribe, confirm, unsubscribe, email webhooks |
 | `admin/` | the admin app; `admin/api/…` is its API |
+
+Models, email, where ideas come from and the theme are connectors behind small interfaces in `@masthead/core`. More in [docs/architecture.md](docs/architecture.md).
 
 ## Configuration
 
-All of it comes from the Worker's environment: `[vars]` in `wrangler.toml` for plain values, `wrangler secret put` for secrets. Site settings (title, menu, footer, look, house style, AI knowledge sources) are edited in the admin or applied from a file with `masthead settings`.
-
-| Name | Kind | What it does |
-|---|---|---|
-| `SITE_URL` | var | Canonical address of the blog, e.g. `https://example.com/blog/`. Only this host (directly, or through a proxy passing it as `x-forwarded-host`) is indexable. |
-| `APP_URL` | var | Where this Worker is reachable when that differs from `SITE_URL` (a preview host); used in email and admin links. |
-| `PREVIEW_PATH` | var | A second path the whole site answers on, e.g. `/blog-new/`, to try Masthead on your real domain while an old blog still has `SITE_URL`'s path. Links stay on it, canonical URLs keep naming `SITE_URL`, pages are `noindex`, and the admin stays on the main path. |
-| `SECRET` | secret | Signs member links. Long and random; never rotate casually (old unsubscribe links stop working). |
-| `BOOTSTRAP_TOKEN` | secret | Owner access for the first sign-in and the CLI. |
-| `EMAIL_FROM`, `EMAIL_REPLY_TO`, `POSTAL_ADDRESS` | var | Newsletter sender, reply address, and the postal address US law requires in the footer. |
-| `EMAIL_TEST_MODE`, `EMAIL_TEST_ADDRESS` | var | `"true"`: newsletters go only to the test address (sign-in and confirmation mail still reach people). |
-| `RESEND_API_KEY`, `RESEND_WEBHOOK_SECRET` | secret | Sending, and delivery/open/click events from Resend. |
-| `PREDEV_API_KEY` | secret | AI: text, images, video and embeddings through one key. |
-| `DENYLIST` | secret | Names post ideas never mention (customers, partners, vendors), newline or comma separated. Settings, Ideas adds more. |
-| `TEXT_MODEL`, `IMAGE_MODEL`, `VIDEO_MODEL`, `EMBEDDING_MODEL` | var | Default models (editable in Settings). The embedding model lets the AI search your posts and knowledge sources. |
-| `LINK_TAG` | var | `param=value` added to outbound links in posts, e.g. `ref=example.com`. |
-| `POSTHOG_KEY`, `POSTHOG_HOST` | var | Analytics: the project key (public) and host (default `https://us.i.posthog.com`). |
-| `POSTHOG_TRACK_PREVIEW` | var | `"true"`: also track previews (other hosts, and the site at `PREVIEW_PATH`), tagged `environment=preview`. |
-| `POSTHOG_PERSONAL_API_KEY`, `POSTHOG_PROJECT_ID` | secret, var | Traffic in the admin's Analytics: a personal API key with query read access to that project. Newsletter and growth numbers need neither. |
-| `POSTHOG_API_HOST` | var | Where those queries go, when `POSTHOG_HOST` is a proxy (default: its app host, `https://us.posthog.com`). |
-| `POSTHOG_SIGNUP_EVENT` | var | Your product's signup event, for "signups after reading" (it carries the `blog_ref_post_slug` the blog registers). Default `auth_signup_success`. |
-| `INDEXNOW`, `INDEXNOW_KEY` | var | `"true"`: ping IndexNow with changed pages on publish (turn on once `SITE_URL` serves this blog). The key is generated when unset. |
-| `DB`, `BUCKET`, `ASSETS` | binding | D1 database, R2 bucket, the admin's static files. |
-| `IMAGES` | binding | Optional Cloudflare Images binding: WebP copies of new images at srcset widths. |
-
-## Switch traffic
-
-When the blog is ready, point its path at the Worker: a Worker route for `example.com/blog*`, or a proxy (another Worker via a service binding, or any reverse proxy) that keeps your host in the request or passes it as `x-forwarded-host`. Then turn `EMAIL_TEST_MODE` off, `INDEXNOW` on, re-run `push` to pick up anything new, and point your email provider's webhook at `<blog>/api/webhooks/email`. The old system can stay wired as the fallback until you are sure.
-
-## Move from Ghost
-
-```bash
-export GHOST_ADMIN_URL=https://your-site.ghost.io GHOST_ADMIN_API_KEY=<id>:<secret>
-bun run masthead import ghost --out snapshot.json --members members.json   # members.json is personal data
-MASTHEAD_TOKEN=<BOOTSTRAP_TOKEN> bun run masthead push --server https://<worker>/blog/ \
-    --snapshot snapshot.json --members members.json --media
-bun run masthead compare --ours https://<worker>/blog/ --live https://your-site.com
-```
-
-`push` loads content, staff, members and their history, copies every image into R2 and points content at it, publishes, then prints counts to check against Ghost. Every step is idempotent: run it again right before you switch to pick up anything new. `compare` checks titles, canonicals, share tags and post bodies page by page.
-
-## Check a deployment
-
-```bash
-MASTHEAD_TOKEN=<BOOTSTRAP_TOKEN> bun scripts/smoke.ts --server https://<worker>/blog/ [--ai]
-```
-
-It exercises the site, feeds, media, sign-in, the full post lifecycle, double opt-in, a real newsletter send to one throwaway member in test mode, one-click unsubscribe, and (with `--ai`) drafting and images, then removes everything it created. It refuses to send unless the server is in email test mode.
-
-## The studio
-
-Sources and policies live in your private config:
-
-```ts
-// masthead.config.ts
-import { predevAI } from '@masthead/ai-predev';
-import { defineConfig, denylist } from '@masthead/core';
-import { github } from '@masthead/source-github';
-import { jsonFeed } from '@masthead/source-json';
-import { predevProjects } from '@masthead/source-predev';
-
-export default defineConfig({
-    site: { url: 'https://example.com/blog/' },
-    ai: predevAI({ textModel: '<model id>', imageModel: '<model id>' }),
-    sources: [
-        github({ repos: ['acme/app', 'acme/docs'], skipLabels: ['security'] }),
-        jsonFeed({ id: 'changelog', url: 'https://example.com/changelog.json', map: json => [] /* your mapping */ }),
-        predevProjects()
-    ],
-    policies: [denylist(['names', 'you', 'never', 'publish'])]
-});
-```
-
-```bash
-bun run masthead studio signals --days 14                  # what the sources see, after policies
-MASTHEAD_TOKEN=<token> bun run masthead studio ideas --days 14 --count 8 --server https://<worker>/blog/
-```
-
-Ideas land on the admin's Ideas page with their sources; Draft turns one into a post in your house style (Settings, AI).
-
-The server also refreshes ideas by itself once a day (Settings, Ideas: the hour, how many, guidance, extra public pages to read, names never to mention). It reads the AI knowledge sources and those pages, keeps what changed since the last read (new changelog or feed entries, paragraphs added to a page), and skips the day when nothing is new or 30 ideas are waiting. It follows the same idea rules as the CLI (`ideaPrompt` in `@masthead/core`). Posts without a topic get one to three of your existing tags picked for them when a draft has enough text and when they are published.
+Everything comes from the Worker's environment: `[vars]` in `wrangler.toml` for plain values, secrets for keys. Only `SITE_URL`, `SECRET`, `BOOTSTRAP_TOKEN` and the D1, R2 and assets bindings are required. Site settings (title, menus, footer, look, house style, AI sources) live in the admin, or in a file you apply with `masthead settings`. The full reference is [docs/configuration.md](docs/configuration.md).
 
 ## Connectors
 
-| Kind | Interface | Available |
-|---|---|---|
-| AI models | `AIProvider`: list models, text (and streamed), image, video, embeddings | `@masthead/ai-predev` |
-| Content | `ContentSource`: load a snapshot | snapshot file, `@masthead/import-ghost` |
+| Kind | Interface | Included |
+| --- | --- | --- |
+| AI models | `AIProvider`: list models, text (streamed), images, video, embeddings | `@masthead/ai-predev`: hundreds of models on one pre.dev API key |
 | Email | `EmailTransport`: send a batch, verify delivery events | `@masthead/email-resend` |
+| Content | `ContentSource`: load a snapshot | snapshot files, `@masthead/import-ghost` |
 | Studio sources | `Source`: pull signals, expand evidence | `@masthead/source-github`, `@masthead/source-json`, `@masthead/source-predev` |
 | Policies | `Policy`: admit, redact, review | `denylist` in `@masthead/core` |
 | Static output | `WebTarget`: write files | `@masthead/web-fs` |
 
-Writing a connector means implementing one small interface from `@masthead/core`.
+Swapping one means implementing a small interface and changing a line in [apps/worker/src/index.ts](apps/worker/src/index.ts).
 
-## Keeping secrets out
+## Contributing
 
-- Secrets come from the environment only. Keep your real config, Worker settings, theme and house rules in a private repo that depends on these packages.
-- `bun run check:leaks` scans for credential patterns and an optional private denylist (`MASTHEAD_DENYLIST` or `MASTHEAD_DENYLIST_FILE`). Findings name the file, line and term number, never the term.
-- CI runs the same checks on every push, plus a full-history gitleaks scan.
+Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) has the setup, the checks CI runs and how to add a connector. Please report security issues privately, as [SECURITY.md](SECURITY.md) describes.
 
 ## License
 
-MIT
+MIT. Made by [pre.dev](https://pre.dev) for its own blog.
