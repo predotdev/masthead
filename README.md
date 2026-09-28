@@ -61,6 +61,7 @@ All of it comes from the Worker's environment: `[vars]` in `wrangler.toml` for p
 | `EMAIL_TEST_MODE`, `EMAIL_TEST_ADDRESS` | var | `"true"`: newsletters go only to the test address (sign-in and confirmation mail still reach people). |
 | `RESEND_API_KEY`, `RESEND_WEBHOOK_SECRET` | secret | Sending, and delivery/open/click events from Resend. |
 | `PREDEV_API_KEY` | secret | AI: text, images, video and embeddings through one key. |
+| `DENYLIST` | secret | Names post ideas never mention (customers, partners, vendors), newline or comma separated. Settings, Ideas adds more. |
 | `TEXT_MODEL`, `IMAGE_MODEL`, `VIDEO_MODEL`, `EMBEDDING_MODEL` | var | Default models (editable in Settings). The embedding model lets the AI search your posts and knowledge sources. |
 | `LINK_TAG` | var | `param=value` added to outbound links in posts, e.g. `ref=example.com`. |
 | `POSTHOG_KEY`, `POSTHOG_HOST` | var | Analytics: the project key (public) and host (default `https://us.i.posthog.com`). |
@@ -124,6 +125,8 @@ MASTHEAD_TOKEN=<token> bun run masthead studio ideas --days 14 --count 8 --serve
 ```
 
 Ideas land on the admin's Ideas page with their sources; Draft turns one into a post in your house style (Settings, AI).
+
+The server also refreshes ideas by itself once a day (Settings, Ideas: the hour, how many, guidance, extra public pages to read, names never to mention). It reads the AI knowledge sources and those pages, keeps what changed since the last read (new changelog or feed entries, paragraphs added to a page), and skips the day when nothing is new or 30 ideas are waiting. It follows the same idea rules as the CLI (`ideaPrompt` in `@masthead/core`). Posts without a topic get one to three of your existing tags picked for them when a draft has enough text and when they are published.
 
 ## Connectors
 

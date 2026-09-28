@@ -43,6 +43,11 @@ export interface Env {
     RESEND_API_KEY?: string;
     RESEND_WEBHOOK_SECRET?: string;
     PREDEV_API_KEY?: string;
+    /**
+     * Names post ideas never mention (customers, partners, vendors), newline or comma
+     * separated; Settings, Ideas adds more. Set it as a secret to keep the list private.
+     */
+    DENYLIST?: string;
     TEXT_MODEL?: string;
     IMAGE_MODEL?: string;
     VIDEO_MODEL?: string;

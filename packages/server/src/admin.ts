@@ -27,6 +27,7 @@ import { signInEmail } from './email';
 import type { Ctx, Principal } from './env';
 import { importAudience, importContent, importMedia, rewriteUrls } from './importer';
 import { siteStats } from './analytics';
+import { envDenylist, ideaSettings, ideaStatus, refreshIdeas, saveIdeaSettings } from './ideas';
 import { backfillImages, storeImage } from './images';
 import { getRevision, keepRevision, listRevisions } from './revisions';
 import { addMemory, deleteMemory, embedPending, knowledgeStats, listMemory, refreshKnowledge, resetKnowledge } from './knowledge';
@@ -496,12 +497,13 @@ export function adminRoutes(): Router<A> {
     // ---------------------------------------------------------- settings
     r.get('/settings', async (_req, ctx) => {
         atLeast(ctx.principal, 'admin');
-        const [site, newsletter, ai, memory, knowledge] = await Promise.all([
+        const [site, newsletter, ai, memory, knowledge, ideas] = await Promise.all([
             siteSettings(ctx.env, ctx.db),
             newsletterSettings(ctx.env, ctx.db),
             aiSettings(ctx.env, ctx.db),
             listMemory(ctx.db),
-            knowledgeStats(ctx.db)
+            knowledgeStats(ctx.db),
+            ideaSettings(ctx.db)
         ]);
         const { results: keys } = await ctx.db.prepare('SELECT id, name, prefix, role, created_at, last_used_at FROM api_keys ORDER BY created_at DESC').all();
         return json({
@@ -509,6 +511,8 @@ export function adminRoutes(): Router<A> {
             newsletter,
             ai: { ...ai, memory },
             knowledge,
+            // The DENYLIST variable's terms stay out of the response; only how many there are.
+            ideas: { ...ideas, envDenylist: envDenylist(ctx.env).length },
             keys,
             environment: {
                 siteUrl: ctx.env.SITE_URL,
@@ -532,6 +536,7 @@ export function adminRoutes(): Router<A> {
             republish(ctx);
         }
         if (input.newsletter) await setSetting(ctx.db, 'newsletter', { ...(await getSetting(ctx.db, 'newsletter', {})), ...input.newsletter });
+        if (input.ideas) await saveIdeaSettings(ctx.db, input.ideas);
         if (input.ai) {
             // Memory has its own routes; a settings form opened before a new memory must not erase it.
             const { memory: _memory, ...ai } = input.ai;
@@ -620,6 +625,10 @@ export function adminRoutes(): Router<A> {
     });
     r.get('/unfurl', async (_req, ctx) => (me(ctx), json(await unfurl(ctx.url.searchParams.get('url') ?? ''))));
     r.get('/ideas', async (_req, ctx) => (me(ctx), json(await listIdeas(ctx, ctx.url.searchParams.get('status') ?? 'new'))));
+    /** When ideas refresh by themselves and what the last refresh did. */
+    r.get('/ideas/status', async (_req, ctx) => (me(ctx), json(await ideaStatus(ctx))));
+    /** Refreshes ideas now: new material since the last read, or the last two weeks when nothing is new. */
+    r.post('/ideas/refresh', async (_req, ctx) => (atLeast(ctx.principal, 'editor'), json(await refreshIdeas(ctx, 'manual'))));
     r.post('/ideas', async (req, ctx) => {
         atLeast(ctx.principal, 'editor');
         const input = await body(req);

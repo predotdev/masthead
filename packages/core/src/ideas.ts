@@ -16,6 +16,12 @@ export const IDEA_RULES: string[] = [
     'Do not repeat or lightly reword an existing post or idea.'
 ];
 
+export interface Background {
+    title: string;
+    text: string;
+    url?: string;
+}
+
 export interface IdeaPromptInput {
     /** The blog's name, e.g. "Acme". */
     site: string;
@@ -28,7 +34,7 @@ export interface IdeaPromptInput {
     /** New material, newest first. Ideas cite it by number. */
     signals: Signal[];
     /** Standing material ideas may draw on for depth: a product page, say. Not news. */
-    background?: { title: string; text: string }[];
+    background?: Background[];
     /** Existing posts and ideas, one line each, so nothing is pitched twice. */
     existing?: string[];
     /** At most this many ideas. */
@@ -48,9 +54,9 @@ export function ideaPrompt(input: IdeaPromptInput): { system: string; user: stri
     const user = [
         'Signals, newest first:',
         input.signals.map((s, i) => `[${i + 1}] ${s.at.slice(0, 10)} ${s.source}/${s.kind}: ${s.title}${s.summary ? `\n${s.summary.slice(0, 400)}` : ''}`).join('\n\n'),
-        input.background?.length ? `Background (not new; use it for depth):\n\n${input.background.map(b => `${b.title}\n${b.text}`).join('\n\n')}` : '',
+        input.background?.length ? `Background (not new; use it for depth):\n\n${input.background.map((b, i) => `[B${i + 1}] ${b.title}\n${b.text}`).join('\n\n')}` : '',
         input.existing?.length ? `Existing posts and ideas:\n${input.existing.map(t => `- ${t}`).join('\n')}` : '',
-        `Suggest up to ${input.count} post ideas; fewer strong ones beat more weak ones. Reply with one JSON object: {"ideas": [{"title": "a headline, at most 80 characters", "angle": "two or three sentences: the specific story, what it shows, and what the writer should gather", "series": "a recurring series name if one fits, else omit", "score": 1-10 for how strong and timely the story is, "sources": [signal numbers it rests on]}]}`
+        `Suggest up to ${input.count} post ideas; fewer strong ones beat more weak ones. Reply with one JSON object: {"ideas": [{"title": "a headline, at most 80 characters", "angle": "two or three sentences: the specific story, what it shows, and what the writer should gather", "series": "a recurring series name if one fits, else omit", "score": 1-10 for how strong and timely the story is, "sources": [signal numbers it rests on${input.background?.length ? ', and "B1" and so on for background it draws on' : ''}]}]}`
     ]
         .filter(Boolean)
         .join('\n\n');
@@ -66,12 +72,18 @@ export interface IdeaReply {
     sources: Signal[];
 }
 
-/** The ideas in a model's reply, with their signal numbers resolved. */
-export function readIdeas(text: string, signals: Signal[]): IdeaReply[] {
+/** The ideas in a model's reply, with their signal numbers (and background "B" numbers) resolved. */
+export function readIdeas(text: string, signals: Signal[], background: Background[] = []): IdeaReply[] {
+    const cite = (n: unknown): Signal | undefined => {
+        const b = /^B(\d+)$/i.exec(String(n).trim());
+        const page = b ? background[Number(b[1]) - 1] : undefined;
+        if (page) return { ref: `background:${page.url ?? page.title}`, source: 'background', kind: 'page', title: page.title, summary: page.text.slice(0, 600), at: '', url: page.url };
+        return b ? undefined : signals[Number(n) - 1];
+    };
     const out: IdeaReply[] = [];
     for (const r of parseIdeaJson(text)) {
         if (!r?.title) continue;
-        const refs = (Array.isArray(r.sources) ? r.sources : []).map((n: unknown) => signals[Number(n) - 1]).filter(Boolean) as Signal[];
+        const refs = (Array.isArray(r.sources) ? r.sources : []).map(cite).filter(Boolean) as Signal[];
         out.push({
             title: String(r.title).slice(0, 200),
             angle: String(r.angle ?? ''),

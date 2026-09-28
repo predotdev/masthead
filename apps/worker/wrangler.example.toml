@@ -59,5 +59,6 @@ EMAIL_TEST_MODE = "true"
 #   RESEND_API_KEY    email
 #   RESEND_WEBHOOK_SECRET  from the Resend webhook you point at <base>api/webhooks/email
 #   PREDEV_API_KEY    AI (text, images, video, embeddings)
+#   DENYLIST          optional: names post ideas never mention, newline or comma separated
 #   POSTHOG_PERSONAL_API_KEY  optional: the admin's Analytics page (set POSTHOG_PROJECT_ID too)
 #   PREDEV_API_KEY    AI drafting and images

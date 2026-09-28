@@ -17,6 +17,7 @@ import { appUrl, processSends } from './newsletter';
 import { legacyRoute, publicRoutes, serveMedia, serveSearch, serveSite } from './public';
 import { basePath, publishSite, publishUnfinished, releaseScheduled } from './publish';
 import { embedPending, refreshKnowledge } from './knowledge';
+import { IDEAS_MINUTE, scheduledIdeas } from './ideas';
 import { HttpError, json, redirect } from './util';
 
 export type { AppOptions, Env } from './env';
@@ -123,6 +124,11 @@ export function createApp(options: AppOptions) {
                 const ctx: Ctx = { env, db: env.DB, exec, options, url: new URL(env.SITE_URL), basePath: base };
                 exec.waitUntil(refreshKnowledge(ctx).catch(err => console.error('knowledge refresh failed', err)));
             } else if (ai) exec.waitUntil(embedPending(env, env.DB, ai, 25_000).catch(err => console.error('embedding failed', err)));
+            // Post ideas: once an hour, check whether the daily refresh (Settings, Ideas) is due.
+            if (ai && at.getUTCMinutes() === IDEAS_MINUTE) {
+                const ctx: Ctx = { env, db: env.DB, exec, options, url: new URL(env.SITE_URL), basePath: basePath(env) };
+                exec.waitUntil(scheduledIdeas(ctx, at).catch(err => console.error('idea refresh failed', err)));
+            }
         }
     };
 }
