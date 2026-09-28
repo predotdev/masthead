@@ -29,6 +29,8 @@ export interface Env {
     PREDEV_API_KEY?: string;
     TEXT_MODEL?: string;
     IMAGE_MODEL?: string;
+    VIDEO_MODEL?: string;
+    EMBEDDING_MODEL?: string;
     /** "param=value" added to outbound links in posts, e.g. "ref=example.com". */
     LINK_TAG?: string;
 }

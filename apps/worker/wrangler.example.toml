@@ -39,6 +39,8 @@ EMAIL_TEST_MODE = "true"
 # Default models for drafting and images; editors can change them in Settings, AI.
 # TEXT_MODEL = "<model id>"
 # IMAGE_MODEL = "<model id>"
+# VIDEO_MODEL = "<model id>"          # the editor's "Generate a video"
+# EMBEDDING_MODEL = "<model id>"      # lets the AI search the blog and your knowledge sources
 # APP_URL = "https://masthead.<your-subdomain>.workers.dev/blog/"
 
 # Secrets (wrangler secret put <NAME>):

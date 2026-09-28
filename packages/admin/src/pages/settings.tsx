@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'preact/hooks';
 import { api, fmtDate } from '../api';
 import { Button, Dialog, ErrorNote, Field, Loading, PageHead, Pill, errorToast, toast, useLoad } from '../ui';
+import { MemoryPanel } from './memory';
 import { AppearanceEditor, FooterEditor, HeaderMenu } from './site-design';
 
 interface SettingsData {
     site: Record<string, any>;
     newsletter: Record<string, any>;
-    ai: { textModel: string | null; imageModel: string | null; voice: string | null };
+    ai: { textModel: string | null; imageModel: string | null; videoModel: string | null; embeddingModel: string | null; knowledgeSources: string[]; voice: string | null; memory?: unknown };
+    knowledge: { passages: number; pending: number; sources: number; refreshedAt: string | null };
     keys: { id: string; name: string; prefix: string; role: string; created_at: string; last_used_at: string | null }[];
     environment: { siteUrl: string; appUrl: string; testMode: boolean; emailFrom: string | null; email: boolean; ai: boolean; webhooks: boolean; linkTag: string | null };
 }
@@ -21,7 +23,11 @@ export function Settings() {
 function SettingsForm({ data, reload }: { data: SettingsData; reload: () => void }) {
     const [site, setSite] = useState(data.site);
     const [newsletter, setNewsletter] = useState(data.newsletter);
-    const [ai, setAi] = useState(data.ai);
+    const [ai, setAi] = useState(() => {
+        const { memory: _memory, ...rest } = data.ai;
+        return rest;
+    });
+    const [sources, setSources] = useState(data.ai.knowledgeSources.join('\n'));
     const [busy, setBusy] = useState(false);
     const [newKey, setNewKey] = useState<string | null>(null);
     const env = data.environment;
@@ -29,7 +35,11 @@ function SettingsForm({ data, reload }: { data: SettingsData; reload: () => void
     const save = async () => {
         setBusy(true);
         try {
-            await api('/settings', { method: 'PUT', body: { site, newsletter, ai } });
+            const knowledgeSources = sources
+                .split('\n')
+                .map(s => s.trim())
+                .filter(s => /^https?:\/\//.test(s));
+            await api('/settings', { method: 'PUT', body: { site, newsletter, ai: { ...ai, knowledgeSources } } });
             toast('Saved');
             reload();
         } catch (err) {
@@ -148,10 +158,23 @@ function SettingsForm({ data, reload }: { data: SettingsData; reload: () => void
                 <div class="grid2">
                     <ModelPicker kind="text" label="Writing model" value={ai.textModel} onChange={v => setAi({ ...ai, textModel: v })} />
                     <ModelPicker kind="image" label="Image model" value={ai.imageModel} onChange={v => setAi({ ...ai, imageModel: v })} />
+                    <ModelPicker kind="video" label="Video model" value={ai.videoModel} onChange={v => setAi({ ...ai, videoModel: v })} />
+                    <ModelPicker kind="embedding" label="Knowledge model" value={ai.embeddingModel} onChange={v => setAi({ ...ai, embeddingModel: v })} hint="Reads the blog and your sources so answers can cite them. Changing it re-reads everything." />
                 </div>
                 <Field label="House style" hint="Tone, audience and rules every draft follows, e.g. words to avoid or names never to mention.">
                     <textarea rows={6} value={ai.voice ?? ''} onInput={e => setAi({ ...ai, voice: e.currentTarget.value || null })} />
                 </Field>
+                <Field
+                    label="Knowledge sources"
+                    hint={`One URL per line: docs, an llms.txt, a changelog feed. Every published post is included on its own. ${data.knowledge.passages.toLocaleString()} passages from ${data.knowledge.sources} sources${data.knowledge.pending ? `, ${data.knowledge.pending} still being read` : ''}.`}
+                >
+                    <textarea rows={4} value={sources} spellcheck={false} placeholder="https://example.com/llms.txt" onInput={e => setSources(e.currentTarget.value)} />
+                </Field>
+            </section>
+
+            <section class="panel">
+                <h2>AI memory</h2>
+                <MemoryPanel />
             </section>
 
             <section class="panel">
@@ -218,7 +241,7 @@ function SettingsForm({ data, reload }: { data: SettingsData; reload: () => void
     );
 }
 
-function ModelPicker({ kind, label, value, onChange }: { kind: 'text' | 'image'; label: string; value: string | null; onChange: (v: string | null) => void }) {
+function ModelPicker({ kind, label, value, onChange, hint }: { kind: 'text' | 'image' | 'video' | 'embedding'; label: string; value: string | null; onChange: (v: string | null) => void; hint?: string }) {
     const [models, setModels] = useState<{ id: string; name: string }[] | null>(null);
     useEffect(() => {
         api<{ id: string; name: string }[]>(`/ai/models?kind=${kind}`)
@@ -227,7 +250,7 @@ function ModelPicker({ kind, label, value, onChange }: { kind: 'text' | 'image';
     }, [kind]);
     const listId = `models-${kind}`;
     return (
-        <Field label={label} hint={models ? `${models.length} available` : 'Loading models…'}>
+        <Field label={label} hint={models ? `${hint ? `${hint} ` : ''}${models.length} available.` : 'Loading models…'}>
             <input list={listId} value={value ?? ''} onInput={e => onChange(e.currentTarget.value || null)} placeholder="Start typing a model name" />
             <datalist id={listId}>
                 {(models ?? []).map(m => (

@@ -1,17 +1,28 @@
 import type { Editor } from '@tiptap/core';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { api, base, session, type Post, type Staff, type Tag, upload } from '../api';
-import { createEditor, slashItems, type SelectionState, type SlashState } from '../editor';
+import { insertAi } from '../editor/assist';
+import { createEditor, slashItems, snapshot, type SelectionState, type SlashState } from '../editor/setup';
 import { Button, Dialog, ErrorNote, Field, Loading, Pill, errorToast, toast, useLoad } from '../ui';
+import { AiPreview, AiPrompt, AssistantPanel, QUICK_EDITS, type AiJob } from './ai';
+import { EmbedDialog, HtmlDialog, ImageDialog, VideoDialog } from './media';
 import { SendDialog } from './newsletters';
 
 type Draft = Omit<Post, 'id' | 'createdAt' | 'updatedAt' | 'newsletter' | 'type'>;
 
+type Modal =
+    | null
+    | { kind: 'publish' | 'send' | 'draft' | 'meta' | 'delete' | 'embed' }
+    | { kind: 'image'; mode: 'insert' | 'cover' | 'edit'; pos?: number; src?: string }
+    | { kind: 'video' }
+    | { kind: 'html'; pos: number; html: string };
+
 export function EditorPage({ id }: { id: string }) {
     const { data, error } = useLoad(() => Promise.all([api<Post>(`/posts/${id}`), api<Tag[]>('/tags'), api<Staff[]>('/staff')]), [id]);
     if (error) return <ErrorNote text={error} />;
-    if (!data) return <Loading />;
-    return <PostEditor key={id} initial={data[0]} tags={data[1]} staff={data[2]} />;
+    // Until the post in the address has loaded, never show (or save over) the previous one.
+    if (!data || data[0].id !== id) return <Loading />;
+    return <PostEditor key={data[0].id} initial={data[0]} tags={data[1]} staff={data[2]} />;
 }
 
 function PostEditor({ initial, tags: allTags, staff }: { initial: Post; tags: Tag[]; staff: Staff[] }) {
@@ -19,22 +30,34 @@ function PostEditor({ initial, tags: allTags, staff }: { initial: Post; tags: Ta
     const [draft, setDraft] = useState<Draft>(() => pick(initial));
     const [dirty, setDirty] = useState(false);
     const [saving, setSaving] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-    const [panel, setPanel] = useState(false);
-    const [dialog, setDialog] = useState<null | 'publish' | 'send' | 'draft' | 'meta' | 'cover' | 'delete'>(null);
+    const [side, setSide] = useState<null | 'settings' | 'assistant'>(null);
+    const [modal, setModal] = useState<Modal>(null);
     const [tags, setTags] = useState<Tag[]>(allTags);
-    const editorRef = useRef<Editor | null>(null);
-    const hostRef = useRef<HTMLDivElement>(null);
-    const fileRef = useRef<HTMLInputElement>(null);
-    const titleRef = useRef<HTMLTextAreaElement>(null);
     const [slash, setSlash] = useState<SlashState | null>(null);
     const [slashIndex, setSlashIndex] = useState(0);
     const [selection, setSelection] = useState<SelectionState | null>(null);
+    const [aiMenu, setAiMenu] = useState(false);
+    const [aiJob, setAiJob] = useState<AiJob | null>(null);
+    const [prompt, setPrompt] = useState<{ top: number; left: number; hasSelection: boolean } | null>(null);
+    const [source, setSource] = useState(false);
+    const editorRef = useRef<Editor | null>(null);
+    const rev = useRef(0);
+    const [revision, setRevision] = useState(0);
+    const hostRef = useRef<HTMLDivElement>(null);
+    const imageInput = useRef<HTMLInputElement>(null);
+    const videoInput = useRef<HTMLInputElement>(null);
+    const titleRef = useRef<HTMLTextAreaElement>(null);
     const role = session.value?.user.role;
     const live = post.status === 'published';
 
+    const touch = () => {
+        rev.current += 1;
+        setRevision(rev.current);
+        setDirty(true);
+    };
     const update = (patch: Partial<Draft>) => {
         setDraft(d => ({ ...d, ...patch }));
-        setDirty(true);
+        touch();
     };
 
     // The title grows with its text, including long imported titles on first render.
@@ -43,30 +66,45 @@ function PostEditor({ initial, tags: allTags, staff }: { initial: Post; tags: Ta
         if (!el) return;
         el.style.height = 'auto';
         el.style.height = `${el.scrollHeight}px`;
-    }, [draft.title, panel]);
+    }, [draft.title, side]);
 
-    // Markdown editor for posts written here; imported posts keep their HTML until converted.
+    // One editor for every post: imported HTML (Ghost cards included) and Markdown alike.
     useEffect(() => {
-        if (post.bodyFormat !== 'markdown' || !hostRef.current) return;
-        const ed = createEditor(hostRef.current, post.markdown ?? '', {
-            onChange: md => update({ markdown: md }),
+        if (!hostRef.current || source) return;
+        const ed = createEditor(hostRef.current, { html: draft.bodyFormat === 'html' ? draft.html : null, markdown: draft.bodyFormat === 'html' ? null : draft.markdown }, {
+            onChange: touch,
             upload,
-            onSlash: s => (setSlash(s), setSlashIndex(0)),
-            onSelection: setSelection
+            unfurl: url => api(`/unfurl?url=${encodeURIComponent(url)}`).catch(() => null),
+            onSlash: s =>
+                setSlash(prev => {
+                    if (!s || !prev || prev.query !== s.query) setSlashIndex(0);
+                    return s;
+                }),
+            onSelection: s => (setSelection(s), s ? null : setAiMenu(false)),
+            onAiPrompt: () => openPrompt(),
+            editImage: (pos, src) => setModal({ kind: 'image', mode: 'edit', pos, src }),
+            editHtml: (pos, html) => setModal({ kind: 'html', pos, html })
         });
         editorRef.current = ed;
-        return () => ed.destroy();
-    }, [post.bodyFormat]);
+        return () => {
+            editorRef.current = null;
+            ed.destroy();
+        };
+    }, [source]);
+
+    const body = () => (editorRef.current ? { bodyFormat: 'html' as const, ...snapshot(editorRef.current) } : {});
 
     const save = async (explicit = false): Promise<Post | null> => {
         setSaving('saving');
+        const at = rev.current;
         try {
             const sentSlug = draft.slug;
-            const saved = await api<Post>(`/posts/${post.id}`, { method: 'PUT', body: draft });
+            const saved = await api<Post>(`/posts/${post.id}`, { method: 'PUT', body: { ...draft, ...body() } });
             setPost(saved);
             // The server may move a draft's slug to follow its title or stay unique.
             if (saved.slug !== sentSlug) setDraft(d => (d.slug === sentSlug ? { ...d, slug: saved.slug } : d));
-            setDirty(false);
+            // Typing that landed while the save was in flight stays unsaved.
+            if (rev.current === at) setDirty(false);
             setSaving('saved');
             if (explicit && saved.status === 'published') toast('Updated on the site');
             return saved;
@@ -80,53 +118,81 @@ function PostEditor({ initial, tags: allTags, staff }: { initial: Post; tags: Ta
     // Drafts save themselves; live posts change only when you click Update.
     useEffect(() => {
         if (!dirty || live) return;
-        const t = setTimeout(() => save(), 1200);
+        const t = setTimeout(() => save(), 1500);
         return () => clearTimeout(t);
-    }, [draft, dirty, live]);
+    }, [revision, dirty, live]);
 
     useEffect(() => {
         const warn = (e: BeforeUnloadEvent) => {
             if (dirty) e.preventDefault();
         };
+        const keys = (e: KeyboardEvent) => {
+            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') (e.preventDefault(), save(true));
+        };
         window.addEventListener('beforeunload', warn);
-        return () => window.removeEventListener('beforeunload', warn);
-    }, [dirty]);
+        window.addEventListener('keydown', keys);
+        return () => (window.removeEventListener('beforeunload', warn), window.removeEventListener('keydown', keys));
+    }, [dirty, draft]);
 
-    const items = useMemo(() => slashItems(() => fileRef.current?.click()), []);
+    const cursorBox = () => {
+        const ed = editorRef.current!;
+        const box = hostRef.current!.getBoundingClientRect();
+        const c = ed.view.coordsAtPos(ed.state.selection.to);
+        // AI cards line up with the text column, just under the cursor or selection.
+        return { top: c.bottom - box.top + 10, left: 0 };
+    };
+
+    const openPrompt = () => {
+        const ed = editorRef.current;
+        if (!ed) return;
+        setSlash(null);
+        setPrompt({ ...cursorBox(), hasSelection: !ed.state.selection.empty });
+    };
+
+    const runAi = (instruction: string, mode: 'edit' | 'write' | 'continue', label?: string) => {
+        const ed = editorRef.current;
+        if (!ed) return;
+        const { from, to } = ed.state.selection;
+        setPrompt(null);
+        setAiMenu(false);
+        setSelection(null);
+        setAiJob({ mode, instruction: instruction || undefined, label, from: mode === 'edit' ? from : to, to, ...cursorBox() });
+    };
+
+    const items = useMemo(
+        () =>
+            slashItems({
+                pickImage: () => imageInput.current?.click(),
+                pickVideo: () => videoInput.current?.click(),
+                aiImage: () => setModal({ kind: 'image', mode: 'insert' }),
+                aiVideo: () => setModal({ kind: 'video' }),
+                embed: () => setModal({ kind: 'embed' }),
+                aiWrite: () => setTimeout(openPrompt, 0),
+                aiContinue: () => setTimeout(() => runAi('', 'continue'), 0)
+            }),
+        []
+    );
     const filtered = slash ? items.filter(i => i.label.toLowerCase().includes(slash.query) || i.id.includes(slash.query)) : [];
     const runSlash = (idx: number) => {
         const ed = editorRef.current;
         const item = filtered[idx];
         if (!ed || !slash || !item) return;
         ed.chain().focus().deleteRange({ from: slash.from, to: slash.to }).run();
-        item.run(ed);
         setSlash(null);
+        item.run(ed);
     };
     useEffect(() => {
         if (!slash) return;
         const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'ArrowDown') (e.preventDefault(), setSlashIndex(i => Math.min(i + 1, filtered.length - 1)));
-            else if (e.key === 'ArrowUp') (e.preventDefault(), setSlashIndex(i => Math.max(i - 1, 0)));
+            // Handled here and kept from the editor, so the arrows move the highlight, not the cursor.
+            if (e.key === 'ArrowDown') (e.preventDefault(), e.stopPropagation(), setSlashIndex(i => Math.min(i + 1, filtered.length - 1)));
+            else if (e.key === 'ArrowUp') (e.preventDefault(), e.stopPropagation(), setSlashIndex(i => Math.max(i - 1, 0)));
             else if (e.key === 'Enter' && filtered.length) (e.preventDefault(), e.stopPropagation(), runSlash(slashIndex));
-            else if (e.key === 'Escape') setSlash(null);
+            else if (e.key === 'Escape') (e.stopPropagation(), setSlash(null));
         };
         window.addEventListener('keydown', onKey, true);
         return () => window.removeEventListener('keydown', onKey, true);
     }, [slash, slashIndex, filtered.length]);
-
-    const improve = async (instruction: string) => {
-        const ed = editorRef.current;
-        if (!ed || !selection) return;
-        const { from, to, text } = selection;
-        setSelection(null);
-        try {
-            toast('Rewriting…');
-            const res = await api<{ markdown: string }>('/ai/edit', { body: { markdown: text, instruction } });
-            ed.chain().focus().insertContentAt({ from, to }, res.markdown, { contentType: 'markdown' }).run();
-        } catch (err) {
-            errorToast(err);
-        }
-    };
 
     const setLink = () => {
         const ed = editorRef.current;
@@ -134,6 +200,19 @@ function PostEditor({ initial, tags: allTags, staff }: { initial: Post; tags: Ta
         const url = window.prompt('Link to', ed.getAttributes('link').href ?? 'https://');
         if (url === null) return;
         url ? ed.chain().focus().extendMarkRange('link').setLink({ href: url }).run() : ed.chain().focus().unsetLink().run();
+    };
+
+    const insertNode = (node: { type: string; attrs: Record<string, unknown> }, pos?: number) => {
+        const ed = editorRef.current;
+        if (!ed) return;
+        (pos != null ? ed.chain().focus().insertContentAt(pos, node) : ed.chain().focus().insertContent(node)).run();
+    };
+
+    const setNodeAttrs = (pos: number, attrs: Record<string, unknown>) => {
+        const ed = editorRef.current;
+        const node = ed?.state.doc.nodeAt(pos);
+        if (!ed || !node) return;
+        ed.view.dispatch(ed.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, ...attrs }));
     };
 
     const unpublish = async () => {
@@ -146,13 +225,14 @@ function PostEditor({ initial, tags: allTags, staff }: { initial: Post; tags: Ta
         }
     };
 
-    const convert = async () => {
-        if (dirty) await save();
+    const upload1 = (accept: 'image' | 'video') => async (e: Event) => {
+        const input = e.currentTarget as HTMLInputElement;
+        const f = input.files?.[0];
+        input.value = '';
+        if (!f) return;
         try {
-            const res = await api<Post>(`/posts/${post.id}/convert`, { method: 'POST' });
-            setPost(res);
-            setDraft(pick(res));
-            toast('Now editing as Markdown');
+            const src = await upload(f);
+            insertNode(accept === 'image' ? { type: 'figure', attrs: { src, alt: f.name.replace(/\.[^.]+$/, '') } } : { type: 'video', attrs: { src } });
         } catch (err) {
             errorToast(err);
         }
@@ -167,141 +247,186 @@ function PostEditor({ initial, tags: allTags, staff }: { initial: Post; tags: Ta
                 <Pill tone={post.status === 'published' ? 'green' : post.status === 'scheduled' ? 'amber' : 'neutral'}>{post.status}</Pill>
                 <span class="save-state">{saving === 'saving' ? 'Saving…' : saving === 'error' ? 'Not saved' : dirty ? (live ? 'Unpublished changes' : 'Editing') : saving === 'saved' ? 'Saved' : ''}</span>
                 <div class="grow" />
-                <Button onClick={() => setDialog('draft')}>Draft with AI</Button>
+                <Button onClick={() => setSide(side === 'assistant' ? null : 'assistant')} aria-pressed={side === 'assistant'} class={side === 'assistant' ? 'on' : ''}>
+                    ✦ Assistant
+                </Button>
+                <Button onClick={() => setModal({ kind: 'draft' })}>Draft with AI</Button>
                 <Button onClick={async () => ((dirty && (await save())), window.open(`${base}admin/api/posts/${post.id}/preview`, '_blank'))}>Preview</Button>
-                <Button onClick={() => setPanel(!panel)} aria-pressed={panel}>
+                <Button onClick={() => setSide(side === 'settings' ? null : 'settings')} aria-pressed={side === 'settings'}>
                     Settings
                 </Button>
                 {live ? (
                     <>
-                        {post.type === 'post' && role !== 'author' && role !== 'contributor' ? <Button onClick={() => setDialog('send')}>Send as newsletter</Button> : null}
+                        {post.type === 'post' && role !== 'author' && role !== 'contributor' ? <Button onClick={() => setModal({ kind: 'send' })}>Send as newsletter</Button> : null}
                         <Button tone="primary" busy={saving === 'saving'} disabled={!dirty} onClick={() => save(true)}>
                             Update
                         </Button>
                     </>
                 ) : role === 'contributor' ? null : (
-                    <Button tone="primary" onClick={async () => ((dirty && (await save())), setDialog('publish'))}>
+                    <Button tone="primary" onClick={async () => ((dirty && (await save())), setModal({ kind: 'publish' }))}>
                         {post.status === 'scheduled' ? 'Reschedule' : 'Publish'}
                     </Button>
                 )}
             </div>
 
-            <div class={`editor-layout ${panel ? 'with-panel' : ''}`}>
+            <div class={`editor-layout ${side ? 'with-panel' : ''}`}>
                 <div class="writing">
-                    <textarea
-                        ref={titleRef}
-                        class="title-input"
-                        rows={1}
-                        placeholder="Title"
-                        value={draft.title}
-                        onInput={e => update({ title: e.currentTarget.value })}
-                    />
-                    {draft.featureImage ? (
-                        <figure class="feature-preview">
-                            <img src={draft.featureImage} alt={draft.featureImageAlt ?? ''} />
-                        </figure>
-                    ) : null}
-                    {post.bodyFormat === 'html' ? (
+                    <textarea ref={titleRef} class="title-input" rows={1} placeholder="Title" value={draft.title} onInput={e => update({ title: e.currentTarget.value })} />
+                    <div class="cover-row">
+                        {draft.featureImage ? (
+                            <figure class="feature-preview">
+                                <img src={draft.featureImage} alt={draft.featureImageAlt ?? ''} />
+                                <div class="block-toolbar">
+                                    <button onClick={() => setModal({ kind: 'image', mode: 'edit', src: draft.featureImage! })}>✦ Edit with AI</button>
+                                    <button onClick={() => setModal({ kind: 'image', mode: 'cover' })}>Regenerate</button>
+                                    <button onClick={() => update({ featureImage: null })}>Remove</button>
+                                </div>
+                            </figure>
+                        ) : (
+                            <div class="cover-actions">
+                                <label class="link-btn">
+                                    Add a cover image
+                                    <input type="file" accept="image/*" hidden onChange={async e => {
+                                        const f = e.currentTarget.files?.[0];
+                                        if (f) update({ featureImage: await upload(f).catch(err => (errorToast(err), null)) });
+                                    }} />
+                                </label>
+                                <button class="link-btn" onClick={() => setModal({ kind: 'image', mode: 'cover' })}>
+                                    ✦ Generate one
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                    {source ? (
                         <div class="html-body">
                             <div class="note">
-                                This post was imported and keeps its original HTML, so it looks exactly as it did.{' '}
-                                <button class="link-btn" onClick={convert}>
-                                    Switch to the Markdown editor
-                                </button>{' '}
-                                to edit it like any other post; embeds become links.
+                                Editing the HTML source.{' '}
+                                <button class="link-btn" onClick={() => setSource(false)}>
+                                    Back to the editor
+                                </button>
                             </div>
-                            <textarea class="code-input" value={draft.html ?? ''} onInput={e => update({ html: e.currentTarget.value })} spellcheck={false} />
+                            <textarea class="code-input" value={draft.html ?? ''} onInput={e => update({ html: e.currentTarget.value, markdown: null, bodyFormat: 'html' })} spellcheck={false} />
                         </div>
                     ) : (
                         <div class="editor-host" ref={hostRef}>
                             {slash && filtered.length ? (
                                 <div class="slash-menu" style={{ top: slash.top, left: slash.left }} role="listbox">
-                                    {filtered.map((item, i) => (
-                                        <button key={item.id} role="option" aria-selected={i === slashIndex} class={i === slashIndex ? 'on' : ''} onMouseDown={e => (e.preventDefault(), runSlash(i))}>
-                                            <span>{item.label}</span>
-                                            <span class="muted small">{item.hint}</span>
-                                        </button>
-                                    ))}
+                                    {(['AI', 'Write', 'Media'] as const).map(g =>
+                                        filtered.some(i => i.group === g) ? (
+                                            <div key={g}>
+                                                <p class="slash-group">{g}</p>
+                                                {filtered.map((item, i) =>
+                                                    item.group === g ? (
+                                                        <button key={item.id} role="option" aria-selected={i === slashIndex} class={i === slashIndex ? 'on' : ''} onMouseDown={e => (e.preventDefault(), runSlash(i))}>
+                                                            <span>{item.group === 'AI' ? '✦ ' : ''}{item.label}</span>
+                                                            <span class="muted small">{item.hint}</span>
+                                                        </button>
+                                                    ) : null
+                                                )}
+                                            </div>
+                                        ) : null
+                                    )}
                                 </div>
                             ) : null}
-                            {selection ? (
+                            {selection && !aiJob ? (
                                 <div class="bubble" style={{ top: selection.top, left: selection.left }} onMouseDown={e => e.preventDefault()}>
-                                    <button onClick={() => editorRef.current?.chain().focus().toggleBold().run()}>
+                                    <button onClick={() => editorRef.current?.chain().focus().toggleBold().run()} title="Bold (⌘B)">
                                         <b>B</b>
                                     </button>
-                                    <button onClick={() => editorRef.current?.chain().focus().toggleItalic().run()}>
+                                    <button onClick={() => editorRef.current?.chain().focus().toggleItalic().run()} title="Italic (⌘I)">
                                         <i>I</i>
+                                    </button>
+                                    <button onClick={() => editorRef.current?.chain().focus().toggleStrike().run()} title="Strikethrough">
+                                        <s>S</s>
                                     </button>
                                     <button onClick={setLink}>Link</button>
                                     <button onClick={() => editorRef.current?.chain().focus().toggleCode().run()}>Code</button>
+                                    <button onClick={() => editorRef.current?.chain().focus().toggleHeading({ level: 2 }).run()}>H2</button>
+                                    <button onClick={() => editorRef.current?.chain().focus().toggleBlockquote().run()}>Quote</button>
                                     <span class="sep" />
-                                    <button onClick={() => improve('Tighten this: shorter, same meaning.')}>Tighten</button>
-                                    <button onClick={() => improve('Make this clearer and more concrete.')}>Clarify</button>
-                                    <button
-                                        onClick={() => {
-                                            const i = window.prompt('How should it change?');
-                                            if (i) improve(i);
-                                        }}
-                                    >
-                                        Rewrite…
+                                    <button class="ai-btn" onClick={() => setAiMenu(!aiMenu)}>
+                                        ✦ AI
                                     </button>
+                                    {aiMenu ? (
+                                        <div class="ai-menu">
+                                            {QUICK_EDITS.map(q => (
+                                                <button key={q.label} onClick={() => runAi(q.instruction, 'edit', q.label)}>
+                                                    {q.label}
+                                                </button>
+                                            ))}
+                                            <button onClick={() => (setAiMenu(false), openPrompt())}>Ask AI… ⌘J</button>
+                                        </div>
+                                    ) : null}
                                 </div>
                             ) : null}
+                            {prompt ? <AiPrompt {...prompt} onRun={runAi} onClose={() => setPrompt(null)} /> : null}
+                            {aiJob && editorRef.current ? <AiPreview editor={editorRef.current} job={aiJob} title={draft.title} onClose={() => setAiJob(null)} /> : null}
                         </div>
                     )}
-                    <input
-                        ref={fileRef}
-                        type="file"
-                        accept="image/*"
-                        hidden
-                        onChange={async e => {
-                            const f = e.currentTarget.files?.[0];
-                            e.currentTarget.value = '';
-                            if (!f) return;
-                            try {
-                                const src = await upload(f);
-                                editorRef.current?.chain().focus().setImage({ src, alt: f.name.replace(/\.[^.]+$/, '') }).run();
-                            } catch (err) {
-                                errorToast(err);
-                            }
-                        }}
-                    />
+                    <input ref={imageInput} type="file" accept="image/*" hidden onChange={upload1('image')} />
+                    <input ref={videoInput} type="file" accept="video/*" hidden onChange={upload1('video')} />
                 </div>
 
-                {panel ? (
+                {side === 'settings' ? (
                     <aside class="settings-panel">
-                        <SettingsPanel post={post} draft={draft} update={update} tags={tags} setTags={setTags} staff={staff} onMeta={() => setDialog('meta')} onCover={() => setDialog('cover')} />
+                        <SettingsPanel post={post} draft={draft} update={update} tags={tags} setTags={setTags} staff={staff} onMeta={() => setModal({ kind: 'meta' })} onCover={() => setModal({ kind: 'image', mode: 'cover' })} />
                         <div class="panel-actions">
+                            <Button
+                                onClick={async () => {
+                                    if (!source && editorRef.current) update({ ...snapshot(editorRef.current), bodyFormat: 'html' });
+                                    setSource(!source);
+                                }}
+                            >
+                                {source ? 'Back to editor' : 'Edit HTML'}
+                            </Button>
                             {post.status !== 'draft' && role !== 'contributor' ? <Button onClick={unpublish}>Unpublish</Button> : null}
-                            <Button tone="danger" onClick={() => setDialog('delete')}>
+                            <Button tone="danger" onClick={() => setModal({ kind: 'delete' })}>
                                 Delete
                             </Button>
                         </div>
                     </aside>
+                ) : side === 'assistant' ? (
+                    <AssistantPanel editor={editorRef.current} title={draft.title} />
                 ) : null}
             </div>
 
-            {dialog === 'publish' ? <PublishDialog post={post} onClose={() => setDialog(null)} onDone={p => (setPost(p), setDialog(null))} /> : null}
-            {dialog === 'send' ? <SendDialog post={post} onClose={() => setDialog(null)} /> : null}
-            {dialog === 'draft' ? (
+            {modal?.kind === 'publish' ? <PublishDialog post={post} onClose={() => setModal(null)} onDone={p => (setPost(p), setModal(null))} /> : null}
+            {modal?.kind === 'send' ? <SendDialog post={post} onClose={() => setModal(null)} /> : null}
+            {modal?.kind === 'draft' ? (
                 <DraftDialog
-                    onClose={() => setDialog(null)}
+                    onClose={() => setModal(null)}
                     onDraft={(title, md) => {
-                        setDialog(null);
+                        setModal(null);
                         if (!draft.title && title) update({ title });
                         const ed = editorRef.current;
-                        if (ed) ed.chain().focus().insertContent(md, { contentType: 'markdown' }).run();
+                        if (ed) insertAi(ed, md, { from: ed.state.selection.to, to: ed.state.selection.to }, 'at');
                     }}
-                    disabled={post.bodyFormat === 'html'}
+                    disabled={source}
                 />
             ) : null}
-            {dialog === 'meta' ? <MetaDialog draft={draft} onClose={() => setDialog(null)} apply={p => (update(p), toast('Applied'))} /> : null}
-            {dialog === 'cover' ? <CoverDialog title={draft.title} onClose={() => setDialog(null)} apply={url => (update({ featureImage: url }), setDialog(null))} /> : null}
-            {dialog === 'delete' ? (
-                <Dialog title="Delete this post?" onClose={() => setDialog(null)}>
+            {modal?.kind === 'meta' ? <MetaDialog draft={{ ...draft, ...body() }} onClose={() => setModal(null)} apply={p => (update(p), toast('Applied'))} /> : null}
+            {modal?.kind === 'image' ? (
+                <ImageDialog
+                    mode={modal.mode}
+                    src={modal.src}
+                    title={draft.title}
+                    onClose={() => setModal(null)}
+                    onDone={(url, alt) => {
+                        if (modal.mode === 'cover' || (modal.mode === 'edit' && modal.pos == null)) update({ featureImage: url, featureImageAlt: draft.featureImageAlt ?? alt });
+                        else if (modal.mode === 'edit' && modal.pos != null) setNodeAttrs(modal.pos, { src: url, srcset: null, sizes: null });
+                        else insertNode({ type: 'figure', attrs: { src: url, alt } });
+                        setModal(null);
+                    }}
+                />
+            ) : null}
+            {modal?.kind === 'video' ? <VideoDialog reference={draft.featureImage} onClose={() => setModal(null)} onDone={url => (insertNode({ type: 'video', attrs: { src: url, loop: true } }), setModal(null))} /> : null}
+            {modal?.kind === 'embed' ? <EmbedDialog onClose={() => setModal(null)} onDone={node => (insertNode(node), setModal(null))} /> : null}
+            {modal?.kind === 'html' ? <HtmlDialog html={modal.html} onClose={() => setModal(null)} onDone={html => (setNodeAttrs(modal.pos, { html }), setModal(null))} /> : null}
+            {modal?.kind === 'delete' ? (
+                <Dialog title="Delete this post?" onClose={() => setModal(null)}>
                     <p>{post.status === 'published' ? 'It comes off the site right away. ' : ''}This can't be undone.</p>
                     <div class="dialog-actions">
-                        <Button onClick={() => setDialog(null)}>Cancel</Button>
+                        <Button onClick={() => setModal(null)}>Cancel</Button>
                         <Button
                             tone="danger"
                             onClick={async () => {
@@ -493,7 +618,7 @@ function DraftDialog({ onClose, onDraft, disabled }: { onClose: () => void; onDr
     return (
         <Dialog title="Draft with AI" onClose={onClose} wide>
             {disabled ? (
-                <p>Switch this imported post to the Markdown editor first.</p>
+                <p>Go back to the editor from the HTML source first.</p>
             ) : (
                 <div class="stack">
                     <Field label="What should the post say?">
@@ -564,45 +689,6 @@ function MetaDialog({ draft, onClose, apply }: { draft: Draft; onClose: () => vo
                     ) : null}
                 </div>
             ) : null}
-        </Dialog>
-    );
-}
-
-function CoverDialog({ title, onClose, apply }: { title: string; onClose: () => void; apply: (url: string) => void }) {
-    const [prompt, setPrompt] = useState(`Abstract, minimal cover art for a post titled "${title}". Dark background, one bright subject, lots of empty space, no text.`);
-    const [url, setUrl] = useState<string | null>(null);
-    const [busy, setBusy] = useState(false);
-    return (
-        <Dialog title="Generate a cover" onClose={onClose} wide>
-            <div class="stack">
-                <Field label="Describe the image">
-                    <textarea rows={3} value={prompt} onInput={e => setPrompt(e.currentTarget.value)} />
-                </Field>
-                {url ? <img class="cover-result" src={url} alt="" /> : null}
-            </div>
-            <div class="dialog-actions">
-                <Button onClick={onClose}>Cancel</Button>
-                <Button
-                    busy={busy}
-                    onClick={async () => {
-                        setBusy(true);
-                        try {
-                            setUrl((await api<{ url: string }>('/ai/image', { body: { prompt, aspectRatio: '16:9' } })).url);
-                        } catch (err) {
-                            errorToast(err);
-                        } finally {
-                            setBusy(false);
-                        }
-                    }}
-                >
-                    {url ? 'Try again' : 'Generate'}
-                </Button>
-                {url ? (
-                    <Button tone="primary" onClick={() => apply(url)}>
-                        Use this image
-                    </Button>
-                ) : null}
-            </div>
         </Dialog>
     );
 }

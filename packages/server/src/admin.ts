@@ -1,6 +1,6 @@
 import type { AspectRatio, ModelKind, Post, StaffRole } from '@masthead/core';
 import { buildSite, renderBody, tagLinks } from '@masthead/render';
-import { addIdeas, draft, draftIdea, edit, image, listIdeas, listModels, meta } from './ai';
+import { addIdeas, assist, draft, draftIdea, edit, image, listIdeas, listModels, meta, startVideo, unfurl, videoStatus } from './ai';
 import { atLeast, clearSessionCookie, consumeLoginToken, createApiKey, createLoginToken, createSession, endSession, peekLoginToken, sessionCookie } from './auth';
 import {
     aiSettings,
@@ -24,6 +24,7 @@ import {
 import { signInEmail } from './email';
 import type { Ctx, Principal } from './env';
 import { importAudience, importContent, importMedia, rewriteUrls } from './importer';
+import { addMemory, deleteMemory, embedPending, knowledgeStats, listMemory, refreshKnowledge, resetKnowledge } from './knowledge';
 import { addMember, deleteMember, getMember, getMemberByEmail, listMembers, memberEvents, memberStats, restoreOptOuts, setStatus, type MemberStatus } from './members';
 import { appUrl, buildEmail, cancelSend, countSegment, createSend, getSend, listSends, processSends, sendTest, testMode, unsubscribeUrl, type Segment } from './newsletter';
 import { linkTag, publishSite } from './publish';
@@ -161,6 +162,8 @@ export function adminRoutes(): Router<A> {
         const status = when.getTime() > Date.now() + 60_000 ? 'scheduled' : 'published';
         const post = await savePost(ctx.db, { id, status, publishedAt: when.toISOString() });
         const result = status === 'published' ? await publishSite(ctx.env, ctx.db, ctx.options) : null;
+        // The writing assistant learns the new post.
+        if (status === 'published') ctx.exec.waitUntil(refreshKnowledge(ctx, { postsOnly: true }).then(() => embedPending(ctx.env, ctx.db, ctx.options.ai?.(ctx.env) ?? null, 20_000)).catch(() => {}));
         return json({ post, publish: result });
     });
 
@@ -423,12 +426,19 @@ export function adminRoutes(): Router<A> {
     // ---------------------------------------------------------- settings
     r.get('/settings', async (_req, ctx) => {
         atLeast(ctx.principal, 'admin');
-        const [site, newsletter, ai] = await Promise.all([siteSettings(ctx.env, ctx.db), newsletterSettings(ctx.env, ctx.db), aiSettings(ctx.env, ctx.db)]);
+        const [site, newsletter, ai, memory, knowledge] = await Promise.all([
+            siteSettings(ctx.env, ctx.db),
+            newsletterSettings(ctx.env, ctx.db),
+            aiSettings(ctx.env, ctx.db),
+            listMemory(ctx.db),
+            knowledgeStats(ctx.db)
+        ]);
         const { results: keys } = await ctx.db.prepare('SELECT id, name, prefix, role, created_at, last_used_at FROM api_keys ORDER BY created_at DESC').all();
         return json({
             site,
             newsletter,
-            ai,
+            ai: { ...ai, memory },
+            knowledge,
             keys,
             environment: {
                 siteUrl: ctx.env.SITE_URL,
@@ -452,7 +462,19 @@ export function adminRoutes(): Router<A> {
             republish(ctx);
         }
         if (input.newsletter) await setSetting(ctx.db, 'newsletter', { ...(await getSetting(ctx.db, 'newsletter', {})), ...input.newsletter });
-        if (input.ai) await setSetting(ctx.db, 'ai', { ...(await getSetting(ctx.db, 'ai', {})), ...input.ai });
+        if (input.ai) {
+            // Memory has its own routes; a settings form opened before a new memory must not erase it.
+            const { memory: _memory, ...ai } = input.ai;
+            const before = await aiSettings(ctx.env, ctx.db);
+            await setSetting(ctx.db, 'ai', { ...(await getSetting(ctx.db, 'ai', {})), ...ai });
+            const after = await aiSettings(ctx.env, ctx.db);
+            // Vectors from another model don't compare: re-read everything, and answer without passages until done.
+            if (after.embeddingModel !== before.embeddingModel) await resetKnowledge(ctx.db);
+            if (after.knowledgeSources.join('\n') !== before.knowledgeSources.join('\n') || after.embeddingModel !== before.embeddingModel) {
+                const ai = ctx.options.ai?.(ctx.env) ?? null;
+                ctx.exec.waitUntil(refreshKnowledge(ctx).then(() => embedPending(ctx.env, ctx.db, ai)).catch(err => console.error('knowledge refresh', err)));
+            }
+        }
         return json({ ok: true });
     });
 
@@ -478,8 +500,44 @@ export function adminRoutes(): Router<A> {
     r.post('/ai/image', async (req, ctx) => {
         me(ctx);
         const input = await body(req);
-        return json(await image(ctx, { prompt: String(input.prompt ?? ''), aspectRatio: input.aspectRatio as AspectRatio }));
+        return json(
+            await image(ctx, {
+                prompt: String(input.prompt ?? ''),
+                aspectRatio: input.aspectRatio as AspectRatio,
+                model: input.model ? String(input.model) : undefined,
+                reference: input.reference ? String(input.reference) : undefined
+            })
+        );
     });
+    /** The writing assistant, streamed: chat, rewrite a selection, write at the cursor, or continue. */
+    r.post('/ai/assist', async (req, ctx) => (me(ctx), assist(ctx, (await body(req)) as any)));
+    r.post('/ai/video', async (req, ctx) => {
+        const p = me(ctx);
+        const input = await body(req);
+        return json(
+            await startVideo(
+                ctx,
+                { prompt: String(input.prompt ?? ''), model: input.model ? String(input.model) : undefined, aspectRatio: input.aspectRatio, duration: input.duration ? Number(input.duration) : undefined, reference: input.reference ? String(input.reference) : undefined },
+                p
+            ),
+            201
+        );
+    });
+    r.get('/ai/video/:id', async (_req, ctx, { id }) => (me(ctx), json(await videoStatus(ctx, id))));
+    r.get('/ai/memory', async (_req, ctx) => (me(ctx), json(await listMemory(ctx.db))));
+    r.post('/ai/memory', async (req, ctx) => {
+        const p = me(ctx);
+        return json(await addMemory(ctx.db, String((await body(req)).text ?? ''), p.name), 201);
+    });
+    r.delete('/ai/memory/:id', async (_req, ctx, { id }) => (atLeast(ctx.principal, 'editor'), json(await deleteMemory(ctx.db, id))));
+    r.get('/ai/knowledge', async (_req, ctx) => (me(ctx), json(await knowledgeStats(ctx.db))));
+    r.post('/ai/knowledge/refresh', async (_req, ctx) => {
+        atLeast(ctx.principal, 'editor');
+        const result = await refreshKnowledge(ctx);
+        ctx.exec.waitUntil(embedPending(ctx.env, ctx.db, ctx.options.ai?.(ctx.env) ?? null, 25_000).catch(err => console.error('embedding failed', err)));
+        return json(result);
+    });
+    r.get('/unfurl', async (_req, ctx) => (me(ctx), json(await unfurl(ctx.url.searchParams.get('url') ?? ''))));
     r.get('/ideas', async (_req, ctx) => (me(ctx), json(await listIdeas(ctx, ctx.url.searchParams.get('status') ?? 'new'))));
     r.post('/ideas', async (req, ctx) => {
         atLeast(ctx.principal, 'editor');

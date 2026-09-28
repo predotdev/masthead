@@ -33,7 +33,8 @@ const HELP = `masthead <command>
                                    site, page by page
   serve [--dir <dir>] [--port <n>] Preview a build locally
   settings --server <url> --file <settings.json>
-                                   Apply site, newsletter and AI settings, then rebuild
+                                   Apply site, newsletter and AI settings and add AI
+                                   memory entries, then rebuild
   studio signals [--days 14]       Show what the configured sources see
   studio ideas [--days 14] [--count 8] [--server <url>] [--dry-run] [--model <id>]
                                    Suggest posts from the sources and save them to the
@@ -195,6 +196,14 @@ async function main() {
                 body: JSON.stringify({ site: input.site, newsletter: input.newsletter, ai: input.ai })
             });
             if (!res.ok) throw new Error(`Settings were not saved: HTTP ${res.status} ${(await res.text()).slice(0, 200)}`);
+            // AI memory: add the file's entries that aren't there yet; entries added in the editor stay.
+            if (Array.isArray(input.memory)) {
+                const auth = { authorization: `Bearer ${token}`, 'content-type': 'application/json' };
+                const have = (await fetch(`${base}admin/api/ai/memory`, { headers: auth }).then(r => r.json())) as { text: string }[];
+                const add = (input.memory as string[]).filter(text => !have.some(m => m.text === text.trim()));
+                for (const text of add) await fetch(`${base}admin/api/ai/memory`, { method: 'POST', headers: auth, body: JSON.stringify({ text }) });
+                if (add.length) console.log(`AI memory: added ${add.length}`);
+            }
             const pub = await fetch(`${base}admin/api/publish`, { method: 'POST', headers: { authorization: `Bearer ${token}` } }).then(r => r.json());
             console.log(`settings saved; site rebuilt: ${pub.written} of ${pub.total} files in ${pub.ms} ms`);
             return;

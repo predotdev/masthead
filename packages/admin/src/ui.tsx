@@ -84,7 +84,9 @@ export function Dialog({ title, onClose, children, wide }: { title: string; onCl
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
         window.addEventListener('keydown', onKey);
-        ref.current?.querySelector<HTMLElement>('input,textarea,select,button')?.focus();
+        // The field marked autofocus, else the first field in the body; never the close button.
+        const root = ref.current;
+        (root?.querySelector<HTMLElement>('[autofocus]') ?? root?.querySelector<HTMLElement>('.dialog-body :is(input, textarea, select, button)'))?.focus();
         return () => window.removeEventListener('keydown', onKey);
     }, []);
     return (

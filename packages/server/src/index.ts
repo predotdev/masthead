@@ -16,6 +16,7 @@ import type { AppOptions, Ctx, Env } from './env';
 import { processSends } from './newsletter';
 import { legacyRoute, publicRoutes, serveMedia, serveSearch, serveSite } from './public';
 import { basePath, publishSite, releaseScheduled } from './publish';
+import { embedPending, refreshKnowledge } from './knowledge';
 import { HttpError, json } from './util';
 
 export type { AppOptions, Env } from './env';
@@ -81,10 +82,18 @@ export function createApp(options: AppOptions) {
         },
 
         /** Every minute: publish scheduled posts, then work through newsletter batches. */
-        async scheduled(_event: ScheduledController, env: Env, exec: ExecutionContext): Promise<void> {
+        async scheduled(event: ScheduledController, env: Env, exec: ExecutionContext): Promise<void> {
             await migrate(env.DB);
             if (await releaseScheduled(env.DB)) await publishSite(env, env.DB, options);
             exec.waitUntil(processSends(env, env.DB, options, 50_000));
+            // The writing assistant's knowledge: embed what is queued; re-read every source once a day.
+            const ai = options.ai?.(env) ?? null;
+            const at = new Date(event.scheduledTime);
+            if (ai && at.getUTCHours() === 3 && at.getUTCMinutes() === 17) {
+                const base = basePath(env);
+                const ctx: Ctx = { env, db: env.DB, exec, options, url: new URL(env.SITE_URL), basePath: base };
+                exec.waitUntil(refreshKnowledge(ctx).catch(err => console.error('knowledge refresh failed', err)));
+            } else if (ai) exec.waitUntil(embedPending(env, env.DB, ai, 25_000).catch(err => console.error('embedding failed', err)));
         }
     };
 }

@@ -44,13 +44,24 @@ export async function newsletterSettings(env: Env, db: D1Database): Promise<News
 export interface AiSettings {
     textModel?: string | null;
     imageModel?: string | null;
+    videoModel?: string | null;
+    embeddingModel?: string | null;
+    /** Documents the editor's AI reads besides the blog itself: docs, a changelog, an llms.txt. */
+    knowledgeSources: string[];
     /** House style for drafts: tone, audience, rules. */
     voice?: string | null;
 }
 
 export async function aiSettings(env: Env, db: D1Database): Promise<AiSettings> {
-    const stored = await getSetting<AiSettings>(db, 'ai', {});
-    return { textModel: stored.textModel || env.TEXT_MODEL || null, imageModel: stored.imageModel || env.IMAGE_MODEL || null, voice: stored.voice ?? null };
+    const stored = await getSetting<Partial<AiSettings>>(db, 'ai', {});
+    return {
+        textModel: stored.textModel || env.TEXT_MODEL || null,
+        imageModel: stored.imageModel || env.IMAGE_MODEL || null,
+        videoModel: stored.videoModel || env.VIDEO_MODEL || null,
+        embeddingModel: stored.embeddingModel || env.EMBEDDING_MODEL || null,
+        knowledgeSources: Array.isArray(stored.knowledgeSources) ? stored.knowledgeSources.filter(u => /^https?:\/\//.test(u)) : [],
+        voice: stored.voice ?? null
+    };
 }
 
 // ------------------------------------------------------------------ posts

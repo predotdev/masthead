@@ -229,6 +229,10 @@ export interface ModelInfo {
     contextLength?: number;
     /** Provider-specific prices, e.g. credits per million tokens or per image. */
     price?: Record<string, number>;
+    /** What a media model accepts, where the catalog says. */
+    supports?: { durations?: number[]; aspectRatios?: string[]; resolutions?: string[]; frameImages?: string[] };
+    /** The site's default model for this kind. */
+    isDefault?: boolean;
 }
 
 export interface TextMessage {
@@ -267,6 +271,32 @@ export interface ImageRequest {
     model?: string;
     prompt: string;
     aspectRatio?: AspectRatio;
+    /** Images to edit or draw from: URLs or data: URLs. */
+    references?: string[];
+}
+
+export interface VideoRequest {
+    model?: string;
+    prompt: string;
+    aspectRatio?: string;
+    /** Seconds, when the model lets you choose. */
+    duration?: number;
+    /** Stills to draw from: URLs or data: URLs. */
+    references?: string[];
+    /** A still the clip starts from (a URL or data: URL), on models that take a first frame. */
+    firstFrame?: string;
+}
+
+export interface VideoJob {
+    id: string;
+    status: 'queued' | 'running' | 'completed' | 'failed';
+    error?: string;
+}
+
+export interface EmbeddingResult {
+    vectors: number[][];
+    model: string;
+    usage: Usage;
 }
 
 export interface ImageResult {
@@ -282,6 +312,15 @@ export interface AIProvider {
     listModels(kind?: ModelKind): Promise<ModelInfo[]>;
     text(request: TextRequest): Promise<TextResult>;
     image(request: ImageRequest): Promise<ImageResult>;
+    /** The same as text, token by token. */
+    stream?(request: TextRequest): AsyncIterable<string>;
+    embed?(input: string[], model?: string): Promise<EmbeddingResult>;
+    /** Video is asynchronous: submit, poll, then fetch the file. */
+    video?: {
+        submit(request: VideoRequest): Promise<VideoJob>;
+        status(id: string): Promise<VideoJob>;
+        content(id: string): Promise<Uint8Array>;
+    };
 }
 
 // ------------------------------------------------------------------ studio
@@ -422,6 +461,8 @@ export interface ListItem {
     readingMinutes: number;
     authors: Author[];
     primaryTag?: Tag;
+    /** Every public tag on the post, primary first. */
+    tags?: Tag[];
 }
 
 export interface ThemeContext {
@@ -478,6 +519,8 @@ export interface ListView {
     nextUrl?: string;
     author?: Author;
     tag?: Tag;
+    /** On the front page: the most-read posts, by newsletter opens. */
+    highlights?: ListItem[];
 }
 
 /** A theme turns views into HTML. It never fetches anything. */
