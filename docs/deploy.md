@@ -86,6 +86,8 @@ Pick one:
 
 - **Behind your own proxy**, such as another Worker with a service binding, nginx or your app server: forward `/blog/*` to the Worker and pass your host in `x-forwarded-host` (or keep it in the request). Canonical URLs, feeds and `noindex` follow `SITE_URL`.
 
+  If a Worker answers your whole domain and its DNS record points at a placeholder (such as `192.0.2.1`), add `compatibility_flags = ["global_fetch_strictly_public"]` to the blog's `wrangler.toml`. Without it, Cloudflare sends the blog's requests for other pages on your domain (your logo on a share card, a link preview, a knowledge source) straight to that placeholder, and they hang until they time out.
+
 Set `SITE_URL` to the final address. If the Worker is also reached at another address during testing, set `APP_URL` to it so sign-in links point there.
 
 ## 7. Switch traffic
