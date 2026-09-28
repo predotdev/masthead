@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { predevAI } from '@masthead/ai-predev';
 import type { AspectRatio, MastheadConfig, ModelKind, StreamEnd } from '@masthead/core';
 import { loadConfig, snapshotFile } from '@masthead/core/node';
@@ -11,6 +11,7 @@ import { defaultTheme } from '@masthead/theme-default';
 import { webFs } from '@masthead/web-fs';
 import { compare } from './compare';
 import { push } from './push';
+import { seed } from './seed';
 import { collectSignals, generateIdeas, printSignals } from './studio';
 import { serve } from './serve';
 
@@ -42,6 +43,11 @@ const HELP = `masthead <command>
   push --server <url> [--snapshot <file>] [--members <file>] [--media]
                                    Load an import into a running server and publish
                                    (token from MASTHEAD_TOKEN or --token)
+  seed [--server <url>] [--dir <folder>] [--force]
+                                   Load the sample Acme blog (examples/demo) into an
+                                   empty server and publish it. Default server
+                                   http://localhost:8787/blog/; a local server's token
+                                   is read from apps/worker/.dev.vars
 
   --config <file>   Config file (default: masthead.config.ts if present)`;
 
@@ -67,6 +73,17 @@ async function config(flags: Record<string, string | boolean>): Promise<Masthead
 }
 
 const str = (v: string | boolean | undefined) => (typeof v === 'string' ? v : undefined);
+
+/** For a server on this machine: the BOOTSTRAP_TOKEN in apps/worker/.dev.vars (or .env), which `bun run dev` creates. */
+function localToken(server: string): string | undefined {
+    if (!/^(localhost|127\.0\.0\.1|\[::1\])$/.test(new URL(server).hostname)) return undefined;
+    for (const name of ['.dev.vars', '.env']) {
+        const file = join(import.meta.dir, '../../../apps/worker', name);
+        const found = existsSync(file) ? readFileSync(file, 'utf8').match(/^BOOTSTRAP_TOKEN\s*=\s*"?([^"\s]+)"?/m)?.[1] : undefined;
+        if (found) return found;
+    }
+    return undefined;
+}
 
 async function main() {
     const { positional, flags } = parseArgs(process.argv.slice(2));
@@ -177,6 +194,13 @@ async function main() {
             if (!server || !token) throw new Error('Usage: masthead push --server <url> --snapshot <file> [--members <file>] [--media], with MASTHEAD_TOKEN set');
             const readJson = async (f: string | undefined) => (f ? JSON.parse(await readFile(f, 'utf8')) : undefined);
             await push({ server, token, snapshot: await readJson(str(flags.snapshot)), audience: await readJson(str(flags.members)), media: flags.media === true });
+            return;
+        }
+        case 'seed': {
+            const server = str(flags.server) ?? 'http://localhost:8787/blog/';
+            const token = str(flags.token) ?? process.env.MASTHEAD_TOKEN ?? localToken(server);
+            if (!token) throw new Error('Set MASTHEAD_TOKEN to the server BOOTSTRAP_TOKEN, or pass --token.');
+            await seed({ server, token, dir: resolve(str(flags.dir) ?? join(import.meta.dir, '../../../examples/demo')), force: flags.force === true });
             return;
         }
         case 'studio': {

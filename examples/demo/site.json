@@ -1,0 +1,104 @@
+{
+  "site": {
+    "title": "Acme",
+    "description": "Product news, engineering notes and guides from the team building Acme.",
+    "metaTitle": "Acme Journal",
+    "locale": "en",
+    "logo": "logo.svg",
+    "icon": "logo.svg",
+    "shareImage": "share.jpg",
+    "accentColor": "#6d5efc",
+    "navigation": [
+      {
+        "label": "Product",
+        "url": "https://acme.example/",
+        "items": [
+          { "label": "Acme Flow", "url": "https://acme.example/flow", "description": "Plan, ship and review in one place", "icon": "workflow" },
+          { "label": "Acme Insights", "url": "https://acme.example/insights", "description": "See what changed and why", "icon": "window" },
+          { "label": "API", "url": "https://acme.example/api", "description": "Everything in Acme, from your code", "icon": "terminal", "badge": "New" }
+        ]
+      },
+      { "label": "Docs", "url": "https://acme.example/docs" },
+      { "label": "Changelog", "url": "https://acme.example/changelog" },
+      { "label": "About", "url": "/about/" }
+    ],
+    "footer": {
+      "tagline": "The calm way to ship software.",
+      "columns": [
+        {
+          "title": "Product",
+          "links": [
+            { "label": "Acme Flow", "url": "https://acme.example/flow" },
+            { "label": "Acme Insights", "url": "https://acme.example/insights" },
+            { "label": "Pricing", "url": "https://acme.example/pricing" }
+          ]
+        },
+        {
+          "title": "Resources",
+          "links": [
+            { "label": "Docs", "url": "https://acme.example/docs" },
+            { "label": "Changelog", "url": "https://acme.example/changelog" },
+            { "label": "Status", "url": "https://acme.example/status" }
+          ]
+        },
+        {
+          "title": "Company",
+          "links": [
+            { "label": "About", "url": "/about/" },
+            { "label": "Careers", "url": "https://acme.example/careers" },
+            { "label": "Contact", "url": "https://acme.example/contact" }
+          ]
+        }
+      ],
+      "legal": [
+        { "label": "Privacy", "url": "https://acme.example/privacy" },
+        { "label": "Terms", "url": "https://acme.example/terms" }
+      ]
+    },
+    "appearance": {
+      "logoText": true,
+      "headerCta": { "label": "Try Acme", "url": "https://acme.example/signup" },
+      "subscribe": { "title": "Get the Acme Journal", "text": "New posts by email, about twice a month. One click to unsubscribe." }
+    },
+    "publisher": { "name": "Acme", "url": "https://acme.example/" }
+  },
+  "newsletter": { "senderName": "Acme Journal" },
+  "ai": {
+    "voice": "Plain, specific and warm. Short sentences. Lead with what the reader can do now, and use numbers when we have them. Write Acme, never ACME. No exclamation marks and no \"we're excited to announce\"."
+  },
+  "memory": [
+    "Acme Flow is available on every plan, including Free.",
+    "We release every Tuesday.",
+    "When a post explains a feature, link to the docs at https://acme.example/docs."
+  ],
+  "authors": [
+    {
+      "slug": "maya-chen",
+      "name": "Maya Chen",
+      "email": "maya@acme.example",
+      "role": "editor",
+      "bio": "Head of product at Acme. Writes about planning, releases and the craft of shipping."
+    },
+    {
+      "slug": "sam-okafor",
+      "name": "Sam Okafor",
+      "email": "sam@acme.example",
+      "role": "author",
+      "bio": "Engineer on the Acme platform team. Performance, reliability and the occasional postmortem."
+    },
+    {
+      "slug": "lena-park",
+      "name": "Lena Park",
+      "email": "lena@acme.example",
+      "role": "author",
+      "bio": "Designs Acme and this blog. Cares about type, color and the first five minutes."
+    }
+  ],
+  "tags": [
+    { "slug": "product", "name": "Product", "description": "What we ship and why." },
+    { "slug": "engineering", "name": "Engineering", "description": "How Acme works under the hood." },
+    { "slug": "design", "name": "Design", "description": "Interface, type and color." },
+    { "slug": "guides", "name": "Guides", "description": "Practical how-tos for teams that ship." },
+    { "slug": "company", "name": "Company", "description": "How we work." }
+  ]
+}
