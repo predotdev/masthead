@@ -15,23 +15,23 @@ export const TEXT = '#2c2c2c';
 export const MUTED = '#666666';
 export const FAINT = '#767676';
 export const LINE = '#eaeaeb';
-export const LINE2 = '#dcdcde';
-export const SURFACE = '#f6f6f7';
-export const TINT = '#f0f6fe';
-export const TINT_LINE = '#cfe0fd';
+const LINE2 = '#dcdcde';
+const SURFACE = '#f6f6f7';
+const TINT = '#f0f6fe';
+const TINT_LINE = '#cfe0fd';
 export const FONT = `Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif`;
-export const MONO = `ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace`;
+const MONO = `ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace`;
 
 // ------------------------------------------------------------------ parsing
 
-export interface El {
+interface El {
     tag: string;
     attrs: Record<string, string>;
     kids: Node[];
 }
 
 /** Text is kept as written in the source, entities and all. */
-export type Node = El | string;
+type Node = El | string;
 
 const VOID = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
 /** Elements whose content is not markup. Only iframes are kept (for their attributes). */
@@ -52,7 +52,7 @@ const IMPLIED: Record<string, { ends: string[]; scope: string[] }> = {
 };
 
 /** A forgiving HTML parser: good enough for post bodies, never throws, always balanced. */
-export function parseHtml(src: string): El {
+function parseHtml(src: string): El {
     const root: El = { tag: '#root', attrs: {}, kids: [] };
     const stack = [root];
     const lower = src.toLowerCase();
