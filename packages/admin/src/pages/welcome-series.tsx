@@ -862,8 +862,18 @@ function ConfirmSwitch({
                 ) : (
                     <p class="ws-confirm-text">Nobody new joins and nothing more is sent. If you turn it back on, people partway through pick up where they left off, except for emails that would be more than 3 days late.</p>
                 )}
-                {turn === 'on' && testMode ? <div class="note warn">Test mode is on: only team addresses join. Anyone else who subscribes meanwhile is skipped for good.</div> : null}
-                {turn === 'on' && !email ? <div class="note">Email isn't set up on this server yet, so nothing goes out until it is.</div> : null}
+                {turn === 'on' && testMode ? (
+                    <p class="ws-callout warn">
+                        <Icon name="warning" size={15} />
+                        <span>Test mode is on: only team addresses join. Anyone else who subscribes meanwhile is skipped for good.</span>
+                    </p>
+                ) : null}
+                {turn === 'on' && !email ? (
+                    <p class="ws-callout">
+                        <Icon name="info" size={15} />
+                        <span>Email isn't set up on this server yet, so nothing goes out until it is.</span>
+                    </p>
+                ) : null}
                 {dirty ? <p class="ws-fine">Your unsaved changes are saved too.</p> : null}
                 <div class="dialog-actions">
                     <Button tone="plain" onClick={onClose}>
