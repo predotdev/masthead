@@ -1,5 +1,5 @@
 import type { AspectRatio, ModelKind, Post, StaffRole } from '@masthead/core';
-import { renderBody, renderSite, tagLinks } from '@masthead/render';
+import { postShareCard, readingMinutes, renderBody, renderSite, shareCardSite, tagLinks } from '@masthead/render';
 import { addIdeas, assist, draft, draftIdea, draftIdeaStream, draftStream, edit, editStream, image, imageStream, listIdeas, listModels, meta, metaStream, saveIdeaDraft, startVideo, unfurl, videoStatus } from './ai';
 import { autoTag, tagUntagged, wantsAutoTags } from './autotag';
 import { atLeast, clearSessionCookie, consumeLoginToken, createApiKey, createLoginToken, createSession, endSession, peekLoginToken, sessionCookie } from './auth';
@@ -289,6 +289,26 @@ export function adminRoutes(): Router<A> {
             if (file.path === want) return html(String(file.contents).replace('<head>', '<head><meta name="robots" content="noindex">'));
         }
         throw new HttpError(500, 'Preview failed to render.');
+    });
+
+    /**
+     * The share card a post without a cover gets, as the editor has it now: `title` is the title being
+     * typed. Drawn on request and never stored (the site's cards are drawn from what is published).
+     */
+    r.get('/posts/:id/card', async (_req, ctx, { id }) => {
+        const post = await getPost(ctx.db, id);
+        if (!post) throw new HttpError(404, 'Post not found.');
+        await canEdit(ctx, post);
+        const [site, tags, staff] = await Promise.all([siteSettings(ctx.env, ctx.db), listTags(ctx.db), listStaff(ctx.db)]);
+        const title = (ctx.url.searchParams.get('title') ?? '').trim().slice(0, 300);
+        const card = postShareCard(
+            { ...post, title: title || post.title, ogTitle: title ? null : post.ogTitle, publishedAt: post.publishedAt ?? now() },
+            post.tags.map(t => tags.find(x => x.id === t)).filter((t): t is (typeof tags)[number] => t?.visibility === 'public'),
+            post.authors.map(a => staff.find(s => s.id === a)).filter((a): a is (typeof staff)[number] => !!a),
+            readingMinutes(renderBody(post))
+        );
+        const { paintCard } = await import('./cards');
+        return new Response(await paintCard(ctx, shareCardSite(site), card), { headers: { 'content-type': 'image/png', 'cache-control': 'private, max-age=300' } });
     });
 
     // ---------------------------------------------------------- tags

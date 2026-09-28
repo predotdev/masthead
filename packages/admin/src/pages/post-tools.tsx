@@ -45,7 +45,7 @@ export function seoChecks(post: { title: string; slug: string; metaTitle: string
 }
 
 /** The checklist, and the card people will see when the post is shared. */
-export function SearchPanel(props: { draft: { title: string; slug: string; metaTitle: string | null; metaDescription: string | null; ogTitle?: string | null; ogDescription?: string | null; ogImage?: string | null; customExcerpt: string | null; featureImage: string | null; featureImageAlt: string | null; tags: string[] }; getHtml: () => string }) {
+export function SearchPanel(props: { draft: { id?: string; title: string; slug: string; metaTitle: string | null; metaDescription: string | null; ogTitle?: string | null; ogDescription?: string | null; ogImage?: string | null; customExcerpt: string | null; featureImage: string | null; featureImageAlt: string | null; tags: string[] }; getHtml: () => string }) {
     const [, setTick] = useState(0);
     // The body lives in the editor: re-check every few seconds while this panel is open.
     useEffect(() => {
@@ -56,6 +56,12 @@ export function SearchPanel(props: { draft: { title: string; slug: string; metaT
     const checks = seoChecks(d, props.getHtml());
     const passed = checks.filter(c => c.ok).length;
     const image = d.ogImage || d.featureImage;
+    // Without an image the post is shared with a drawn card: show it, redrawn once the title settles.
+    const [cardTitle, setCardTitle] = useState(d.ogTitle || d.title);
+    useEffect(() => {
+        const t = setTimeout(() => setCardTitle(d.ogTitle || d.title), 900);
+        return () => clearTimeout(t);
+    }, [d.ogTitle, d.title]);
     const host = (() => {
         try {
             return new URL(session.value?.site.url ?? location.href).host;
@@ -84,7 +90,13 @@ export function SearchPanel(props: { draft: { title: string; slug: string; metaT
             </ul>
             <span class="field-label">When shared</span>
             <div class="share-card">
-                {image ? <img src={image} alt="" /> : <div class="share-card-noimg">No image</div>}
+                {image ? (
+                    <img src={image} alt="" />
+                ) : d.id ? (
+                    <img src={`${base}admin/api/posts/${d.id}/card?title=${encodeURIComponent(cardTitle)}`} alt="The share card drawn for this post" />
+                ) : (
+                    <div class="share-card-noimg">No image</div>
+                )}
                 <div class="share-card-text">
                     <span class="share-card-host">{host}</span>
                     <strong>{d.ogTitle || d.metaTitle || d.title || 'Untitled'}</strong>

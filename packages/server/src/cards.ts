@@ -7,7 +7,7 @@
  * the Worker and loaded only here. Inter comes from a font CDN once and stays
  * in R2, as do the site's sky, logo and portraits once sized for the card.
  */
-import type { ShareCard, ShareCards } from '@masthead/core';
+import type { ShareCard, ShareCards, ShareCardSite } from '@masthead/core';
 import { shortHash } from '@masthead/render';
 import { initWasm, Resvg } from '@resvg/resvg-wasm';
 import resvgWasm from '@resvg/resvg-wasm/index_bg.wasm';
@@ -37,24 +37,28 @@ export async function drawCard(ctx: Ctx, key: string): Promise<Uint8Array | null
     const list = await cardList(ctx);
     const card = list?.cards[key];
     if (!list || !card) return null;
+    const png = await paintCard(ctx, list.site, card);
+    await ctx.env.BUCKET.put(`${MEDIA_PREFIX}content/cards/${key}.png`, png, { httpMetadata: { contentType: 'image/png' } });
+    return png;
+}
+
+/** One card as a PNG, stored nowhere (the editor's preview uses it as is). */
+export async function paintCard(ctx: Ctx, site: ShareCardSite, card: ShareCard): Promise<Uint8Array> {
     const clean: ShareCard = {
         ...card,
-        title: drawable(card.title) || drawable(list.site.title),
+        title: drawable(card.title) || drawable(site.title),
         eyebrow: card.eyebrow && drawable(card.eyebrow),
         text: card.text && drawable(card.text),
         meta: card.meta && drawable(card.meta)
     };
     const [sky, logo, portrait, fonts] = await Promise.all([
-        skyFor(ctx, list.site.backdrop ?? null),
-        list.site.logo ? picture(ctx, list.site.logo, { height: 192 }, 'image/png') : null,
+        skyFor(ctx, site.backdrop ?? null),
+        site.logo ? picture(ctx, site.logo, { height: 192 }, 'image/png') : null,
         card.image ? picture(ctx, card.image, { width: 264, height: 264, fit: 'cover' }, 'image/jpeg') : null,
-        fontsFor(ctx.env, [clean.title, clean.eyebrow, clean.text, clean.meta, list.site.wordmark, list.site.title]),
+        fontsFor(ctx.env, [clean.title, clean.eyebrow, clean.text, clean.meta, site.wordmark, site.title]),
         engine()
     ]);
-    const svg = await satori(cardTree(list.site, clean, { sky, logo, portrait }), { width: CARD_WIDTH, height: CARD_HEIGHT, fonts });
-    const png = paint(svg);
-    await ctx.env.BUCKET.put(`${MEDIA_PREFIX}content/cards/${key}.png`, png, { httpMetadata: { contentType: 'image/png' } });
-    return png;
+    return paint(await satori(cardTree(site, clean, { sky, logo, portrait }), { width: CARD_WIDTH, height: CARD_HEIGHT, fonts }));
 }
 
 function paint(svg: string): Uint8Array {

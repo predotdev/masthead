@@ -150,14 +150,7 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
     // shows (its title, the logo, the design), so link previews pick up a new title.
     const shareCards = options.features?.shareCards;
     const cards: Record<string, ShareCard> = {};
-    const cardSite: ShareCardSite = {
-        title: site.title,
-        wordmark: site.appearance?.hero?.title || null,
-        logo: absolute(site.logo),
-        backdrop: absolute(site.appearance?.backdrop?.image),
-        locale: site.locale,
-        url: site.url
-    };
+    const cardSite = shareCardSite(site);
     const cardSiteKey = JSON.stringify([shareCards?.version, cardSite]);
     const shareCard = (name: string, card: ShareCard) => {
         if (!shareCards) return null;
@@ -292,15 +285,7 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
         const description = f.summary || site.description;
         const coverSize = imageSizeOf(p.featureImage);
         const shareImage = p.ogImage || p.featureImage;
-        const card = shareImage
-            ? null
-            : shareCard(p.slug, {
-                  kind: 'post',
-                  title: p.ogTitle || p.title,
-                  eyebrow: p.type === 'post' ? tags[0]?.name : null,
-                  date: p.type === 'post' ? p.publishedAt : null,
-                  meta: p.type === 'post' ? [authors.map(a => a.name).join(', '), `${f.minutes} min read`].filter(Boolean).join(' · ') : null
-              });
+        const card = shareImage ? null : shareCard(p.slug, postShareCard(p, tags, authors, f.minutes));
         const view: PostView = {
             post: p,
             url: urls.post(p),
@@ -635,6 +620,25 @@ function headingIds(html: string): string {
         used.add(id);
         return `<h${level} id="${id}"${attrs ?? ''}>${inner}</h${level}>`;
     });
+}
+
+/** What every share card of a site shows: its lockup and sky, with absolute addresses. */
+export function shareCardSite(site: SiteSettings): ShareCardSite {
+    const origin = new URL(site.url).origin;
+    const absolute = (u: string | null | undefined) => (u && u.startsWith('/') && !u.startsWith('//') ? `${origin}${u}` : (u ?? null));
+    return { title: site.title, wordmark: site.appearance?.hero?.title || null, logo: absolute(site.logo), backdrop: absolute(site.appearance?.backdrop?.image), locale: site.locale, url: site.url };
+}
+
+/** A post's share card: its title, primary topic, date and byline (a page shows only its title). */
+export function postShareCard(p: Post, tags: Tag[], authors: Author[], minutes: number): ShareCard {
+    const post = p.type === 'post';
+    return {
+        kind: 'post',
+        title: p.ogTitle || p.title,
+        eyebrow: post ? tags[0]?.name : null,
+        date: post ? p.publishedAt : null,
+        meta: post ? [authors.map(a => a.name).join(', '), `${minutes} min read`].filter(Boolean).join(' · ') : null
+    };
 }
 
 /** Changes whenever the theme's stylesheet or files change, so their URLs can be cached for good. */
