@@ -809,3 +809,32 @@ img.avatar { box-shadow: 0 0 0 1px var(--line-2); }
 .history button { display: flex; flex-direction: column; gap: 1px; padding: 6px 8px; border-radius: 6px; font-size: 13px; }
 .history button:hover { background: var(--hover); }
 .revision-view { max-height: 60vh; overflow-y: auto; font-size: 15px; line-height: 1.65; }
+
+/* ------------------------------------------------------------------ AI streaming
+   Text that is still being written, the Stop button, and progress for images and video. */
+.ai-caret { display: inline-block; width: 2px; height: 1.1em; margin-left: 2px; vertical-align: -0.2em; border-radius: 1px; background: var(--ai); animation: ai-caret 1.05s steps(1, end) infinite; }
+@keyframes ai-caret { 50% { opacity: 0; } }
+.ai-working { display: inline-flex; align-items: center; gap: 7px; min-width: 0; color: var(--muted); font-size: 12.5px; white-space: nowrap; }
+.ai-working .spinner { width: 10px; height: 10px; flex: none; color: var(--ai); }
+.ai-elapsed { color: var(--faint); font-variant-numeric: tabular-nums; }
+.btn.ai-stop { color: var(--ai); border-color: color-mix(in srgb, var(--ai) 45%, var(--line-2)); background: var(--ai-bg); }
+.btn.ai-stop:hover:not(:disabled) { background: color-mix(in srgb, var(--ai) 16%, var(--bg)); }
+.ai-stop-icon { width: 8px; height: 8px; border-radius: 1.5px; background: currentColor; }
+.ai-card-head .ai-stop { padding: 3px 10px; font-size: 12.5px; }
+.ai-note { margin: 8px 16px 0; color: var(--muted); font-size: 12.5px; }
+.ai-credits { margin-right: auto; color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; }
+.dialog-actions .ai-working { margin-right: auto; }
+.turn-note { margin: 0; color: var(--muted); font-size: 12px; }
+.turn-note.error { color: var(--red); }
+.ai-draft { display: flex; flex-direction: column; gap: 10px; }
+.ai-draft .ai-note, .ai-draft .ai-sources { margin: 0; padding: 0; }
+.ai-draft-title { margin: 4px 0 0; font-size: 24px; line-height: 1.2; letter-spacing: -0.02em; }
+.ai-draft-body { max-height: 56vh; overflow-y: auto; font-size: 15px; line-height: 1.65; }
+.ai-draft-plain { white-space: pre-wrap; }
+.media-working { position: relative; width: 100%; align-self: stretch; display: flex; align-items: center; justify-content: center; }
+.media-working .media-dim { opacity: 0.4; filter: saturate(0.5); }
+.media-canvas { width: 100%; min-height: 200px; }
+.media-status { position: absolute; left: 10px; bottom: 10px; max-width: calc(100% - 20px); padding: 5px 11px; border-radius: 999px; background: color-mix(in srgb, var(--bg) 90%, transparent); box-shadow: 0 2px 12px rgba(0, 0, 0, 0.14); }
+.ai-shimmer { background: linear-gradient(100deg, var(--hover) 35%, color-mix(in srgb, var(--ai) 12%, var(--hover)) 50%, var(--hover) 65%); background-size: 300% 100%; animation: ai-shimmer 1.8s ease-in-out infinite; }
+@keyframes ai-shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
+@media (prefers-reduced-motion: reduce) { .ai-caret, .ai-shimmer { animation: none; } }
