@@ -737,6 +737,10 @@ img.avatar { box-shadow: 0 0 0 1px var(--line-2); }
 @media (min-width: 641px) {
   .posts-table .col-title { max-width: 0; width: 100%; }
 }
+/* Tablets and narrow windows: titles need the room more than author, views and emailed-to. */
+@media (min-width: 641px) and (max-width: 1180px) {
+  .posts-table .col-author, .posts-table .num { display: none; }
+}
 /* Phones: filters stack, dialogs rise from the bottom as sheets, and posts read as a list. */
 @media (max-width: 640px) {
   .page-head { margin-bottom: 20px; }
