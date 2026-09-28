@@ -253,7 +253,7 @@ export function newsletterEmail(o: {
         const width = known ? Math.min(known.width, COLUMN) : COLUMN;
         const height = known ? Math.round((width * known.height) / known.width) : 0;
         const caption = post.featureImageCaption ? emailInline(post.featureImageCaption, bodyOptions) : '';
-        cover = `<tr><td class="px" align="center" style="padding:32px 40px 0"><a href="${postUrl}" style="text-decoration:none"><img src="${esc(src)}" width="${width}"${height ? ` height="${height}"` : ''} alt="${esc(post.featureImageAlt || post.title)}" class="ln" style="display:block;width:100%;max-width:${width}px;height:auto;margin:0 auto;border:1px solid ${LINE};border-radius:12px;box-sizing:border-box"></a>${caption ? `<div class="fnt" style="padding-top:10px;font-size:13.5px;line-height:1.5;color:${FAINT};text-align:center">${caption}</div>` : ''}</td></tr>`;
+        cover = `<tr><td class="px" align="center" style="padding:32px 40px 0"><a href="${postUrl}" style="text-decoration:none"><img src="${esc(src)}" width="${width}"${height ? ` height="${height}"` : ''} alt="${esc(post.featureImageAlt || post.title)}" class="ln" style="display:block;width:100%;max-width:${known && known.width < COLUMN ? `${known.width}px` : '100%'};height:auto;margin:0 auto;border:1px solid ${LINE};border-radius:12px;box-sizing:border-box"></a>${caption ? `<div class="fnt" style="padding-top:10px;font-size:13.5px;line-height:1.5;color:${FAINT};text-align:center">${caption}</div>` : ''}</td></tr>`;
     }
 
     const body = `<tr><td class="px txt" style="padding:36px 40px 4px;font-size:17px;line-height:1.7;color:${TEXT};text-align:left;word-wrap:break-word">${emailBody(o.body, bodyOptions)}</td></tr>`;
