@@ -71,6 +71,15 @@ export interface Env {
     POSTHOG_API_HOST?: string;
     /** Your product's signup event, for "signups after reading" (it carries blog_ref_post_slug). Default auth_signup_success. */
     POSTHOG_SIGNUP_EVENT?: string;
+    /**
+     * Google Search Console in Analytics: a service account's JSON key, as is or base64. The
+     * Search Console API must be on in its project, and the account a user on GSC_PROPERTY.
+     */
+    GOOGLE_SERVICE_ACCOUNT?: string;
+    /** The Search Console property to read, e.g. "sc-domain:example.com" or "https://example.com/". */
+    GSC_PROPERTY?: string;
+    /** Development only: a stand-in for Google's token and Search Console endpoints on this machine, e.g. "http://localhost:8790/". Other hosts are ignored. */
+    GSC_API_BASE?: string;
 }
 
 export interface Principal {
