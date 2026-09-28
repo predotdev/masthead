@@ -8,6 +8,7 @@ import { Ideas } from './pages/ideas';
 import { Login, Verify } from './pages/login';
 import { Members } from './pages/members';
 import { Newsletters, SendDetail } from './pages/newsletters';
+import { NotificationsButton, useNotificationsPoll } from './pages/notifications';
 import { Posts, createPost } from './pages/posts';
 import { Settings } from './pages/settings';
 import { StaffPage } from './pages/staff';
@@ -263,6 +264,7 @@ function Sidebar({ me, head, rail }: { me: Me; head: string; rail: boolean }) {
                     <span class="brand-name">{me.site.title}</span>
                     <Icon name="arrowUpRight" size={13} class="brand-out" />
                 </a>
+                <NotificationsButton rail={rail} />
                 <ComposeButton rail={rail} />
             </div>
             <div class="nav">
@@ -303,6 +305,7 @@ function App() {
 
     const [, first, second] = route.value.split('/');
     const me = session.value;
+    useNotificationsPoll(!!me);
 
     // A new screen starts at the top, with the phone menu closed.
     useEffect(() => {
@@ -379,6 +382,7 @@ function App() {
                         Test mode
                     </span>
                 ) : null}
+                <NotificationsButton phone />
                 <button ref={menuButton} type="button" class="icon-btn menu-btn" aria-label={menuOpen ? 'Close menu' : 'Menu'} aria-expanded={menuOpen} aria-controls="sidebar" onClick={() => setMenuOpen(!menuOpen)}>
                     <Icon name={menuOpen ? 'x' : 'menu'} size={18} />
                 </button>

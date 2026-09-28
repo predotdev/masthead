@@ -1556,7 +1556,7 @@ button.issue-main { cursor: pointer; }
 }
 
 /* ======================================================================
-   Review and comments.
+   Review, comments and notifications.
    --wf-mark highlights commented text.
    ====================================================================== */
 :root {
@@ -1684,6 +1684,44 @@ button.cm-quote:hover { color: var(--fg-2); }
 .mention-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 .mention-role { margin-left: auto; color: var(--faint); font-size: var(--text-xs); }
 .mention-none { margin: 6px 0 0; color: var(--muted); font-size: var(--text-xs); }
+
+/* notifications */
+.notif { position: relative; flex: none; }
+.notif-btn { position: relative; }
+.sidebar-top .notif-btn { width: 32px; min-width: 32px; height: 32px; border-radius: var(--radius-md); color: var(--fg-2); }
+.notif-btn.on { background: var(--active); color: var(--fg); }
+.notif.phone .notif-btn { width: 40px; height: 40px; color: var(--fg); }
+.notif-badge { position: absolute; top: -3px; right: -5px; display: grid; place-items: center; min-width: 17px; height: 17px; padding: 0 4px; border-radius: var(--radius-full); background: var(--red); color: #ffffff; font-size: 10px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; box-shadow: 0 0 0 2px var(--shell); }
+.notif.phone .notif-badge { top: 3px; right: 1px; box-shadow: 0 0 0 2px var(--bg); }
+.notif-pop { position: fixed; z-index: 80; display: flex; flex-direction: column; width: 380px; max-height: min(580px, calc(100dvh - 24px)); border: 1px solid var(--line-2); border-radius: 14px; background: var(--elevated); box-shadow: var(--shadow-xl), var(--highlight); animation: pop-in 150ms var(--ease-out) backwards; }
+.notif.phone .notif-pop { top: calc(var(--topbar-h) + 6px); left: 8px; right: 8px; width: auto; max-height: calc(100dvh - var(--topbar-h) - 20px); }
+.notif-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px 10px; }
+.notif-title { font-size: var(--text-lg); font-weight: 600; letter-spacing: -0.01em; }
+.notif-all { color: var(--muted); font-size: var(--text-sm); }
+.notif-list { display: flex; flex-direction: column; gap: 2px; min-height: 0; padding: 0 6px 6px; overflow-y: auto; overscroll-behavior: contain; }
+.notif-item { display: grid; grid-template-columns: 30px minmax(0, 1fr) 8px; gap: 11px; align-items: start; padding: 10px 10px; border-radius: var(--radius-md); color: var(--fg); text-decoration: none; cursor: pointer; transition: background-color var(--fast); }
+.notif-item:hover { background: var(--hover); }
+.notif-item.unread { background: color-mix(in srgb, var(--blue) 5%, transparent); }
+.notif-item.unread:hover { background: color-mix(in srgb, var(--blue) 9%, transparent); }
+.notif-avatar { position: relative; display: block; width: 30px; height: 30px; }
+.notif-kind { position: absolute; right: -6px; bottom: -5px; display: grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: var(--muted); color: #ffffff; box-shadow: 0 0 0 2px var(--elevated); }
+.notif-kind.k-review_requested { background: var(--blue); }
+.notif-kind.k-review_approved { background: var(--green); }
+.notif-kind.k-review_changes { background: var(--red); }
+.notif-kind.k-mention { background: var(--wf-mark); color: #1a1300; }
+.notif-kind .icon { stroke-width: 2.6; }
+.notif-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.notif-text { font-size: var(--text-md); line-height: 1.4; color: var(--fg-2); overflow-wrap: anywhere; }
+.notif-text strong { color: var(--fg); font-weight: 600; }
+.notif-quote { display: -webkit-box; overflow: hidden; -webkit-line-clamp: 2; -webkit-box-orient: vertical; padding-left: 8px; border-left: 2px solid var(--line-2); color: var(--muted); font-size: var(--text-sm); line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.notif-when { color: var(--faint); font-size: 11.5px; }
+.notif-dot { width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; background: var(--blue); }
+.notif-empty { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 30px 24px 34px; text-align: center; }
+.notif-empty-icon { display: grid; place-items: center; width: 40px; height: 40px; margin-bottom: 8px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--card); color: var(--fg-2); box-shadow: var(--shadow-sm), var(--highlight); }
+.notif-empty-title { margin: 0; font-size: var(--text-base); font-weight: 600; }
+.notif-empty-text { max-width: 32ch; margin: 0; color: var(--muted); font-size: var(--text-sm); line-height: 1.5; }
+.notif-foot { display: flex; align-items: center; gap: 10px; padding: 11px 16px 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: var(--text-sm); line-height: 1.35; cursor: pointer; }
+.shell.editing .sidebar-top .notif { order: 2; }
 
 /* the posts list */
 .status-pills { display: inline-flex; align-items: center; gap: 6px; }
