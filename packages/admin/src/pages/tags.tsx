@@ -1,13 +1,35 @@
 import { useState } from 'preact/hooks';
-import { api, type Tag } from '../api';
+import { api, session, type Tag } from '../api';
 import { Button, Dialog, Empty, ErrorNote, Field, Loading, PageHead, Pill, errorToast, toast, useLoad } from '../ui';
 
 export function Tags() {
     const { data, error, loading, reload } = useLoad(() => api<Tag[]>('/tags'), []);
     const [editing, setEditing] = useState<Partial<Tag> | null>(null);
+    const [tagging, setTagging] = useState(false);
+    const role = session.value?.user.role;
     return (
         <div>
             <PageHead title="Tags">
+                {role === 'owner' || role === 'admin' || role === 'editor' ? (
+                    <Button
+                        busy={tagging}
+                        title="Published posts with no public tag get one to three picked from this list."
+                        onClick={async () => {
+                            setTagging(true);
+                            try {
+                                const r = await api<{ checked: number; tagged: number }>('/posts/auto-tag', { method: 'POST' });
+                                toast(r.checked ? `Picked tags for ${r.tagged} of ${r.checked} posts without a topic` : 'Every published post has a topic');
+                                reload();
+                            } catch (err) {
+                                errorToast(err);
+                            } finally {
+                                setTagging(false);
+                            }
+                        }}
+                    >
+                        Tag untagged posts
+                    </Button>
+                ) : null}
                 <Button tone="primary" onClick={() => setEditing({ name: '', visibility: 'public' })}>
                     New tag
                 </Button>

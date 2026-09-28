@@ -1,7 +1,7 @@
 import type { AspectRatio, ModelKind, Post, StaffRole } from '@masthead/core';
 import { renderBody, renderSite, tagLinks } from '@masthead/render';
 import { addIdeas, assist, draft, draftIdea, edit, image, listIdeas, listModels, meta, startVideo, unfurl, videoStatus } from './ai';
-import { autoTag, wantsAutoTags } from './autotag';
+import { autoTag, tagUntagged, wantsAutoTags } from './autotag';
 import { atLeast, clearSessionCookie, consumeLoginToken, createApiKey, createLoginToken, createSession, endSession, peekLoginToken, sessionCookie } from './auth';
 import {
     aiSettings,
@@ -216,6 +216,9 @@ export function adminRoutes(): Router<A> {
         const out = tagging ? ((await getPost(ctx.db, id)) ?? post) : post;
         return json({ post: pending ? { ...out, autoTagging: true } : out, publish: result });
     });
+
+    /** Topics for published posts that have none, e.g. from before tags were picked automatically. */
+    r.post('/posts/auto-tag', async (_req, ctx) => (atLeast(ctx.principal, 'editor'), json(await tagUntagged(ctx))));
 
     r.post('/posts/:id/unpublish', async (_req, ctx, { id }) => {
         const existing = await getPost(ctx.db, id);

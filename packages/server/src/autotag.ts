@@ -114,6 +114,23 @@ export async function autoTag(ctx: Ctx, postId: string, force = false): Promise<
     return ids;
 }
 
+/** Picks topics for published posts that have none (say, from before tags were automatic), then rebuilds once. */
+export async function tagUntagged(ctx: Ctx, limit = 30): Promise<{ checked: number; tagged: number }> {
+    const { results } = await ctx.db
+        .prepare(
+            "SELECT id FROM posts p WHERE type = 'post' AND status = 'published' AND NOT EXISTS (SELECT 1 FROM post_tags pt JOIN tags t ON t.id = pt.tag_id WHERE pt.post_id = p.id AND t.visibility = 'public') ORDER BY published_at DESC LIMIT ?"
+        )
+        .bind(limit)
+        .all<{ id: string }>();
+    let tagged = 0;
+    for (let i = 0; i < results.length; i += 4) {
+        const done = await Promise.all(results.slice(i, i + 4).map(r => autoTag(ctx, r.id, true).catch(() => null)));
+        tagged += done.filter(ids => ids?.length).length;
+    }
+    if (tagged) await publishSite(ctx.env, ctx.db, ctx.options);
+    return { checked: results.length, tagged };
+}
+
 /** SQL: the post (first parameter) has no public tag other than the ids that follow. */
 function publicTagsBesides(marks: string): string {
     return `NOT EXISTS (SELECT 1 FROM post_tags pt JOIN tags t ON t.id = pt.tag_id WHERE pt.post_id = ? AND t.visibility = 'public'${marks ? ` AND pt.tag_id NOT IN (${marks})` : ''})`;
