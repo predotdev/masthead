@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { predevAI } from '@masthead/ai-predev';
-import type { AspectRatio, MastheadConfig, ModelKind } from '@masthead/core';
+import type { AspectRatio, MastheadConfig, ModelKind, StreamEnd } from '@masthead/core';
 import { loadConfig, snapshotFile } from '@masthead/core/node';
 import { exportGhostAudience, importGhost } from '@masthead/import-ghost';
 import { buildSite } from '@masthead/render';
@@ -92,9 +92,26 @@ async function main() {
         case 'ask': {
             const prompt = rest.join(' ');
             if (!prompt) throw new Error('Usage: masthead ask <prompt> --model <id>');
-            const res = await ai.text({ model: str(flags.model), system: str(flags.system), messages: [{ role: 'user', content: prompt }] });
-            console.log(res.text);
-            console.error(`\n${res.model} · ${res.usage.inputTokens ?? '?'} in / ${res.usage.outputTokens ?? '?'} out · ${res.usage.charged ?? '?'} credits`);
+            const request = { model: str(flags.model), system: str(flags.system), messages: [{ role: 'user' as const, content: prompt }] };
+            if (!ai.stream) {
+                const res = await ai.text(request);
+                console.log(res.text);
+                console.error(`\n${res.model} · ${res.usage.inputTokens ?? '?'} in / ${res.usage.outputTokens ?? '?'} out · ${res.usage.charged ?? '?'} credits`);
+                return;
+            }
+            // The answer prints as it is written; its charge settles a moment after it ends.
+            const pieces = ai.stream(request)[Symbol.asyncIterator]();
+            let step = await pieces.next();
+            for (; !step.done; step = await pieces.next()) process.stdout.write(step.value);
+            process.stdout.write('\n');
+            const end = step.value as StreamEnd | undefined;
+            let charged = end?.usage.charged;
+            for (const wait of [1000, 1500, 2500]) {
+                if (charged != null || !ai.usage || !end?.usage.requestId) break;
+                await new Promise(r => setTimeout(r, wait));
+                charged = (await ai.usage(end.usage.requestId).catch(() => null))?.charged;
+            }
+            console.error(`\n${end?.model ?? '?'} · ${end?.usage.inputTokens ?? '?'} in / ${end?.usage.outputTokens ?? '?'} out · ${charged ?? '?'} credits`);
             return;
         }
         case 'image': {
