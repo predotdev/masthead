@@ -142,15 +142,15 @@ function footer(site: SiteSettings, origin: string, o: { unsubscribe?: string; p
         .filter(s => /^https?:\/\//.test(s.url))
         .map(s => `<a href="${esc(s.url)}" class="mut" style="color:${MUTED};text-decoration:none;font-weight:500">${esc(NETWORKS[s.network] ?? s.network)}</a>`)
         .join(dot);
-    const legal = (f.legal ?? []).map(l => `<a href="${esc(abs(l.url, origin))}" class="fnt" style="color:${FAINT};text-decoration:underline">${esc(l.label)}</a>`).join(dot);
+    const legal = (f.legal ?? []).map(l => `<a href="${esc(abs(l.url, origin))}" class="mut" style="color:${MUTED};text-decoration:underline">${esc(l.label)}</a>`).join(dot);
     const copyright = (f.copyright || `© {year} ${site.title}`).replace('{year}', String(new Date().getUTCFullYear()));
     const why = o.unsubscribe
-        ? `You're receiving this because you subscribed to ${esc(site.title)}.<br><a href="${o.unsubscribe}" class="fnt" style="color:${FAINT};text-decoration:underline">Unsubscribe</a>`
+        ? `You're receiving this because you subscribed to ${esc(site.title)}.<br><a href="${o.unsubscribe}" class="mut" style="color:${MUTED};text-decoration:underline">Unsubscribe</a>`
         : '';
     const lines = [why, o.postalAddress ? esc(o.postalAddress) : '', esc(copyright), legal].filter(Boolean).join('<br>');
     return `<tr><td class="ftr" align="center" style="padding:32px 32px 0;text-align:center">
 <div class="ink" style="font-size:15px;line-height:22px;font-weight:600;color:${INK}"><a href="${esc(site.url)}" class="ink" style="color:${INK};text-decoration:none">${esc(site.title)}</a></div>${tagline ? `<div class="mut" style="margin-top:2px;font-size:13.5px;line-height:20px;color:${MUTED}">${esc(tagline)}</div>` : ''}${social ? `<div style="margin-top:16px;font-size:13.5px;line-height:20px">${social}</div>` : ''}
-<div class="fnt" style="margin-top:22px;font-size:12.5px;line-height:20px;color:${FAINT}">${lines}</div>
+<div class="mut" style="margin-top:22px;font-size:12.5px;line-height:20px;color:${MUTED}">${lines}</div>
 </td></tr>`;
 }
 
