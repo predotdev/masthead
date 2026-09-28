@@ -42,11 +42,11 @@ Open `<SITE_URL>admin/`, choose **Use the owner token**, and give your name and 
 
 ## 3. Email
 
-1. Verify your sending domain in Resend, and set `EMAIL_FROM` (for example `Acme <news@acme.com>`) and `POSTAL_ADDRESS` in `wrangler.toml`.
+1. Verify your sending domain in Resend, and set `EMAIL_FROM` (for example `Acme <news@acme.example>`) and `POSTAL_ADDRESS` in `wrangler.toml`.
 2. `bunx wrangler secret put RESEND_API_KEY`
 3. In Resend, add a webhook to `<SITE_URL>api/webhooks/email` for delivery, open, click, bounce and complaint events, then `bunx wrangler secret put RESEND_WEBHOOK_SECRET` with its signing secret.
 
-While `EMAIL_TEST_MODE` is `"true"`, newsletters reach only your team: staff plus anyone matching `EMAIL_TEST_ALLOW` (for example `@acme.com`). Sign-in links and invites always work.
+While `EMAIL_TEST_MODE` is `"true"`, newsletters reach only your team: staff plus anyone matching `EMAIL_TEST_ALLOW` (for example `@acme.example`). Sign-in links and invites always work.
 
 Then check the whole deployment. The smoke test reads pages, feeds and media, signs in, writes, schedules and publishes a post, signs up and confirms a subscriber, sends a test-mode newsletter to that one throwaway address, unsubscribes it with one click, and removes everything it created:
 

@@ -29,13 +29,13 @@ Masthead reads two kinds of configuration:
 
 | Name | Kind | What it does |
 | --- | --- | --- |
-| `EMAIL_FROM` | var | The sender, e.g. `Acme <news@acme.com>`, on a domain your email provider has verified. Wins over the sender in Settings. |
+| `EMAIL_FROM` | var | The sender, e.g. `Acme <news@acme.example>`, on a domain your email provider has verified. Wins over the sender in Settings. |
 | `EMAIL_REPLY_TO` | var | Reply-to address, when Settings has none. |
 | `POSTAL_ADDRESS` | var | The postal address in every newsletter footer, which US law requires. Settings can override it. |
 | `RESEND_API_KEY` | secret | Sending through Resend. Without an email connector, nothing is sent. |
 | `RESEND_WEBHOOK_SECRET` | secret | Verifies delivery, open, click, bounce and complaint events posted to `<blog>/api/webhooks/email`. |
 | `EMAIL_TEST_MODE` | var | `"true"`: email reaches only the team (the `EMAIL_TEST_ALLOW` entries, staff, and the provider's test addresses). Newsletters go only to the team members of a segment; confirmations and test sends to anyone else are not sent. Staff sign-in and invites work as usual. Keep it on until you switch traffic. |
-| `EMAIL_TEST_ALLOW` | var | The team in test mode: comma-separated addresses or `@domains`, e.g. `@acme.com`. |
+| `EMAIL_TEST_ALLOW` | var | The team in test mode: comma-separated addresses or `@domains`, e.g. `@acme.example`. |
 | `EMAIL_TEST_ADDRESS` | var | Where anything that slips past the team check goes in test mode. Default `delivered@resend.dev`. |
 
 ### AI
@@ -86,34 +86,34 @@ It saves `site`, `newsletter` and `ai`, adds `memory` entries the server does no
   "site": {
     "title": "Acme",
     "description": "Product news, engineering notes and guides from the team building Acme.",
-    "logo": "https://acme.com/logo.svg",
-    "icon": "https://acme.com/favicon.png",
-    "shareImage": "https://acme.com/blog-card.png",
+    "logo": "https://acme.example/logo.svg",
+    "icon": "https://acme.example/favicon.png",
+    "shareImage": "https://acme.example/blog-card.png",
     "accentColor": "#6d5efc",
     "navigation": [
-      { "label": "Product", "url": "https://acme.com/", "items": [
-        { "label": "Flow", "url": "https://acme.com/flow", "description": "Plan, ship and review", "icon": "workflow" }
+      { "label": "Product", "url": "https://acme.example/", "items": [
+        { "label": "Flow", "url": "https://acme.example/flow", "description": "Plan, ship and review", "icon": "workflow" }
       ] },
-      { "label": "Docs", "url": "https://acme.com/docs" },
+      { "label": "Docs", "url": "https://acme.example/docs" },
       { "label": "About", "url": "/about/" }
     ],
     "footer": {
       "tagline": "The calm way to ship software.",
       "columns": [{ "title": "Company", "links": [{ "label": "About", "url": "/about/" }] }],
-      "legal": [{ "label": "Privacy", "url": "https://acme.com/privacy" }],
-      "social": [{ "network": "github", "url": "https://github.com/acme" }]
+      "legal": [{ "label": "Privacy", "url": "https://acme.example/privacy" }],
+      "social": [{ "network": "github", "url": "https://github.com/example" }]
     },
     "appearance": {
       "colorScheme": "system",
       "logoText": true,
-      "headerCta": { "label": "Try Acme", "url": "https://acme.com/signup" },
+      "headerCta": { "label": "Try Acme", "url": "https://acme.example/signup" },
       "subscribe": { "title": "Get the Acme Journal", "text": "New posts by email." }
     }
   },
-  "newsletter": { "senderName": "Acme Journal", "replyTo": "hello@acme.com" },
+  "newsletter": { "senderName": "Acme Journal", "replyTo": "hello@acme.example" },
   "ai": {
     "voice": "Plain, specific and warm. Short sentences. Numbers when we have them.",
-    "knowledgeSources": ["https://acme.com/llms.txt", "https://acme.com/changelog.json"]
+    "knowledgeSources": ["https://acme.example/llms.txt", "https://acme.example/changelog.json"]
   },
   "memory": ["Acme Flow is available on every plan, including Free."]
 }
