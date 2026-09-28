@@ -38,12 +38,18 @@ function srcset(url: string | null | undefined, ctx: ThemeContext): string {
     return ` srcset="${[600, 1000, 2000].map(w => `${esc(`${base}size/w${w}/${rest}`)} ${w}w`).join(', ')}"`;
 }
 
+/** width and height attributes for the logo drawn `height` pixels tall, so the page reserves its space. */
+function logoDims(ctx: ThemeContext, height: number): string {
+    const s = ctx.site.logoSize;
+    return s && s.height > 0 ? ` width="${Math.round((height * s.width) / s.height)}" height="${height}"` : ` height="${height}"`;
+}
+
 function brand(ctx: ThemeContext, cls = 'brand'): string {
     const s = ctx.site;
     const a = s.appearance ?? {};
     const to = esc(href(a.brandUrl || ctx.basePath, ctx.basePath));
     if (!s.logo) return `<a class="${cls}" href="${to}">${esc(s.title)}</a>`;
-    const img = `<img class="${a.invertLogoInLight ? 'brand-mark' : ''}" src="${esc(s.logo)}" alt="${a.logoText ? '' : esc(s.title)}" height="24">`;
+    const img = `<img class="${a.invertLogoInLight ? 'brand-mark' : ''}" src="${esc(s.logo)}" alt="${a.logoText ? '' : esc(s.title)}"${logoDims(ctx, 24)}>`;
     return `<a class="${cls}" href="${to}"${a.logoText ? '' : ` aria-label="${esc(s.title)}"`}>${img}${a.logoText ? `<span>${esc(s.title)}</span>` : ''}</a>`;
 }
 
@@ -106,6 +112,14 @@ function header(ctx: ThemeContext): string {
     </div>
   </div>
 </header>`;
+}
+
+/** The night sky is the first thing painted: fetch its image early (the phone one on narrow screens). */
+function backdropPreload(ctx: ThemeContext): string {
+    const b = ctx.site.appearance?.backdrop;
+    if (!b?.image) return '';
+    if (!b.mobileImage) return `<link rel="preload" as="image" href="${esc(b.image)}" fetchpriority="high">`;
+    return `<link rel="preload" as="image" href="${esc(b.image)}" media="(min-width: 768px)" fetchpriority="high">\n<link rel="preload" as="image" href="${esc(b.mobileImage)}" media="(max-width: 767px)" fetchpriority="high">`;
 }
 
 /** The night-sky layer at the top of every page: an image and a canvas of sparkles (drawn by masthead.js). */
@@ -186,7 +200,7 @@ function masthead(ctx: ThemeContext): string {
     const s = ctx.site;
     const h = s.appearance?.hero;
     if (!h?.title) return `<h1 class="sr-only">${esc(s.title)}</h1>`;
-    const mark = s.logo ? `<img class="masthead-mark${s.appearance?.invertLogoInLight ? ' brand-mark' : ''}" src="${esc(s.logo)}" alt="" height="96">` : '';
+    const mark = s.logo ? `<img class="masthead-mark${s.appearance?.invertLogoInLight ? ' brand-mark' : ''}" src="${esc(s.logo)}" alt=""${logoDims(ctx, 96)}>` : '';
     const named = !!s.title && h.title.toLowerCase().startsWith(`${s.title.toLowerCase()} `);
     const title = named
         ? `<span class="masthead-name">${esc(h.title.slice(0, s.title.length))}</span> <span class="masthead-kind">${esc(h.title.slice(s.title.length + 1))}</span>`
@@ -275,6 +289,7 @@ export const defaultTheme: Theme = {
 <script>(function(d){var t;try{t=localStorage.getItem('mh-theme')}catch(e){}if(t!=='light'&&t!=='dark'){t=d.getAttribute('data-default-theme');if(t!=='light'&&t!=='dark')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'}d.setAttribute('data-theme',t);d.classList.add('js')})(document.documentElement)</script>
 ${s.icon ? `<link rel="icon" href="${esc(s.icon)}">` : ''}
 <link rel="stylesheet" href="${esc(ctx.cssHref)}">
+${backdropPreload(ctx)}
 <script src="${esc(ctx.assetsHref)}masthead.js?v=${esc(ctx.assetsVersion)}" defer></script>
 ${ctx.analytics?.posthog ? `<script type="application/json" id="mh-analytics">${jsonScript(ctx.analytics)}</script>` : ''}
 ${meta.head}

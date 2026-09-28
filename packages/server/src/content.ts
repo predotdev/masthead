@@ -1,6 +1,7 @@
 import type { Author, NewsletterSettings, Post, SiteSettings, Snapshot, StaffRecord, StaffRole, Tag } from '@masthead/core';
 import { batched } from './db';
 import type { Env } from './env';
+import { imageSize } from './images';
 import { HttpError, newId, now, slugify } from './util';
 
 // ------------------------------------------------------------------ settings
@@ -438,6 +439,7 @@ export async function loadSnapshot(env: Env, db: D1Database, options: { bodies?:
     const { results: sized } = await db.prepare('SELECT key, width, height FROM media WHERE width > 0 AND height > 0').all<{ key: string; width: number; height: number }>();
     const base = new URL(env.SITE_URL.endsWith('/') ? env.SITE_URL : `${env.SITE_URL}/`).pathname;
     const imageSizes = Object.fromEntries(sized.map(r => [`${base}${r.key}`, { width: r.width, height: r.height }]));
+    if (site.logo) site.logoSize = await logoSize(site.logo, env.SITE_URL, imageSizes);
     return {
         format: 'masthead.snapshot/1',
         exportedAt: now(),
@@ -463,3 +465,21 @@ export async function loadBodies(db: D1Database, ids: string[]): Promise<Map<str
 }
 
 export { batched };
+
+const remoteLogoSizes = new Map<string, { width: number; height: number } | null>();
+
+/** A stored logo's recorded size, or a remote one's read from its header (once per isolate). */
+async function logoSize(url: string, siteUrl: string, known: Record<string, { width: number; height: number }>): Promise<{ width: number; height: number } | null> {
+    const abs = new URL(url, siteUrl);
+    const local = known[abs.origin === new URL(siteUrl).origin ? abs.pathname : url];
+    if (local) return local;
+    if (remoteLogoSizes.has(abs.href)) return remoteLogoSizes.get(abs.href) ?? null;
+    try {
+        const res = await fetch(abs.href, { signal: AbortSignal.timeout(3000) });
+        const size = res.ok ? imageSize(new Uint8Array(await res.arrayBuffer())) : null;
+        remoteLogoSizes.set(abs.href, size);
+        return size;
+    } catch {
+        return null;
+    }
+}

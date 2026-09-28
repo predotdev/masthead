@@ -157,6 +157,8 @@ export interface SiteSettings {
     ogDescription?: string | null;
     locale: string;
     logo?: string | null;
+    /** Filled in by the server: the logo's size in pixels, so pages can reserve its space. */
+    logoSize?: { width: number; height: number } | null;
     icon?: string | null;
     /** Default share image for pages without their own. */
     shareImage?: string | null;

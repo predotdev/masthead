@@ -10,7 +10,7 @@ export const css = `:root {
   --fg: #0a0a0a;
   --fg-2: rgba(10, 10, 10, 0.86);
   --muted: rgba(10, 10, 10, 0.6);
-  --faint: rgba(10, 10, 10, 0.44);
+  --faint: rgba(10, 10, 10, 0.56);
   --line: rgba(10, 10, 10, 0.08);
   --line-2: rgba(10, 10, 10, 0.14);
   --btn: #0a0a0a;
@@ -42,7 +42,7 @@ export const css = `:root {
   --fg: #fafafa;
   --fg-2: rgba(250, 250, 250, 0.88);
   --muted: rgba(250, 250, 250, 0.6);
-  --faint: rgba(250, 250, 250, 0.42);
+  --faint: rgba(250, 250, 250, 0.5);
   --line: rgba(255, 255, 255, 0.09);
   --line-2: rgba(255, 255, 255, 0.16);
   --btn: #fafafa;
@@ -64,7 +64,7 @@ export const css = `:root {
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) {
     --bg: #000000; --panel: #0a0a0b; --surface: #0b0b0c; --surface-2: #141416; --fg: #fafafa; --fg-2: rgba(250, 250, 250, 0.88);
-    --muted: rgba(250, 250, 250, 0.6); --faint: rgba(250, 250, 250, 0.42); --line: rgba(255, 255, 255, 0.09); --line-2: rgba(255, 255, 255, 0.16);
+    --muted: rgba(250, 250, 250, 0.6); --faint: rgba(250, 250, 250, 0.5); --line: rgba(255, 255, 255, 0.09); --line-2: rgba(255, 255, 255, 0.16);
     --btn: #fafafa; --btn-ink: #000000; --pill: linear-gradient(to top, rgba(250, 250, 250, 0.05), rgba(250, 250, 250, 0.1));
     --header: rgba(0, 0, 0, 0.78); --code: #0e0e10; --callout: rgba(59, 130, 246, 0.1); --callout-line: rgba(96, 165, 250, 0.3);
     --glow: radial-gradient(60rem 28rem at 50% -8rem, rgba(255, 255, 255, 0.09), transparent 70%);
@@ -243,7 +243,7 @@ a.eyebrow:hover { color: var(--fg); }
 .ranked-image { flex: none; width: 88px; aspect-ratio: 16 / 9; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); background: var(--surface); }
 .ranked-image img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .topic-count { margin-left: 7px; font-size: 11.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
-.topic[aria-current="page"] .topic-count { color: inherit; opacity: 0.55; }
+.topic[aria-current="page"] .topic-count { color: inherit; opacity: 0.75; }
 .cards > li[hidden] { display: none; }
 .filter-more { margin: 28px 0 0; text-align: center; }
 @media (max-width: 960px) { .ranked { grid-template-columns: 1fr; } }

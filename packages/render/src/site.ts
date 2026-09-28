@@ -112,6 +112,8 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
     };
     // Share cards, structured data, feeds and sitemaps need absolute image URLs.
     const absolute = (u: string | null | undefined) => (u && u.startsWith('/') && !u.startsWith('//') ? `${base.origin}${u}` : (u ?? null));
+    // Stored images' sizes, for img width/height and og:image:width/height.
+    const imageSizeOf = (u: string | null | undefined) => (u ? (snapshot.imageSizes?.[u.startsWith(base.origin) ? u.slice(base.origin.length) : u] ?? null) : null);
     const metaSite: SiteSettings = {
         ...site,
         logo: absolute(site.logo),
@@ -150,7 +152,7 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
             const loaded = bodies ? await bodies.load(chunk.map(p => p.id)) : null;
             for (const p of chunk) {
                 const full = loaded ? { ...p, ...(loaded.get(p.id) ?? {}) } : p;
-                yield { post: full, html: headingIds(tagLinks(renderBody(full), site.url, options.render?.linkTag)) };
+                yield { post: full, html: headingIds(demoteHeadings(tagLinks(renderBody(full), site.url, options.render?.linkTag))) };
             }
         }
     };
@@ -218,8 +220,7 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
         const tags = publicTags(p);
         const authors = postAuthors(p);
         const description = f.summary || site.description;
-        const size = (u: string | null | undefined) => (u ? (snapshot.imageSizes?.[u.startsWith(base.origin) ? u.slice(base.origin.length) : u] ?? null) : null);
-        const coverSize = size(p.featureImage);
+        const coverSize = imageSizeOf(p.featureImage);
         const shareImage = p.ogImage || p.featureImage;
         const view: PostView = {
             post: p,
@@ -265,7 +266,7 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
                         type: p.type === 'post' ? 'article' : 'website',
                         image: absolute(shareImage),
                         imageAlt: p.featureImageAlt,
-                        imageSize: size(shareImage),
+                        imageSize: imageSizeOf(shareImage),
                         authors: p.type === 'post' ? authors.map(a => a.name) : undefined,
                         publishedAt: p.type === 'post' ? p.publishedAt : null,
                         updatedAt: p.type === 'post' ? p.updatedAt : null,
@@ -334,6 +335,7 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
                 author: extra.author,
                 highlights: n === 1 ? extra.highlights : undefined
             };
+            const listImage = extra.image ?? site.shareImage ?? items[0]?.featureImage ?? null;
             yield html(path, {
                 title,
                 description,
@@ -344,7 +346,8 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
                     description: (n === 1 && extra.shareDescription) || description,
                     canonical: abs(path),
                     type: extra.type,
-                    image: absolute(extra.image ?? site.shareImage ?? items[0]?.featureImage ?? null),
+                    image: absolute(listImage),
+                    imageSize: imageSizeOf(listImage),
                     rss: abs(urls.rss),
                     prev: prevUrl && abs(prevUrl),
                     next: nextUrl && abs(nextUrl),
@@ -517,6 +520,15 @@ function own(s: string): string {
 }
 
 /** Section links: every h2 to h4 without an id gets one from its text, so readers and AI answers can cite a section. */
+/**
+ * The post's title is the page's only h1: a body that uses h1 for its sections moves every
+ * heading down one level (h1 to h2, h2 to h3...), keeping its outline.
+ */
+function demoteHeadings(html: string): string {
+    if (!/<h1[\s>]/i.test(html)) return html;
+    return html.replace(/<(\/?)h([1-5])(?=[\s>])/gi, (_, close: string, level: string) => `<${close}h${Number(level) + 1}`);
+}
+
 function headingIds(html: string): string {
     const used = new Set<string>();
     for (const m of html.matchAll(/\sid="([^"]+)"/g)) used.add(m[1]);
