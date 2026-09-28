@@ -259,6 +259,11 @@ function PostEditor({ initial, tags: allTags, staff }: { initial: Post; tags: Ta
                 </Button>
                 {live ? (
                     <>
+                        {post.type === 'post' ? (
+                            <a class="btn ghost" href={`#/analytics/post/${post.id}`} onClick={e => dirty && !window.confirm('Leave without updating? Your changes are not on the site yet.') && e.preventDefault()}>
+                                Analytics
+                            </a>
+                        ) : null}
                         {post.type === 'post' && role !== 'author' && role !== 'contributor' ? <Button onClick={() => setModal({ kind: 'send' })}>Send as newsletter</Button> : null}
                         <Button tone="primary" busy={saving === 'saving'} disabled={!dirty} onClick={() => save(true)}>
                             Update

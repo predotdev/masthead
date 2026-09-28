@@ -73,6 +73,11 @@ export function Posts({ type }: { type: 'post' | 'page' }) {
                                 <th>Date</th>
                                 {views ? <th class="num">Views, 30 days</th> : null}
                                 {type === 'post' ? <th class="num">Emailed to</th> : null}
+                                {type === 'post' ? (
+                                    <th>
+                                        <span class="an-sr">Analytics</span>
+                                    </th>
+                                ) : null}
                             </tr>
                         </thead>
                         <tbody>
@@ -91,6 +96,17 @@ export function Posts({ type }: { type: 'post' | 'page' }) {
                                     <td class="muted nowrap">{fmtDate(p.publishedAt ?? p.updatedAt)}</td>
                                     {views ? <td class="num">{p.status === 'published' ? fmtNum(views.get(p.slug) ?? 0) : ''}</td> : null}
                                     {type === 'post' ? <td class="num muted">{p.newsletter ? fmtNum(p.newsletter.recipients) : ''}</td> : null}
+                                    {type === 'post' ? (
+                                        <td class="num">
+                                            {p.status === 'published' ? (
+                                                <a class="an-stats-link" href={`#/analytics/post/${p.id}`} title="Analytics" aria-label={`Analytics for ${p.title || 'Untitled'}`} onClick={e => e.stopPropagation()}>
+                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                                        <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
+                                                    </svg>
+                                                </a>
+                                            ) : null}
+                                        </td>
+                                    ) : null}
                                 </tr>
                             ))}
                         </tbody>
