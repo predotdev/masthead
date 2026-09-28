@@ -53,6 +53,8 @@ EMAIL_TEST_MODE = "true"
 # Analytics (optional): your PostHog project key (public) and host.
 # POSTHOG_KEY = "phc_..."
 # POSTHOG_HOST = "https://us.i.posthog.com"
+# Search Console in Analytics (optional): the property, as Search Console names it.
+# GSC_PROPERTY = "sc-domain:example.com"
 # Tell search engines about changes on publish, once SITE_URL serves this blog.
 # INDEXNOW = "true"
 
@@ -69,3 +71,4 @@ EMAIL_TEST_MODE = "true"
 #   PREDEV_API_KEY    AI (text, images, video, embeddings)
 #   DENYLIST          optional: names post ideas never mention, newline or comma separated
 #   POSTHOG_PERSONAL_API_KEY  optional: the admin's Analytics page (set POSTHOG_PROJECT_ID too)
+#   GOOGLE_SERVICE_ACCOUNT    optional: Search Console in Analytics, a service account's JSON key (set GSC_PROPERTY too)

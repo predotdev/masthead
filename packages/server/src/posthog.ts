@@ -136,7 +136,8 @@ const memory = new Map<string, { at: number; data: unknown }>();
 /** When this isolate last started refreshing a view in the background, so a burst of page loads starts one. */
 const refreshing = new Map<string, number>();
 
-async function cached<T>(ctx: Ctx, key: string, force: boolean, compute: () => Promise<T>): Promise<Cached<T>> {
+/** Kept in memory and D1, fresh for `freshMs` (other sources than PostHog pass their own), then served while a new answer loads. */
+export async function cached<T>(ctx: Ctx, key: string, force: boolean, compute: () => Promise<T>, freshMs = FRESH_MS): Promise<Cached<T>> {
     let hit = memory.get(key) as { at: number; data: T } | undefined;
     if (!hit) {
         const row = await ctx.db.prepare('SELECT data, fetched_at FROM analytics_cache WHERE key = ?').bind(key).first<{ data: string; fetched_at: string }>();
@@ -155,7 +156,7 @@ async function cached<T>(ctx: Ctx, key: string, force: boolean, compute: () => P
         ]);
         return { status: 'ok' as const, data, updatedAt: new Date(at).toISOString(), stale: false };
     };
-    if (hit && age < (force ? REFRESH_MS : FRESH_MS)) return { status: 'ok', data: hit.data, updatedAt: new Date(hit.at).toISOString(), stale: false };
+    if (hit && age < (force ? REFRESH_MS : freshMs)) return { status: 'ok', data: hit.data, updatedAt: new Date(hit.at).toISOString(), stale: false };
     if (hit && age < KEEP_MS && !force) {
         if (Date.now() - (refreshing.get(key) ?? 0) > 30_000) {
             refreshing.set(key, Date.now());

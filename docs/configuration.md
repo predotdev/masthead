@@ -64,6 +64,7 @@ Masthead reads two kinds of configuration:
 | `POSTHOG_HOST` | var | Where events go. Default `https://us.i.posthog.com`; use `https://eu.i.posthog.com` or your own proxy. |
 | `POSTHOG_TRACK_PREVIEW` | var | `"true"`: also track previews (other hosts, and the site at `PREVIEW_PATH`), tagged `environment=preview`. |
 | `POSTHOG_PERSONAL_API_KEY`, `POSTHOG_PROJECT_ID` | secret, var | Traffic in the admin's Analytics: a personal API key with query read access to that project. Newsletter and growth numbers need neither. |
+| `GOOGLE_SERVICE_ACCOUNT`, `GSC_PROPERTY` | secret, var | Search in the admin's Analytics: a Google Cloud service account's JSON key (as is, or base64) with the Search Console API turned on in its project, added as a Restricted user on the property; and the property to read, e.g. `sc-domain:example.com` or `https://example.com/`. Shows searches, pages, positions and ranked opportunities; the Search tab explains any missing step. |
 | `POSTHOG_API_HOST` | var | Where those queries go when `POSTHOG_HOST` is a proxy. Default: the app host for `POSTHOG_HOST`, such as `https://us.posthog.com`. |
 | `POSTHOG_SIGNUP_EVENT` | var | Your product's signup event, for "signups after reading". It carries the `blog_ref_post_slug` property the blog registers. Default `auth_signup_success`. |
 

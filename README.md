@@ -68,7 +68,7 @@ Email and AI are one secret each (`RESEND_API_KEY`, `PREDEV_API_KEY`) when you w
 
 ![Light and dark on a phone](docs/screenshots/phones.webp)
 
-**Analytics from day one.** Opens, clicks and unsubscribes for every send, subscribers over time and where each signup came from, straight from D1. Connect PostHog and the same page adds visitors, sources, read-through and product signups after reading.
+**Analytics from day one.** Opens, clicks and unsubscribes for every send, subscribers over time and where each signup came from, straight from D1. Connect PostHog and the same page adds visitors, sources, read-through and product signups after reading; connect Search Console and it adds the searches behind every post, with the opportunities worth acting on.
 
 **A studio that suggests what to write.** Point it at your repositories, a changelog or any JSON feed. It proposes posts grounded in real work, keeps names on your denylist out of every prompt and draft, and drafts one in your house style with a click.
 

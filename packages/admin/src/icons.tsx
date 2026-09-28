@@ -272,7 +272,20 @@ const PATHS = {
             <path d="m8.59 13.51 6.83 3.98" />
             <path d="m15.41 6.51-6.82 3.98" />
         </>
-    )
+    ),
+    trendingUp: (
+        <>
+            <path d="M16 7h6v6" />
+            <path d="m22 7-8.5 8.5-5-5L2 17" />
+        </>
+    ),
+    trendingDown: (
+        <>
+            <path d="M16 17h6v-6" />
+            <path d="m22 17-8.5-8.5-5 5L2 7" />
+        </>
+    ),
+    pointer: <path d="M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z" />,
 };
 
 export type IconName = keyof typeof PATHS;

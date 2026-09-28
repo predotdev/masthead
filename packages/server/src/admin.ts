@@ -28,6 +28,7 @@ import type { Ctx, Principal } from './env';
 import { importAudience, importContent, importMedia, rewriteUrls } from './importer';
 import { envDenylist, ideaSettings, ideaStatus, refreshIdeas, saveIdeaSettings } from './ideas';
 import { postWebStats, posthogSetup, webStats } from './posthog';
+import { markIdeas, postRefs, postSearchStats, searchFailure, searchReady, searchSetup, searchStats } from './search-console';
 import { emailReport, firstActivity, makeRange, membersReport, postReport, postsBySlug, rangeKey } from './stats';
 import { backfillImages, storeImage } from './images';
 import { getRevision, keepRevision, listRevisions } from './revisions';
@@ -639,6 +640,36 @@ export function adminRoutes(): Router<A> {
             return json({ ...(await postWebStats(ctx, post.slug, range, refresh(ctx))), setup, range });
         } catch (err: any) {
             return json({ status: 'error', setup, range, error: err?.message ?? 'PostHog did not answer.' });
+        }
+    });
+
+    // Google Search Console: off (not set up), blocked (Google refuses, with the reason), error (try again later) or ok.
+    // Titles and search snippets are read fresh, so a rewrite shows at once; the numbers come from the cache.
+    r.get('/analytics/search', async (_req, ctx) => {
+        me(ctx);
+        const setup = searchSetup(ctx.env);
+        if (!searchReady(setup)) return json({ status: 'off', setup });
+        try {
+            const res = await searchStats(ctx, rangeKey(ctx.url.searchParams.get('range')), refresh(ctx));
+            const slugs = [...res.data.pages.map(p => p.slug), ...res.data.opportunities.map(o => o.slug ?? o.best?.slug)].filter((x): x is string => Boolean(x));
+            return json({ ...res, data: { ...res.data, opportunities: await markIdeas(ctx.db, res.data.opportunities) }, setup, posts: await postRefs(ctx.db, slugs) });
+        } catch (err) {
+            return json(searchFailure(err, setup));
+        }
+    });
+
+    r.get('/analytics/posts/:id/search', async (_req, ctx, { id }) => {
+        me(ctx);
+        const post = await getPost(ctx.db, id);
+        if (!post) throw new HttpError(404, 'Post not found.');
+        const setup = searchSetup(ctx.env);
+        if (!searchReady(setup)) return json({ status: 'off', setup });
+        try {
+            const res = await postSearchStats(ctx, post, rangeKey(ctx.url.searchParams.get('range')), refresh(ctx));
+            const siteUrl = ctx.env.SITE_URL.endsWith('/') ? ctx.env.SITE_URL : `${ctx.env.SITE_URL}/`;
+            return json({ ...res, setup, post: { ...(await postRefs(ctx.db, [post.slug]))[post.slug], url: `${siteUrl}${post.slug}/` } });
+        } catch (err) {
+            return json(searchFailure(err, setup));
         }
     });
 

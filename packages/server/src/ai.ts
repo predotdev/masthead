@@ -259,14 +259,29 @@ interface MetaInput {
     title?: string;
     markdown: string;
     model?: string;
+    /** What people search for when the post shows in Google, most searched first (from Search Console). */
+    searches?: unknown;
+    /** The search title and description it has now, when they draw fewer clicks than its position should. */
+    current?: { title?: unknown; description?: unknown };
 }
 
 // One suggestion per line, so each shows up as soon as its line is written.
 function metaJob(input: MetaInput) {
+    const searches = Array.isArray(input.searches) ? input.searches.map(s => String(s).replace(/\s+/g, ' ').trim().slice(0, 120)).filter(Boolean).slice(0, 8) : [];
+    const now = input.current && typeof input.current === 'object' ? input.current : null;
+    const context = [
+        searches.length
+            ? `People find this post by searching Google for these words, most searched first:\n${searches.map(s => `- ${s}`).join('\n')}\nUse the words they search with, so the result is plainly the one to click for them. Promise only what the post delivers.`
+            : '',
+        now && (now.title || now.description)
+            ? `Its search result gets fewer clicks than its position should bring. It shows now as:\nTitle: ${String(now.title ?? '').slice(0, 200)}\nDescription: ${String(now.description ?? '').slice(0, 400)}\nWrite clearly better options, not rewordings.`
+            : ''
+    ].filter(Boolean);
     return {
         task: 'Suggest search and share metadata for the post. Reply with seven lines and nothing else: three lines that start "TITLE: " (titles, at most 60 characters each), three that start "DESCRIPTION: " (search descriptions, at most 155 characters each), then one that starts "EXCERPT: " (one or two sentences for the post listing). No quotes, no numbering.',
-        messages: [{ role: 'user' as const, content: `Current title: ${input.title ?? ''}\n\n${(input.markdown ?? '').slice(0, 12000)}` }],
-        maxTokens: 800
+        messages: [{ role: 'user' as const, content: `${context.length ? `${context.join('\n\n')}\n\n` : ''}Current title: ${input.title ?? ''}\n\n${(input.markdown ?? '').slice(0, 12000)}` }],
+        // Seven short lines, but a reasoning model thinks first and that counts too: at 800 some wrote nothing.
+        maxTokens: 3000
     };
 }
 
