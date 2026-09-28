@@ -25,7 +25,6 @@ import {
 import { signInEmail } from './email';
 import type { Ctx, Principal } from './env';
 import { importAudience, importContent, importMedia, rewriteUrls } from './importer';
-import { siteStats } from './analytics';
 import { postWebStats, posthogSetup, webStats } from './posthog';
 import { emailReport, firstActivity, makeRange, membersReport, postReport, postsBySlug, rangeKey } from './stats';
 import { backfillImages, storeImage } from './images';
@@ -550,17 +549,6 @@ export function adminRoutes(): Router<A> {
     });
 
     r.post('/publish', async (_req, ctx) => (atLeast(ctx.principal, 'editor'), json(await publishSite(ctx.env, ctx.db, ctx.options))));
-
-    // ---------------------------------------------------------- reader analytics (PostHog)
-    r.get('/analytics', async (_req, ctx) => {
-        me(ctx);
-        const days = Number(ctx.url.searchParams.get('days') ?? 30) || 30;
-        try {
-            return json(await siteStats(ctx.env, days));
-        } catch (err: any) {
-            throw new HttpError(502, `Stats are unavailable: ${err?.message ?? 'PostHog did not answer'}`);
-        }
-    });
 
     // ---------------------------------------------------------- analytics
     // Reader traffic comes from PostHog when it is connected; newsletters and growth come from here.

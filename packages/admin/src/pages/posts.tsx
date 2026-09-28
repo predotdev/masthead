@@ -12,13 +12,17 @@ export function Posts({ type }: { type: 'post' | 'page' }) {
         () =>
             Promise.all([
                 api<{ items: Post[]; total: number }>(`/posts?type=${type}&limit=200${status ? `&status=${status}` : ''}${q ? `&q=${encodeURIComponent(q)}` : ''}`),
-                api<Staff[]>('/staff'),
-                type === 'post' ? api<{ configured: boolean; posts: { slug: string; views: number }[] }>('/analytics?days=30').catch(() => null) : Promise.resolve(null)
+                api<Staff[]>('/staff')
             ]),
         [type, status, q]
     );
+    // Views come from PostHog when it is connected; the list never waits for them.
+    const { data: web } = useLoad(
+        () => (type === 'post' ? api<{ status: string; data?: { posts: { slug: string | null; views: number }[] } }>('/analytics/web?range=30').catch(() => null) : Promise.resolve(null)),
+        [type]
+    );
     const staff = new Map((data?.[1] ?? []).map(s => [s.id, s.name]));
-    const views = data?.[2]?.configured ? new Map(data[2].posts.map(p => [p.slug, p.views])) : null;
+    const views = web?.status === 'ok' && web.data ? new Map(web.data.posts.map(p => [p.slug ?? '', p.views])) : null;
 
     const create = async () => {
         setCreating(true);

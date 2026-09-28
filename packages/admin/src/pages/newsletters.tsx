@@ -17,6 +17,10 @@ interface Send {
     clicked: number;
     bounced: number;
     complained: number;
+    /** People who opened or clicked, each once. */
+    unique_opens: number;
+    unique_clicks: number;
+    unsubscribed: number;
     test_mode: number;
     error: string | null;
     created_at: string;
@@ -138,7 +142,7 @@ export function Newsletters() {
                                     </td>
                                     <td class="num">{fmtNum(s.total)}</td>
                                     <td class="num">{fmtNum(s.delivered)}</td>
-                                    <td class="num">{fmtNum(s.opened)}</td>
+                                    <td class="num">{fmtNum(s.unique_opens)}</td>
                                     <td class="muted nowrap">{fmtDate(s.finished_at ?? s.created_at)}</td>
                                 </tr>
                             ))}
@@ -183,7 +187,9 @@ export function SendDetail({ id }: { id: string }) {
                 <Stat label="Recipients" value={fmtNum(data.total)} />
                 <Stat label="Sent" value={`${fmtNum(data.sent)} (${pct}%)`} />
                 <Stat label="Delivered" value={fmtNum(data.delivered)} />
-                <Stat label="Opened" value={fmtNum(data.opened)} />
+                <Stat label="Opened" value={fmtNum(data.unique_opens)} />
+                <Stat label="Clicked" value={fmtNum(data.unique_clicks)} />
+                <Stat label="Unsubscribed" value={fmtNum(data.unsubscribed)} />
                 <Stat label="Bounced" value={fmtNum(data.bounced)} />
                 <Stat label="Complaints" value={fmtNum(data.complained)} />
                 <Stat label="Failed" value={fmtNum(data.failed)} />
@@ -193,7 +199,10 @@ export function SendDetail({ id }: { id: string }) {
             </div>
             {data.test_mode ? <div class="note">Sent in test mode: only team addresses received it.</div> : null}
             {data.error ? <ErrorNote text={data.error} /> : null}
-            <p class="muted small">Delivered, opened and bounced counts arrive from the email provider's webhook.</p>
+            <p class="muted small">
+                Delivered, opened, clicked and bounced counts arrive from the email provider's webhook; opens and clicks count people, once each.{' '}
+                <a href={`#/analytics/post/${data.post_id}`}>See how the post did</a>
+            </p>
         </div>
     );
 }
