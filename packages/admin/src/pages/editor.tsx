@@ -3,9 +3,12 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/ho
 import { api, base, session, type Post, type Staff, type Tag, upload } from '../api';
 import { insertAi } from '../editor/assist';
 import { createEditor, slashItems, snapshot, type SelectionState, type SlashState } from '../editor/setup';
-import { Caret, Credits, StopButton, Working, splitDraft, useAiRun } from '../streaming';
+import { ModelPicker } from '../model-picker';
+import { modelFor, myModels, setMyModel } from '../models';
+import { Answered, Caret, StopButton, Working, splitDraft, useAiRun } from '../streaming';
 import { Button, Dialog, ErrorNote, Field, Loading, Pill, errorToast, toast, useLoad } from '../ui';
 import { AiPreview, AiPrompt, AssistantPanel, QUICK_EDITS, liveHtml, type AiJob } from './ai';
+import { AiPanel, AiPanelButton } from './ai-panel';
 import { EmbedDialog, HtmlDialog, ImageDialog, VideoDialog } from './media';
 import { HistoryPanel, SearchPanel } from './post-tools';
 import { AutoTagNote, useServerTags, type TaggedPost } from './post-tags';
@@ -33,7 +36,7 @@ function PostEditor({ initial, tags: allTags, staff }: { initial: Post; tags: Ta
     const [draft, setDraft] = useState<Draft>(() => pick(initial));
     const [dirty, setDirty] = useState(false);
     const [saving, setSaving] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-    const [side, setSide] = useState<null | 'settings' | 'assistant'>(null);
+    const [side, setSide] = useState<null | 'settings' | 'assistant' | 'ai'>(null);
     const [modal, setModal] = useState<Modal>(null);
     const [tags, setTags] = useState<Tag[]>(allTags);
     const [slash, setSlash] = useState<SlashState | null>(null);
@@ -127,6 +130,11 @@ function PostEditor({ initial, tags: allTags, staff }: { initial: Post; tags: Ta
         const t = setTimeout(() => save(), 1500);
         return () => clearTimeout(t);
     }, [revision, dirty, live]);
+
+    // On narrow screens a side panel sits under the post: bring it into view when it opens.
+    useEffect(() => {
+        if (side && matchMedia('(max-width: 900px)').matches) document.querySelector('.editor-layout > aside')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, [side]);
 
     useEffect(() => {
         const warn = (e: BeforeUnloadEvent) => {
@@ -253,6 +261,7 @@ function PostEditor({ initial, tags: allTags, staff }: { initial: Post; tags: Ta
                 <Pill tone={post.status === 'published' ? 'green' : post.status === 'scheduled' ? 'amber' : 'neutral'}>{post.status}</Pill>
                 <span class="save-state">{saving === 'saving' ? 'Saving…' : saving === 'error' ? 'Not saved' : dirty ? (live ? 'Unpublished changes' : 'Editing') : saving === 'saved' ? 'Saved' : ''}</span>
                 <div class="grow" />
+                <AiPanelButton open={side === 'ai'} onClick={() => setSide(side === 'ai' ? null : 'ai')} />
                 <Button onClick={() => setSide(side === 'assistant' ? null : 'assistant')} aria-pressed={side === 'assistant'} class={side === 'assistant' ? 'on' : ''}>
                     ✦ Assistant
                 </Button>
@@ -413,6 +422,8 @@ function PostEditor({ initial, tags: allTags, staff }: { initial: Post; tags: Ta
                     </aside>
                 ) : side === 'assistant' ? (
                     <AssistantPanel editor={editorRef.current} title={draft.title} />
+                ) : side === 'ai' ? (
+                    <AiPanel />
                 ) : null}
             </div>
 
@@ -651,7 +662,7 @@ function DraftDialog({ editor, onClose, onDraft, disabled }: { editor: Editor | 
     const writing = run.state === 'working';
     const shown = splitDraft(run.text);
     const body = useMemo(() => (editor && shown.body ? liveHtml(editor, shown.body, writing && shown.titleDone) : ''), [shown.body, writing, shown.titleDone]);
-    const write = () => run.start('/ai/draft', { prompt, notes });
+    const write = () => run.start('/ai/draft', { prompt, notes, model: modelFor('text') });
     const use = () => {
         const d = splitDraft(run.all());
         onDraft(run.result?.title ?? d.title, run.result?.markdown ?? d.body);
@@ -697,6 +708,9 @@ function DraftDialog({ editor, onClose, onDraft, disabled }: { editor: Editor | 
             <div class="dialog-actions">
                 {run.state === 'idle' ? (
                     <>
+                        <span class="dialog-model">
+                            <ModelPicker kind="text" compact allowDefault value={myModels.value.text ?? null} onChange={id => setMyModel('text', id)} label="Writing model" />
+                        </span>
                         <Button onClick={onClose}>Cancel</Button>
                         <Button tone="primary" disabled={disabled || !prompt.trim()} onClick={write}>
                             Write draft
@@ -709,7 +723,7 @@ function DraftDialog({ editor, onClose, onDraft, disabled }: { editor: Editor | 
                     </>
                 ) : (
                     <>
-                        <Credits usage={run.usage} />
+                        <Answered run={run} />
                         <Button tone="plain" onClick={run.reset}>
                             Change the request
                         </Button>
@@ -745,7 +759,7 @@ function metaItems(text: string, finished: boolean): { kind: MetaKind; text: str
 
 function MetaDialog({ draft, onClose, apply }: { draft: Draft; onClose: () => void; apply: (p: Partial<Draft>) => void }) {
     const run = useAiRun();
-    const ask = () => run.start('/ai/meta', { title: draft.title, markdown: draft.markdown ?? draft.html ?? '' });
+    const ask = () => run.start('/ai/meta', { title: draft.title, markdown: draft.markdown ?? draft.html ?? '', model: modelFor('text') });
     useEffect(ask, []);
     const writing = run.state === 'working';
     const items = metaItems(run.text, !writing);
@@ -799,7 +813,7 @@ function MetaDialog({ draft, onClose, apply }: { draft: Draft; onClose: () => vo
                     </>
                 ) : (
                     <>
-                        <Credits usage={run.usage} />
+                        <Answered run={run} />
                         <Button onClick={ask}>Suggest again</Button>
                     </>
                 )}

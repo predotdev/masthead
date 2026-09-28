@@ -5,7 +5,9 @@ import { api, session } from '../api';
 import { insertAi, previewHtml, unfence, type AssistMode } from '../editor/assist';
 import { selectionMarkdown, snapshot } from '../editor/setup';
 import type { Source } from '../stream';
-import { CARET, Caret, StopButton, Working, useAiRun, withCaret } from '../streaming';
+import { ModelPicker } from '../model-picker';
+import { modelFor, modelLabel, myModels, setMyModel } from '../models';
+import { Answered, CARET, Caret, StopButton, Working, useAiRun, withCaret } from '../streaming';
 import { Button, errorToast, toast } from '../ui';
 import { MemoryPanel } from './memory';
 
@@ -59,7 +61,7 @@ export function AiPreview({ editor, job, title, onClose }: { editor: Editor; job
         const selection = job.mode === 'edit' ? selectionMarkdownAt(editor, job.from, job.to) : undefined;
         const before = doc.textBetween(0, job.from, '\n\n');
         const after = doc.textBetween(job.to, doc.content.size, '\n\n');
-        run.start('/ai/assist', { mode: job.mode, instruction: job.instruction, selection, before, after, title });
+        run.start('/ai/assist', { mode: job.mode, instruction: job.instruction, selection, before, after, title, model: modelFor('text') });
     }, [attempt]);
 
     // Escape stops the writing; pressed again, it closes the card. Only from the editor or the
@@ -137,6 +139,7 @@ export function AiPreview({ editor, job, title, onClose }: { editor: Editor; job
                 <Button tone="plain" disabled={!usable} onClick={() => navigator.clipboard.writeText(unfence(run.all())).then(() => toast('Copied'), () => {})}>
                     Copy
                 </Button>
+                <Answered run={run} />
             </div>
         </div>
     );
@@ -225,7 +228,9 @@ export function AssistantPanel({ editor, title }: { editor: Editor | null; title
                             ? { text: live.text ? 'Stopped.' : 'Stopped before it wrote anything.' }
                             : live.result?.finishReason === 'length'
                               ? { text: 'It reached the length limit, so the end may be missing.' }
-                              : undefined
+                              : live.requestedModel
+                                ? { text: `${modelLabel(live.requestedModel)} is not available, so the site default answered.` }
+                                : undefined
               };
 
     useEffect(() => {
@@ -235,7 +240,7 @@ export function AssistantPanel({ editor, title }: { editor: Editor | null; title
 
     const ask = (history: Turn[]) => {
         follow.current = true;
-        live.start('/ai/assist', { mode: 'chat', title, post: editor ? snapshot(editor).markdown : '', messages: messages(history) });
+        live.start('/ai/assist', { mode: 'chat', title, post: editor ? snapshot(editor).markdown : '', messages: messages(history), model: modelFor('text') });
     };
 
     const send = (text: string) => {
@@ -343,11 +348,14 @@ export function AssistantPanel({ editor, title }: { editor: Editor | null; title
                             </Button>
                         )}
                     </form>
-                    {shown.length ? (
-                        <button class="link-btn small" onClick={() => (live.reset(), setTurns([]))}>
-                            New conversation
-                        </button>
-                    ) : null}
+                    <div class="assistant-foot">
+                        <ModelPicker kind="text" compact allowDefault value={myModels.value.text ?? null} onChange={id => setMyModel('text', id)} label="Writing model" />
+                        {shown.length ? (
+                            <button class="link-btn small" onClick={() => (live.reset(), setTurns([]))}>
+                                New conversation
+                            </button>
+                        ) : null}
+                    </div>
                 </>
             )}
         </aside>

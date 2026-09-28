@@ -245,13 +245,6 @@ export function splitDraft(text: string): { title: string; body: string; titleDo
 
 const credits = (n: number) => `${n < 0.01 ? 'Under 0.01' : n < 10 ? n.toFixed(2) : Math.round(n)} credits`;
 
-/** What a finished request cost, once the provider has settled it. */
-export function Credits({ usage }: { usage: Usage | null }) {
-    const n = usage?.charged;
-    if (n == null) return null;
-    return <span class="ai-credits">{credits(n)}</span>;
-}
-
 /**
  * Which model answered and, once the provider has settled it, what it cost. When the model
  * that was asked for is no longer offered, it says the site default answered instead.
