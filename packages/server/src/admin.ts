@@ -32,6 +32,7 @@ import { envDenylist, ideaSettings, ideaStatus, refreshIdeas, saveIdeaSettings }
 import { postWebStats, posthogSetup, webStats } from './posthog';
 import { markIdeas, postRefs, postSearchStats, searchFailure, searchReady, searchSetup, searchStats } from './search-console';
 import { emailReport, firstActivity, makeRange, membersReport, postReport, postsBySlug, rangeKey } from './stats';
+import { altText, backfillPost, postsMissingAlt } from './alt';
 import { backfillImages, storeImage } from './images';
 import { getRevision, keepRevision, listRevisions } from './revisions';
 import { addMemory, deleteMemory, embedPending, knowledgeStats, listMemory, refreshKnowledge, resetKnowledge, suggestLinks } from './knowledge';
@@ -765,6 +766,22 @@ export function adminRoutes(): Router<A> {
         return wantsEvents(req) ? imageStream(ctx, args, req.signal) : json(await image(ctx, args));
     });
     /** The writing assistant, streamed: chat, rewrite a selection, write at the cursor, or continue. */
+    /** Alt text for one image: the editor asks as pictures go in. */
+    r.post('/ai/alt', async (req, ctx) => {
+        me(ctx);
+        const input = await body(req);
+        return json(await altText(ctx, { src: String(input.src ?? ''), postTitle: input.postTitle ? String(input.postTitle) : undefined, nearbyText: input.nearbyText ? String(input.nearbyText) : undefined, model: input.model ? String(input.model) : undefined }));
+    });
+    /** Published posts with images that have no description. */
+    r.get('/ai/alt/missing', async (_req, ctx) => (atLeast(ctx.principal, 'admin'), json(await postsMissingAlt(ctx.db))));
+    /** Writes descriptions into one post's images (dryRun: only says what it would write), keeping a version first; the site is rebuilt after. */
+    r.post('/ai/alt/backfill', async (req, ctx) => {
+        const p = atLeast(ctx.principal, 'admin');
+        const input = await body(req);
+        const done = await backfillPost(ctx, String(input.postId ?? ''), { dryRun: input.dryRun === true, model: input.model ? String(input.model) : undefined, by: p.name });
+        if (done.written) republish(ctx);
+        return json(done);
+    });
     r.post('/ai/assist', async (req, ctx) => (me(ctx), assist(ctx, (await body(req)) as any, req.signal)));
     r.post('/ai/video', async (req, ctx) => {
         const p = me(ctx);

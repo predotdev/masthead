@@ -47,6 +47,9 @@ export async function upload(file: File): Promise<string> {
     return url;
 }
 
+/** What an image shows, written by the AI for its alt text. Null when it can't be (no AI provider, a failure): the field is then left for a person to fill. */
+export const describeImage = (src: string, postTitle?: string): Promise<string | null> => api<{ alt: string }>('/ai/alt', { body: { src, postTitle } }).then(r => r.alt, () => null);
+
 export interface Post {
     id: string;
     type: 'post' | 'page';

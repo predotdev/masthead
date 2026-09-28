@@ -6,6 +6,8 @@ interface Check {
     ok: boolean;
     label: string;
     hint?: string;
+    /** A miss that should be fixed before publishing, not just improved. */
+    error?: boolean;
 }
 
 /** What search engines and AI answer engines look for, checked against the post as it stands. */
@@ -29,8 +31,8 @@ export function seoChecks(post: { title: string; slug: string; metaTitle: string
             label: 'Description',
             hint: !description ? 'Add a search description or an excerpt: it is the snippet under the link, and what AI answers quote.' : description.length > 160 ? `Trim to 160 characters (now ${description.length}).` : description.length < 50 ? 'Say a little more: 50 to 160 characters.' : undefined
         },
-        { ok: !!post.featureImage && !!post.featureImageAlt, label: 'Cover image', hint: !post.featureImage ? 'Posts with an image get more clicks when shared.' : !post.featureImageAlt ? 'Describe the cover image (alt text).' : undefined },
-        { ok: noAlt === 0, label: 'Image descriptions', hint: noAlt ? `${noAlt} of ${images.length} images have no description.` : undefined },
+        { ok: !!post.featureImage && !!post.featureImageAlt?.trim(), error: !!post.featureImage && !post.featureImageAlt?.trim(), label: 'Cover image', hint: !post.featureImage ? 'Posts with an image get more clicks when shared.' : !post.featureImageAlt?.trim() ? 'Describe the cover image (alt text).' : undefined },
+        { ok: noAlt === 0, error: noAlt > 0, label: 'Image descriptions', hint: noAlt ? `${noAlt} of ${images.length} images have no alt text. Search engines and AI models can't see them. Click an image, then Alt.` : undefined },
         { ok: levels.includes(2) && !skips, label: 'Sections', hint: !levels.includes(2) ? 'Break the post into sections with headings: readers skim them and AI answers cite them.' : skips ? 'A heading skips a level (say, H2 then H4).' : undefined },
         { ok: internal > 0, label: 'Links to other posts', hint: internal ? undefined : 'Link to at least one related post.' },
         { ok: words >= 300, label: 'Length', hint: words < 300 ? `${words} words. Posts under 300 words rarely rank.` : undefined },
@@ -42,6 +44,34 @@ export function seoChecks(post: { title: string; slug: string; metaTitle: string
             hint: 'AI answer engines quote the first clear paragraph: open with one or two sentences that answer the post’s question.'
         }
     ];
+}
+
+/** Images without alt text are named when a post goes out, with a way to write them all. Publishing is still allowed. */
+export function PublishAltNote({ post, describeAll }: { post: Post; describeAll: () => Promise<number> }) {
+    const count = (html: string) => [...new DOMParser().parseFromString(html || '', 'text/html').querySelectorAll('img')].filter(i => !(i.getAttribute('alt') ?? '').trim()).length;
+    const [missing, setMissing] = useState(() => count(post.html ?? ''));
+    const [busy, setBusy] = useState(false);
+    if (!missing) return null;
+    const run = async () => {
+        setBusy(true);
+        try {
+            const left = await describeAll();
+            setMissing(left);
+            if (left) toast(`${left} could not be described. Add their alt text by hand.`);
+        } catch (err) {
+            errorToast(err);
+        } finally {
+            setBusy(false);
+        }
+    };
+    return (
+        <div class="note error">
+            {missing === 1 ? 'One image has no alt text' : `${missing} images have no alt text`}: search engines and AI models read a post's images only through it.{' '}
+            <button type="button" class="link-btn" disabled={busy} onClick={run}>
+                {busy ? 'Describing…' : 'Describe with AI'}
+            </button>
+        </div>
+    );
 }
 
 /** The checklist, and the card people will see when the post is shared. */
@@ -79,8 +109,8 @@ export function SearchPanel(props: { draft: { id?: string; title: string; slug: 
             </div>
             <ul class="checks">
                 {checks.map(c => (
-                    <li key={c.label} class={c.ok ? 'ok' : 'todo'} title={c.hint}>
-                        <span aria-hidden="true">{c.ok ? '✓' : '•'}</span>
+                    <li key={c.label} class={c.ok ? 'ok' : c.error ? 'error' : 'todo'} title={c.hint}>
+                        <span aria-hidden="true">{c.ok ? '✓' : c.error ? '!' : '•'}</span>
                         <span>
                             {c.label}
                             {!c.ok && c.hint ? <span class="check-hint">{c.hint}</span> : null}

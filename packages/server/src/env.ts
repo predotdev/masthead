@@ -54,6 +54,8 @@ export interface Env {
      */
     DENYLIST?: string;
     TEXT_MODEL?: string;
+    /** A vision-capable text model for image descriptions (alt text). Blank: the site's text model. */
+    ALT_MODEL?: string;
     IMAGE_MODEL?: string;
     VIDEO_MODEL?: string;
     EMBEDDING_MODEL?: string;

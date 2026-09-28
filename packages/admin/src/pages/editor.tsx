@@ -1,8 +1,8 @@
 import type { Editor } from '@tiptap/core';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { api, base, session, type Post, type Staff, type Tag, upload } from '../api';
+import { api, base, describeImage, session, type Post, type Staff, type Tag, upload } from '../api';
 import { insertAi } from '../editor/assist';
-import { createEditor, slashItems, snapshot, type SelectionState, type SlashState } from '../editor/setup';
+import { createEditor, fillAlt, slashItems, snapshot, type SelectionState, type SlashState } from '../editor/setup';
 import { ModelPicker } from '../model-picker';
 import { modelFor, myModels, setMyModel } from '../models';
 import { Answered, Caret, StopButton, Working, splitDraft, useAiRun } from '../streaming';
@@ -12,7 +12,7 @@ import { AiPanel, AiPanelButton } from './ai-panel';
 import { ChecksPanel, PublishStyleNote, StyleButton, StyleFixMenu, TitleChecks } from './checks';
 import { CommentsToggle, useComments } from './comments';
 import { EmbedDialog, HtmlDialog, ImageDialog, VideoDialog } from './media';
-import { HistoryPanel, SearchPanel } from './post-tools';
+import { HistoryPanel, PublishAltNote, SearchPanel } from './post-tools';
 import { AutoTagNote, useServerTags, type TaggedPost } from './post-tags';
 import { SendDialog } from './newsletters';
 import { ReviewCta, ReviewPanel, ReviewPill, useReview } from './review';
@@ -86,6 +86,7 @@ function PostEditor({ initial, tags: allTags, staff }: { initial: Post; tags: Ta
         const ed = createEditor(hostRef.current, { html: draft.bodyFormat === 'html' ? draft.html : null, markdown: draft.bodyFormat === 'html' ? null : draft.markdown }, {
             onChange: touch,
             upload,
+            describe: src => describeImage(src, titleRef.current?.value),
             unfurl: url => api(`/unfurl?url=${encodeURIComponent(url)}`).catch(() => null),
             onSlash: s =>
                 setSlash(prev => {
@@ -237,6 +238,29 @@ function PostEditor({ initial, tags: allTags, staff }: { initial: Post; tags: Ta
         (pos != null ? ed.chain().focus().insertContentAt(pos, node) : ed.chain().focus().insertContent(node)).run();
     };
 
+    /** A new cover image, described by the AI unless it already has a description. */
+    const setCover = (url: string | null) => {
+        update({ featureImage: url });
+        if (url && !draft.featureImageAlt?.trim()) void describeImage(url, draft.title).then(alt => alt && update({ featureImageAlt: alt }));
+    };
+
+    /** Describes every image in the text that has no alt text; the number it could not describe is what is left. */
+    const describeAll = async (): Promise<number> => {
+        const ed = editorRef.current;
+        if (!ed) return 0;
+        const srcs = new Set<string>();
+        ed.state.doc.descendants(n => {
+            if (n.type.name === 'figure' && n.attrs.src && !String(n.attrs.alt ?? '').trim()) srcs.add(String(n.attrs.src));
+        });
+        let left = 0;
+        for (const src of srcs) {
+            const alt = await describeImage(src, draft.title);
+            if (alt) fillAlt(ed, src, alt);
+            else left++;
+        }
+        return left;
+    };
+
     const setNodeAttrs = (pos: number, attrs: Record<string, unknown>) => {
         const ed = editorRef.current;
         const node = ed?.state.doc.nodeAt(pos);
@@ -261,7 +285,9 @@ function PostEditor({ initial, tags: allTags, staff }: { initial: Post; tags: Ta
         if (!f) return;
         try {
             const src = await upload(f);
-            insertNode(accept === 'image' ? { type: 'figure', attrs: { src, alt: f.name.replace(/\.[^.]+$/, '') } } : { type: 'video', attrs: { src } });
+            insertNode(accept === 'image' ? { type: 'figure', attrs: { src, alt: '' } } : { type: 'video', attrs: { src } });
+            const ed = editorRef.current;
+            if (accept === 'image' && ed) void describeImage(src, draft.title).then(alt => alt && fillAlt(ed, src, alt));
         } catch (err) {
             errorToast(err);
         }
@@ -334,7 +360,7 @@ function PostEditor({ initial, tags: allTags, staff }: { initial: Post; tags: Ta
                                     Add a cover image
                                     <input type="file" accept="image/*" hidden onChange={async e => {
                                         const f = e.currentTarget.files?.[0];
-                                        if (f) update({ featureImage: await upload(f).catch(err => (errorToast(err), null)) });
+                                        if (f) setCover(await upload(f).catch(err => (errorToast(err), null)));
                                     }} />
                                 </label>
                                 <button class="link-btn" onClick={() => setModal({ kind: 'image', mode: 'cover' })}>
@@ -428,6 +454,7 @@ function PostEditor({ initial, tags: allTags, staff }: { initial: Post; tags: Ta
                             staff={staff}
                             onMeta={() => setModal({ kind: 'meta' })}
                             onCover={() => setModal({ kind: 'image', mode: 'cover' })}
+                            setCover={setCover}
                             getHtml={() => (editorRef.current ? snapshot(editorRef.current).html : (draft.html ?? ''))}
                             onRestored={v => {
                                 // The version becomes the editor's text as unsaved changes.
@@ -461,7 +488,7 @@ function PostEditor({ initial, tags: allTags, staff }: { initial: Post; tags: Ta
                 ) : null}
             </div>
 
-            {modal?.kind === 'publish' ? <PublishDialog post={post} onClose={() => setModal(null)} onDone={p => (setPost(p), serverTags.saved(p), setModal(null))} onReview={() => (setModal(null), setSide('checks'))} /> : null}
+            {modal?.kind === 'publish' ? <PublishDialog post={post} describeAll={describeAll} onClose={() => setModal(null)} onDone={p => (setPost(p), serverTags.saved(p), setModal(null))} onReview={() => (setModal(null), setSide('checks'))} /> : null}
             {modal?.kind === 'send' ? <SendDialog post={post} onClose={() => setModal(null)} /> : null}
             {modal?.kind === 'share' ? <ShareDialog post={post} onClose={() => setModal(null)} /> : null}
             {modal?.kind === 'draft' ? (
@@ -535,6 +562,7 @@ function SettingsPanel(props: {
     staff: Staff[];
     onMeta: () => void;
     onCover: () => void;
+    setCover: (url: string | null) => void;
     getHtml: () => string;
     onRestored: (v: Pick<Post, 'title' | 'bodyFormat' | 'markdown' | 'html'>) => void;
 }) {
@@ -618,7 +646,10 @@ function SettingsPanel(props: {
                             hidden
                             onChange={async e => {
                                 const f = e.currentTarget.files?.[0];
-                                if (f) update({ featureImage: await upload(f).catch(err => (errorToast(err), draft.featureImage)) });
+                                if (f) {
+                                    const url = await upload(f).catch(err => (errorToast(err), null));
+                                    if (url) props.setCover(url);
+                                }
                             }}
                         />
                     </label>
@@ -655,7 +686,7 @@ function toLocal(iso: string) {
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function PublishDialog({ post, onClose, onDone, onReview }: { post: Post; onClose: () => void; onDone: (p: Post) => void; onReview: () => void }) {
+function PublishDialog({ post, describeAll, onClose, onDone, onReview }: { post: Post; describeAll: () => Promise<number>; onClose: () => void; onDone: (p: Post) => void; onReview: () => void }) {
     const [when, setWhen] = useState<'now' | 'later'>(post.status === 'scheduled' ? 'later' : 'now');
     const [at, setAt] = useState(post.publishedAt && post.status === 'scheduled' ? toLocal(post.publishedAt) : '');
     const [busy, setBusy] = useState(false);
@@ -675,6 +706,7 @@ function PublishDialog({ post, onClose, onDone, onReview }: { post: Post; onClos
     return (
         <Dialog title={`Publish "${post.title || 'Untitled'}"`} onClose={onClose}>
             <div class="stack">
+                <PublishAltNote post={post} describeAll={describeAll} />
                 <PublishStyleNote title={post.title} onReview={onReview} />
                 <label class="check">
                     <input type="radio" name="when" checked={when === 'now'} onChange={() => setWhen('now')} /> Now

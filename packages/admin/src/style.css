@@ -804,6 +804,9 @@ img.avatar { box-shadow: 0 0 0 1px var(--line-2); }
 .checks li.ok { color: var(--muted); }
 .checks li.ok > span:first-child { color: var(--green); }
 .checks li.todo > span:first-child { color: var(--amber); }
+.checks li.error > span:first-child { color: var(--red); font-weight: 700; }
+.checks li.error { color: var(--red); }
+.checks li.error .check-hint { color: var(--muted); }
 .check-hint { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
 .share-card { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--bg); }
 .share-card img, .share-card-noimg { display: block; width: 100%; aspect-ratio: 1.91 / 1; object-fit: cover; background: var(--hover); }

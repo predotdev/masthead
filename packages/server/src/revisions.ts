@@ -20,7 +20,7 @@ export interface Revision {
 }
 
 /** Keeps `before` as a version when `after` changes its words and no version was kept in the last ten minutes (or always, for a reason like "published"). */
-export async function keepRevision(db: D1Database, before: Post, after: Partial<Post>, savedBy: string | null, reason: 'edited' | 'published' | 'restored'): Promise<void> {
+export async function keepRevision(db: D1Database, before: Post, after: Partial<Post>, savedBy: string | null, reason: 'edited' | 'published' | 'restored' | 'alt text'): Promise<void> {
     const changed = (after.title !== undefined && after.title !== before.title) || (after.html !== undefined && after.html !== before.html) || (after.markdown !== undefined && after.markdown !== before.markdown);
     if (reason === 'edited' && !changed) return;
     // A restore keeps the current text unless the last version already is that text.
