@@ -12,7 +12,7 @@ import { Icon, type IconName } from '../icons';
 import { modelFor } from '../models';
 import { Answered, Caret, StopButton, Working, useAiRun } from '../streaming';
 import { Button, Dialog, Empty, ErrorNote, Loading, Segmented, errorToast, toast, useLoad } from '../ui';
-import { Panel, Toolbar, ago, countryName, flag, isEditor, pageName, periodText, useReport, vsText, type Range, type RangeKey } from './analytics-shared';
+import { Panel, Toolbar, ago, countryName, flag, forgetReports, isEditor, pageName, periodText, useReport, vsText, type Range, type RangeKey } from './analytics-shared';
 
 // ------------------------------------------------------------------ what the server answers
 
@@ -651,11 +651,11 @@ function SearchTable({ rows, caption, first, empty, limit = 10 }: { rows: TableR
                     <tr>
                         <th scope="col">{first}</th>
                         {head('clicks', 'Clicks')}
-                        {head('impressions', 'Impressions', 'sc-hide-sm')}
-                        {head('ctr', 'Click rate', 'sc-hide-xs')}
+                        {head('impressions', 'Impressions', 'sc-col-imp')}
+                        {head('ctr', 'Click rate', 'sc-col-ctr')}
                         {head('position', 'Position')}
                         {change ? (
-                            <th scope="col" class="num sc-hide-sm">
+                            <th scope="col" class="num sc-col-change">
                                 Change
                             </th>
                         ) : null}
@@ -672,10 +672,10 @@ function SearchTable({ rows, caption, first, empty, limit = 10 }: { rows: TableR
                                 </span>
                             </td>
                             <td class="num">{fmtInt(r.clicks)}</td>
-                            <td class="num sc-hide-sm">{fmtInt(r.impressions)}</td>
-                            <td class="num sc-hide-xs">{pct(r.ctr)}</td>
+                            <td class="num sc-col-imp">{fmtInt(r.impressions)}</td>
+                            <td class="num sc-col-ctr">{pct(r.ctr)}</td>
                             <td class="num">{place(r.position)}</td>
-                            {change ? <td class="num sc-hide-sm">{r.prevClicks === null || r.prevClicks === undefined ? '' : <Delta now={r.clicks} before={r.prevClicks} vs={'vs the period before'} />}</td> : null}
+                            {change ? <td class="num sc-col-change">{r.prevClicks === null || r.prevClicks === undefined ? '' : <Delta now={r.clicks} before={r.prevClicks} vs={'vs the period before'} />}</td> : null}
                         </tr>
                     ))}
                 </tbody>
@@ -881,6 +881,9 @@ function SnippetDialog({
         setSaving(true);
         try {
             const saved = await api<Post>(`/posts/${ref.id}`, { method: 'PUT', body: { metaTitle: t.trim() || null, metaDescription: dsc.trim() || null } });
+            // Search views read titles fresh; the numbers stay cached on the server.
+            forgetReports('/analytics/search');
+            forgetReports(`/analytics/posts/${ref.id}/search`);
             onSaved({ metaTitle: saved.metaTitle, metaDescription: saved.metaDescription });
             toast(saved.status === 'published' ? 'Saved. The live post is updating.' : 'Saved');
             onClose();

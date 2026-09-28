@@ -154,6 +154,11 @@ const RANGES: { key: RangeKey; label: string }[] = [
 
 const reports = new Map<string, { at: number; data: unknown }>();
 
+/** Drops kept answers whose path starts with `prefix`, after an edit changes what they show. */
+export function forgetReports(prefix: string) {
+    for (const k of reports.keys()) if (k.startsWith(prefix)) reports.delete(k);
+}
+
 /**
  * Loads a report and keeps the last one on screen (dimmed) while the next loads,
  * so changing the range never flashes. Answers are reused for a minute across tabs.

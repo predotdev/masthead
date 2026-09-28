@@ -1219,10 +1219,14 @@ html.has-sheet { overflow: hidden; }
 .sc-opp .sc-serp { align-self: stretch; margin: 2px 0; }
 .sc-rewritten { display: inline-flex; align-items: center; gap: 6px; color: var(--sc-green); font-size: 12.5px; font-weight: 500; }
 
-/* searches and pages */
-.sc-table { margin: -4px -20px 0; }
+/* searches and pages: the table drops change, then impressions, then click rate as it narrows */
+.sc-table { margin: -4px -20px 0; container-type: inline-size; }
 .sc-grid-table { table-layout: fixed; font-size: 13px; }
-.sc-grid-table th.num { width: 104px; }
+.sc-grid-table th.num { width: 88px; }
+.sc-grid-table th.sc-col-imp { width: 108px; }
+@container (max-width: 860px) { .sc-col-change { display: none; } }
+@container (max-width: 640px) { .sc-col-imp { display: none; } .sc-grid-table th.num { width: 72px; } }
+@container (max-width: 470px) { .sc-col-ctr { display: none; } }
 .sc-grid-table th { height: 34px; padding: 0 12px; background: color-mix(in srgb, var(--surface) 90%, transparent); }
 .sc-grid-table td { height: 38px; padding: 5px 12px; }
 .sc-grid-table th:first-child, .sc-grid-table td:first-child { padding-left: 20px; }
@@ -1331,10 +1335,8 @@ html.has-sheet { overflow: hidden; }
   .sc-rewrite { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-template-areas: "look" "ideas" "fields"; }
   .sc-rewrite-ideas { padding: 16px 0 0; border-top: 1px solid var(--line); border-left: 0; }
   .sc-rewrite-fields { padding-top: 16px; border-top: 1px solid var(--line); }
-  .sc-hide-sm { display: none; }
 }
 @media (max-width: 640px) {
-  .sc-grid-table th.num { width: 68px; }
   /* Names get two lines on a phone rather than an early ellipsis. */
   .sc-track { height: auto; min-height: 26px; padding: 3px 0; }
   .sc-label { display: -webkit-box; white-space: normal; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.35; }
@@ -1351,6 +1353,5 @@ html.has-sheet { overflow: hidden; }
   .sc-more { margin-inline: 16px; }
 }
 @media (max-width: 480px) {
-  .sc-hide-xs { display: none; }
   .sc-serp-title { font-size: 18px; }
 }
