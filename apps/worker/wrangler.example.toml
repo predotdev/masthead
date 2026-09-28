@@ -46,10 +46,17 @@ EMAIL_TEST_MODE = "true"
 # VIDEO_MODEL = "<model id>"          # the editor's "Generate a video"
 # EMBEDDING_MODEL = "<model id>"      # lets the AI search the blog and your knowledge sources
 # APP_URL = "https://masthead.<your-subdomain>.workers.dev/blog/"
+# Analytics (optional): your PostHog project key (public) and host.
+# POSTHOG_KEY = "phc_..."
+# POSTHOG_HOST = "https://us.i.posthog.com"
+# Tell search engines about changes on publish, once SITE_URL serves this blog.
+# INDEXNOW = "true"
 
 # Secrets (wrangler secret put <NAME>):
 #   SECRET            random, 32+ characters: signs links
 #   BOOTSTRAP_TOKEN   random, 32+ characters: first sign-in and the CLI
 #   RESEND_API_KEY    email
 #   RESEND_WEBHOOK_SECRET  from the Resend webhook you point at <base>api/webhooks/email
+#   PREDEV_API_KEY    AI (text, images, video, embeddings)
+#   POSTHOG_PERSONAL_API_KEY  optional: the admin's Analytics page (set POSTHOG_PROJECT_ID too)
 #   PREDEV_API_KEY    AI drafting and images
