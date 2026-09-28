@@ -166,7 +166,7 @@ export async function serveMedia(req: Request, ctx: Ctx): Promise<Response> {
             if (png) return new Response(req.method === 'HEAD' ? null : png, { headers: { ...SECURITY_HEADERS, 'content-type': 'image/png', 'cache-control': 'public, max-age=31536000, immutable' } });
         } catch (err) {
             console.error(`share card ${card[1]}`, err);
-            return new Response('The share card could not be drawn right now.', { status: 503, headers: { 'retry-after': '60', 'cache-control': 'no-store' } });
+            return new Response('The share card could not be drawn right now.', { status: 503, headers: { ...SECURITY_HEADERS, 'retry-after': '60', 'cache-control': 'no-store' } });
         }
     }
     // A WebP copy for the theme's <picture> sources that doesn't exist yet: make it now.
