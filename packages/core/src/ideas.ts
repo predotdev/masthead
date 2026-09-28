@@ -129,6 +129,7 @@ export function admitSignal(policies: Policy[], signal: Signal): boolean {
 }
 
 /** True when a policy blocks the idea, e.g. it names someone on the denylist. */
-export function ideaBlocked(policies: Policy[], idea: { title: string; angle: string }): boolean {
-    return policies.some(p => p.review?.({ title: idea.title, body: idea.angle, citations: [] }).some(i => i.severity === 'block'));
+export function ideaBlocked(policies: Policy[], idea: { title: string; angle: string; series?: string }): boolean {
+    const body = [idea.angle, idea.series].filter(Boolean).join('\n');
+    return policies.some(p => p.review?.({ title: idea.title, body, citations: [] }).some(i => i.severity === 'block'));
 }
