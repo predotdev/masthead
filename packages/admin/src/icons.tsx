@@ -286,6 +286,37 @@ const PATHS = {
         </>
     ),
     pointer: <path d="M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z" />,
+    trash: (
+        <>
+            <path d="M3 6h18" />
+            <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+            <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+        </>
+    ),
+    smartphone: (
+        <>
+            <rect width="14" height="20" x="5" y="2" rx="2" ry="2" />
+            <path d="M12 18h.01" />
+        </>
+    ),
+    clock: (
+        <>
+            <circle cx="12" cy="12" r="10" />
+            <path d="M12 6v6l4 2" />
+        </>
+    ),
+    arrowUp: (
+        <>
+            <path d="m5 12 7-7 7 7" />
+            <path d="M12 19V5" />
+        </>
+    ),
+    arrowDown: (
+        <>
+            <path d="M12 5v14" />
+            <path d="m19 12-7 7-7-7" />
+        </>
+    )
 };
 
 export type IconName = keyof typeof PATHS;

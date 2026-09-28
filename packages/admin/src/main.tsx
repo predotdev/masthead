@@ -8,6 +8,7 @@ import { Ideas } from './pages/ideas';
 import { Login, Verify } from './pages/login';
 import { Members } from './pages/members';
 import { Newsletters, SendDetail } from './pages/newsletters';
+import { WelcomeSeries } from './pages/welcome-series';
 import { Posts, createPost } from './pages/posts';
 import { Settings } from './pages/settings';
 import { StaffPage } from './pages/staff';
@@ -114,7 +115,7 @@ function Page() {
         case 'members':
             return <Members />;
         case 'newsletters':
-            return arg ? <SendDetail id={arg} /> : <Newsletters />;
+            return arg === 'welcome' ? <WelcomeSeries /> : arg ? <SendDetail id={arg} /> : <Newsletters />;
         case 'tags':
             return <Tags />;
         case 'staff':

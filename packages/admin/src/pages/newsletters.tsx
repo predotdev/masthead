@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { api, base, fmtDate, fmtNum, session, type Post } from '../api';
 import { Button, Dialog, Empty, ErrorNote, Field, Loading, PageHead, Pill, TableSkeleton, errorToast, toast, useLoad } from '../ui';
+import { NewsletterTabs } from './welcome-series';
 
 interface Send {
     id: string;
@@ -110,6 +111,7 @@ export function Newsletters() {
     return (
         <div>
             <PageHead title="Newsletters" description="Every post sent by email, with how many were delivered and opened." />
+            <NewsletterTabs on="sent" />
             {error ? <ErrorNote text={error} /> : null}
             {loading && !data ? (
                 <TableSkeleton rows={6} columns={6} />
