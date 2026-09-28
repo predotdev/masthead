@@ -72,7 +72,7 @@ Email and AI are one secret each (`RESEND_API_KEY`, `PREDEV_API_KEY`) when you w
 
 **A studio that suggests what to write.** Point it at your repositories, a changelog or any JSON feed. It proposes posts grounded in real work, keeps names on your denylist out of every prompt and draft, and drafts one in your house style with a click.
 
-**Easy to leave Ghost.** One command imports posts, pages, drafts, tags, staff with roles, newsletter settings, members with their full history and every image, keeping every URL. Old Ghost unsubscribe links keep working. See [Move from Ghost](docs/ghost.md).
+**Easy to leave Ghost.** Two commands copy posts, pages, drafts, tags, staff with roles, newsletter settings, members with their full history and every image into your Worker, keeping every URL. Old Ghost unsubscribe links keep working. See [Move from Ghost](docs/ghost.md).
 
 ## Numbers
 
