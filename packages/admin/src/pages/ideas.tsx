@@ -1,6 +1,7 @@
 import { useState } from 'preact/hooks';
 import { api, fmtDate, type Post } from '../api';
 import { Button, Dialog, Empty, ErrorNote, Field, Loading, PageHead, Pill, errorToast, toast, useLoad } from '../ui';
+import { RefreshButton, RefreshStatus } from './ideas-refresh';
 
 interface Idea {
     id: string;
@@ -32,13 +33,12 @@ export function Ideas() {
     return (
         <div>
             <PageHead title="Ideas">
+                <RefreshButton onDone={reload} />
                 <Button tone="primary" onClick={() => setAdding(true)}>
                     Add idea
                 </Button>
             </PageHead>
-            <p class="muted lead">
-                Story ideas with their sources. The studio CLI fills this from your repositories, RL tasks and projects: <code>masthead studio ideas</code>.
-            </p>
+            <RefreshStatus />
             {error ? <ErrorNote text={error} /> : null}
             {loading && !data ? (
                 <Loading />

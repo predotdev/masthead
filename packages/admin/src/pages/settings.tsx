@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { api, fmtDate } from '../api';
 import { Button, Dialog, ErrorNote, Field, Loading, PageHead, Pill, errorToast, toast, useLoad } from '../ui';
+import { IdeasSettings, type IdeaSettings } from './ideas-settings';
 import { MemoryPanel } from './memory';
 import { AppearanceEditor, FooterEditor, HeaderMenu } from './site-design';
 
@@ -9,6 +10,7 @@ interface SettingsData {
     newsletter: Record<string, any>;
     ai: { textModel: string | null; imageModel: string | null; videoModel: string | null; embeddingModel: string | null; knowledgeSources: string[]; voice: string | null; memory?: unknown };
     knowledge: { passages: number; pending: number; sources: number; refreshedAt: string | null };
+    ideas: IdeaSettings;
     keys: { id: string; name: string; prefix: string; role: string; created_at: string; last_used_at: string | null }[];
     environment: { siteUrl: string; appUrl: string; testMode: boolean; emailFrom: string | null; email: boolean; ai: boolean; webhooks: boolean; linkTag: string | null };
 }
@@ -28,6 +30,7 @@ function SettingsForm({ data, reload }: { data: SettingsData; reload: () => void
         return rest;
     });
     const [sources, setSources] = useState(data.ai.knowledgeSources.join('\n'));
+    const [ideas, setIdeas] = useState(data.ideas);
     const [busy, setBusy] = useState(false);
     const [newKey, setNewKey] = useState<string | null>(null);
     const env = data.environment;
@@ -39,7 +42,7 @@ function SettingsForm({ data, reload }: { data: SettingsData; reload: () => void
                 .split('\n')
                 .map(s => s.trim())
                 .filter(s => /^https?:\/\//.test(s));
-            await api('/settings', { method: 'PUT', body: { site, newsletter, ai: { ...ai, knowledgeSources } } });
+            await api('/settings', { method: 'PUT', body: { site, newsletter, ai: { ...ai, knowledgeSources }, ideas } });
             toast('Saved');
             reload();
         } catch (err) {
@@ -175,6 +178,11 @@ function SettingsForm({ data, reload }: { data: SettingsData; reload: () => void
             <section class="panel">
                 <h2>AI memory</h2>
                 <MemoryPanel />
+            </section>
+
+            <section class="panel">
+                <h2>Ideas</h2>
+                <IdeasSettings value={ideas} onChange={setIdeas} />
             </section>
 
             <section class="panel">
