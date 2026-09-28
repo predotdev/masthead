@@ -4,6 +4,7 @@ import { principal } from './auth';
 import { siteSettings } from './content';
 import { migrate } from './db';
 import { analyticsConfig, capture, cleanAnalyticsId, distinctId } from './analytics';
+import { webpVariant } from './images';
 import { indexNowKey } from './indexnow';
 import { confirmEmail } from './email';
 import type { Ctx } from './env';
@@ -156,6 +157,16 @@ export async function serveMedia(req: Request, ctx: Ctx): Promise<Response> {
         return new Response('Not found', { status: 404 });
     }
     let obj = await ctx.env.BUCKET.get(`${MEDIA_PREFIX}${rel}`, { onlyIf: req.headers, range: req.headers });
+    // A WebP copy for the theme's <picture> sources that doesn't exist yet: make it now.
+    if (obj === null && rel.includes('/format/webp/')) {
+        const webp = await webpVariant(ctx.env, rel).catch(err => (console.warn(`webp ${rel}: ${err?.message ?? err}`), null));
+        if (webp) {
+            const headers = new Headers(SECURITY_HEADERS);
+            headers.set('content-type', 'image/webp');
+            headers.set('cache-control', 'public, max-age=31536000, immutable');
+            return new Response(req.method === 'HEAD' ? null : webp, { headers });
+        }
+    }
     // A resized variant that was never made: serve the original, briefly cached, until one exists.
     const variant = obj === null ? rel.match(/^content\/images\/size\/w\d+(?:h\d+)?\/(.+)$/) : null;
     if (variant) obj = await ctx.env.BUCKET.get(`${MEDIA_PREFIX}content/images/${variant[1]}`, { onlyIf: req.headers, range: req.headers });

@@ -24,18 +24,31 @@ function href(url: string, basePath: string): string {
 
 const isExternal = (url: string, ctx: ThemeContext) => /^https?:\/\//i.test(url) && new URL(url).host !== new URL(ctx.site.url).host;
 
+/** The path under content/images/ of an image stored with the blog; null for anything else (remote, GIF, SVG, a variant). */
+function storedImage(url: string | null | undefined, ctx: ThemeContext): string | null {
+    if (!url) return null;
+    const base = `${ctx.basePath}content/images/`;
+    const path = url.startsWith(ctx.site.url) ? url.slice(new URL(ctx.site.url).origin.length) : url;
+    if (!path.startsWith(base) || path.startsWith(`${base}size/`) || /\.(gif|svg)(\?|$)/i.test(path)) return null;
+    return path.slice(base.length);
+}
+
 /**
  * Responsive sources for images stored with the blog. Variants live under
  * content/images/size/wN/, the way Ghost keeps them; the server answers a
  * missing variant with the original, so a srcset never breaks an image.
  */
 function srcset(url: string | null | undefined, ctx: ThemeContext): string {
-    if (!url) return '';
-    const base = `${ctx.basePath}content/images/`;
-    const path = url.startsWith(ctx.site.url) ? url.slice(new URL(ctx.site.url).origin.length) : url;
-    if (!path.startsWith(base) || path.startsWith(`${base}size/`) || /\.(gif|svg)(\?|$)/i.test(path)) return '';
-    const rest = path.slice(base.length);
-    return ` srcset="${[600, 1000, 2000].map(w => `${esc(`${base}size/w${w}/${rest}`)} ${w}w`).join(', ')}"`;
+    const rest = storedImage(url, ctx);
+    if (rest === null) return '';
+    return ` srcset="${[600, 1000, 2000].map(w => `${esc(`${ctx.basePath}content/images/size/w${w}/${rest}`)} ${w}w`).join(', ')}"`;
+}
+
+/** WebP copies of a stored image for a <picture>, under Ghost's size/wN/format/webp/ addresses; the server makes each on first request. */
+function webp(url: string | null | undefined, ctx: ThemeContext, sizes: string): string {
+    const rest = storedImage(url, ctx);
+    if (rest === null) return '';
+    return `<source type="image/webp" srcset="${[600, 1000, 2000].map(w => `${esc(`${ctx.basePath}content/images/size/w${w}/format/webp/${rest}`)} ${w}w`).join(', ')}" sizes="${sizes}">`;
 }
 
 /** width and height attributes for the logo drawn `height` pixels tall, so the page reserves its space. */
@@ -181,7 +194,7 @@ function card(ctx: ThemeContext, item: ListItem): string {
     const p = item.post;
     const topics = (item.tags ?? (item.primaryTag ? [item.primaryTag] : [])).map(t => t.slug).join(' ');
     return `<li data-topics="${esc(topics)}"><a class="card-link" href="${esc(item.url)}">
-  ${p.featureImage ? `<div class="card-image"><img src="${esc(p.featureImage)}"${srcset(p.featureImage, ctx)} sizes="(max-width: 640px) 100vw, (max-width: 960px) 50vw, 400px" alt="${esc(p.featureImageAlt ?? '')}" loading="lazy" decoding="async" width="1200" height="675"></div>` : ''}
+  ${p.featureImage ? `<div class="card-image"><picture>${webp(p.featureImage, ctx, '(max-width: 640px) 100vw, (max-width: 960px) 50vw, 400px')}<img src="${esc(p.featureImage)}"${srcset(p.featureImage, ctx)} sizes="(max-width: 640px) 100vw, (max-width: 960px) 50vw, 400px" alt="${esc(p.featureImageAlt ?? '')}" loading="lazy" decoding="async" width="1200" height="675"></picture></div>` : ''}
   <div class="card-body">
     ${item.primaryTag ? `<span class="eyebrow">${esc(item.primaryTag.name)}</span>` : ''}
     <h3 class="card-title">${esc(p.title)}</h3>
@@ -226,7 +239,7 @@ function featured(ctx: ThemeContext, item: ListItem): string {
     <span class="feature-by">${avatars ? `<span class="avatars small">${avatars}</span>` : ''}<span>${esc(item.authors.map(a => a.name).join(', '))}${item.authors.length ? ' · ' : ''}${item.readingMinutes} min read</span></span>
     <a class="btn btn-primary" href="${esc(item.url)}">Read the post ${icons.arrowRight(15)}</a>
   </div>
-  ${p.featureImage ? `<a class="feature-frame" href="${esc(item.url)}" tabindex="-1" aria-hidden="true"><img src="${esc(p.featureImage)}"${srcset(p.featureImage, ctx)} sizes="(max-width: 1100px) 100vw, 1040px" alt="" fetchpriority="high" decoding="async" width="1200" height="675"></a>` : ''}
+  ${p.featureImage ? `<a class="feature-frame" href="${esc(item.url)}" tabindex="-1" aria-hidden="true"><picture>${webp(p.featureImage, ctx, '(max-width: 1100px) 100vw, 1040px')}<img src="${esc(p.featureImage)}"${srcset(p.featureImage, ctx)} sizes="(max-width: 1100px) 100vw, 1040px" alt="" fetchpriority="high" decoding="async" width="1200" height="675"></picture></a>` : ''}
 </section>`;
 }
 
@@ -248,7 +261,7 @@ function mostRead(ctx: ThemeContext, items: ListItem[] | undefined): string {
           (i, n) => `<li><a class="ranked-link" href="${esc(i.url)}">
     <span class="rank" aria-hidden="true">${String(n + 1).padStart(2, '0')}</span>
     <span class="ranked-body">${i.primaryTag ? `<span class="eyebrow">${esc(i.primaryTag.name)}</span>` : ''}<span class="ranked-title">${esc(i.post.title)}</span><span class="meta">${esc(date(i.post.publishedAt, ctx.site.locale))} · ${i.readingMinutes} min read</span></span>
-    ${i.post.featureImage ? `<span class="ranked-image"><img src="${esc(i.post.featureImage)}"${srcset(i.post.featureImage, ctx)} sizes="160px" alt="" loading="lazy" decoding="async" width="160" height="90"></span>` : ''}
+    ${i.post.featureImage ? `<span class="ranked-image"><picture>${webp(i.post.featureImage, ctx, '160px')}<img src="${esc(i.post.featureImage)}"${srcset(i.post.featureImage, ctx)} sizes="160px" alt="" loading="lazy" decoding="async" width="160" height="90"></picture></span>` : ''}
   </a></li>`
       )
       .join('')}</ol>
@@ -334,7 +347,7 @@ ${footer(ctx)}
   </header>
   ${
       p.featureImage
-          ? `<figure class="feature"><img src="${esc(p.featureImage)}"${srcset(p.featureImage, ctx)} sizes="(max-width: 1100px) 100vw, 1024px" alt="${esc(p.featureImageAlt ?? '')}" fetchpriority="high" decoding="async" width="${v.featureImageSize?.width || 1200}" height="${v.featureImageSize?.height || 675}">${p.featureImageCaption ? `<figcaption>${p.featureImageCaption}</figcaption>` : ''}</figure>`
+          ? `<figure class="feature"><picture>${webp(p.featureImage, ctx, '(max-width: 1100px) 100vw, 1024px')}<img src="${esc(p.featureImage)}"${srcset(p.featureImage, ctx)} sizes="(max-width: 1100px) 100vw, 1024px" alt="${esc(p.featureImageAlt ?? '')}" fetchpriority="high" decoding="async" width="${v.featureImageSize?.width || 1200}" height="${v.featureImageSize?.height || 675}"></picture>${p.featureImageCaption ? `<figcaption>${p.featureImageCaption}</figcaption>` : ''}</figure>`
           : ''
   }
   <div class="content">

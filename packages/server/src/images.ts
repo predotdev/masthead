@@ -103,3 +103,25 @@ export async function backfillImages(env: Env, db: D1Database, limit = 40): Prom
     const left = await db.prepare("SELECT COUNT(*) AS n FROM media WHERE width IS NULL AND content_type LIKE 'image/%' AND key NOT LIKE 'content/images/size/%'").first<{ n: number }>();
     return { sized, variants, remaining: Number(left?.n ?? 0) };
 }
+
+/**
+ * The WebP copy of content/images/<rest> at one of the srcset widths, for the theme's <picture>
+ * sources (Ghost's address: content/images/size/w<width>/format/webp/<rest>). Made on the first
+ * request and stored, so each image is converted once. Null when it can't be made.
+ */
+export async function webpVariant(env: Env, key: string): Promise<Uint8Array | null> {
+    const m = key.match(/^content\/images\/size\/w(\d+)\/format\/webp\/(.+)$/);
+    const width = m ? Number(m[1]) : 0;
+    if (!m || !env.IMAGES || !VARIANT_WIDTHS.includes(width) || /\.(gif|svg)$/i.test(m[2])) return null;
+    const src = await env.BUCKET.get(`${MEDIA_PREFIX}content/images/${m[2]}`);
+    if (!src) return null;
+    const bytes = new Uint8Array(await src.arrayBuffer());
+    const size = imageSize(bytes);
+    const out = await env.IMAGES.input(new Blob([bytes]).stream())
+        .transform(size && size.width > width ? { width } : {})
+        .output({ format: 'image/webp', quality: 82 });
+    const webp = new Uint8Array(await out.response().arrayBuffer());
+    await env.BUCKET.put(`${MEDIA_PREFIX}${key}`, webp, { httpMetadata: { contentType: 'image/webp' } });
+    return webp;
+}
+

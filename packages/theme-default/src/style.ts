@@ -79,6 +79,8 @@ export const css = `:root {
 html { -webkit-text-size-adjust: 100%; scroll-padding-top: 88px; }
 body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 var(--font); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; }
 img, video, iframe { max-width: 100%; }
+/* <picture> only picks the file (WebP when the browser takes it): the img inside is what lays out. */
+picture { display: contents; }
 img { height: auto; }
 a { color: inherit; }
 button, input { font: inherit; color: inherit; }
