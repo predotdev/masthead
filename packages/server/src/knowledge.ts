@@ -197,21 +197,44 @@ export async function embedPending(env: Env, db: D1Database, ai: AIProvider | nu
             if (done) await rebuildIndex(env, db);
             break;
         }
-        const { vectors } = await ai.embed(
-            results.map(r => `${r.title}\n\n${r.chunk}`),
-            embeddingModel ?? undefined
-        );
-        await db.batch(results.map((r, i) => db.prepare('UPDATE knowledge SET vector = ? WHERE id = ?').bind(encode(normalize(vectors[i])), r.id)));
-        done += results.length;
+        const texts = results.map(r => `${r.title}\n\n${r.chunk}`);
+        const model = embeddingModel ?? undefined;
+        let vectors: (number[] | null)[];
+        try {
+            vectors = (await ai.embed(texts, model)).vectors;
+        } catch {
+            // One passage the API refuses (a firewall reading a shell command in it as an attack, say) would
+            // fail this batch every minute and stall everything behind it: embed one by one instead. A passage
+            // refused on its own is set aside (an empty vector: not pending, never searched); anything that
+            // might pass later (rate limits, outages) stays pending and ends this run.
+            vectors = [];
+            for (const t of texts) {
+                const one = await ai.embed([t], model).then(
+                    r => r.vectors[0],
+                    err => (permanent(err) ? null : undefined)
+                );
+                if (one === undefined) break;
+                vectors.push(one);
+            }
+            if (!vectors.length) break;
+        }
+        await db.batch(vectors.map((v, i) => db.prepare('UPDATE knowledge SET vector = ? WHERE id = ?').bind(v ? encode(normalize(v)) : new Uint8Array(0), results[i].id)));
+        done += vectors.length;
     }
     return done;
+}
+
+/** A refusal that asking again won't change: a 4xx other than a timeout or rate limit. */
+function permanent(err: unknown): boolean {
+    const status = (err as { status?: number } | null)?.status ?? 0;
+    return status >= 400 && status < 500 && status !== 408 && status !== 429;
 }
 
 async function rebuildIndex(env: Env, db: D1Database): Promise<void> {
     const ids: number[] = [];
     const parts: Float32Array[] = [];
     for (let offset = 0; ; offset += 400) {
-        const { results } = await db.prepare('SELECT id, vector FROM knowledge WHERE vector IS NOT NULL ORDER BY id LIMIT 400 OFFSET ?').bind(offset).all<{ id: number; vector: string }>();
+        const { results } = await db.prepare('SELECT id, vector FROM knowledge WHERE vector IS NOT NULL AND length(vector) > 0 ORDER BY id LIMIT 400 OFFSET ?').bind(offset).all<{ id: number; vector: string }>();
         for (const r of results) {
             ids.push(r.id);
             parts.push(decode(r.vector));
