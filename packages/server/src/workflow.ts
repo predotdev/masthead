@@ -1,6 +1,7 @@
-/** Admin API for review before publishing and notifications. */
+/** Admin API for review before publishing, comments and notifications. */
 import type { Post } from '@masthead/core';
 import { atLeast } from './auth';
+import { addReply, createThread, deleteComment, editComment, getComment, getThread, listThreads, setThreadStatus } from './comments';
 import { getPost } from './content';
 import type { Ctx, Principal } from './env';
 import { emailPref, listNotices, markRead, setEmailPref } from './notify';
@@ -18,6 +19,12 @@ export function workflowRoutes(r: Router<A>, canEdit: CanEdit): void {
         const post = await getPost(ctx.db, id);
         if (!post) throw new HttpError(404, 'Post not found.');
         return post;
+    };
+    /** A thread, checked to belong to the post in the address. */
+    const threadFor = async (ctx: A, post: Post, id: string) => {
+        const thread = await getThread(ctx.db, id);
+        if (!thread || thread.post_id !== post.id) throw new HttpError(404, 'That comment thread is gone.');
+        return thread;
     };
 
     r.get('/workflow', async (_req, ctx) => (me(ctx), json(await workflowSettings(ctx.db))));
@@ -47,6 +54,47 @@ export function workflowRoutes(r: Router<A>, canEdit: CanEdit): void {
         await canEdit(ctx, post);
         await withdrawReview(ctx.db, post.id);
         return json({ ok: true });
+    });
+
+    // ---------------------------------------------------------- comments
+    r.get('/posts/:id/comments', async (_req, ctx, { id }) => {
+        const post = await postFor(ctx, id);
+        await canEdit(ctx, post);
+        const [threads, people] = await Promise.all([listThreads(ctx.db, post.id), postPeople(ctx.db, post)]);
+        return json({ threads, people });
+    });
+    r.post('/posts/:id/comments', async (req, ctx, { id }) => {
+        const post = await postFor(ctx, id);
+        const p = await canEdit(ctx, post);
+        return json(await createThread(ctx, post, p, await body(req)), 201);
+    });
+    r.post('/posts/:id/comments/:tid/replies', async (req, ctx, { id, tid }) => {
+        const post = await postFor(ctx, id);
+        const p = await canEdit(ctx, post);
+        await threadFor(ctx, post, tid);
+        return json(await addReply(ctx, post, tid, p, await body(req)), 201);
+    });
+    r.put('/posts/:id/comments/:tid', async (req, ctx, { id, tid }) => {
+        const post = await postFor(ctx, id);
+        const p = await canEdit(ctx, post);
+        await threadFor(ctx, post, tid);
+        await setThreadStatus(ctx.db, tid, p, (await body(req)).status);
+        return json((await listThreads(ctx.db, post.id)).find(t => t.id === tid) ?? null);
+    });
+    r.put('/comments/:cid', async (req, ctx, { cid }) => {
+        const comment = await getComment(ctx.db, cid);
+        if (!comment) throw new HttpError(404, 'That comment is gone.');
+        const post = await postFor(ctx, comment.post_id);
+        const p = await canEdit(ctx, post);
+        await editComment(ctx, post, comment, p, await body(req));
+        return json((await listThreads(ctx.db, post.id)).find(t => t.id === comment.thread_id) ?? null);
+    });
+    r.delete('/comments/:cid', async (_req, ctx, { cid }) => {
+        const comment = await getComment(ctx.db, cid);
+        if (!comment) return json({ ok: true, thread: false });
+        const post = await postFor(ctx, comment.post_id);
+        const p = await canEdit(ctx, post);
+        return json({ ok: true, ...(await deleteComment(ctx.db, comment, p)) });
     });
 
     // ---------------------------------------------------------- notifications

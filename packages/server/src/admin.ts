@@ -3,6 +3,7 @@ import { renderBody, renderSite, tagLinks } from '@masthead/render';
 import { addIdeas, assist, draft, draftIdea, draftIdeaStream, draftStream, edit, editStream, image, imageStream, listIdeas, listModels, meta, metaStream, saveIdeaDraft, startVideo, unfurl, videoStatus } from './ai';
 import { autoTag, tagUntagged, wantsAutoTags } from './autotag';
 import { atLeast, clearSessionCookie, consumeLoginToken, createApiKey, createLoginToken, createSession, endSession, peekLoginToken, sessionCookie } from './auth';
+import { forgetPost, saveAnchors, stripCommentAnchors } from './comments';
 import {
     aiSettings,
     deletePost,
@@ -180,8 +181,13 @@ export function adminRoutes(): Router<A> {
         const input = await body(req);
         delete input.status;
         if ((p.role === 'author' || p.role === 'contributor') && input.authors) delete input.authors;
+        // Comment anchors come with the text they sit on and are kept with the comments, never in the post.
+        const anchors = input.commentAnchors;
+        delete input.commentAnchors;
+        if (typeof input.html === 'string') input.html = await stripCommentAnchors(input.html);
         await keepRevision(ctx.db, existing, input, p.name, 'edited');
         const post = await savePost(ctx.db, { ...input, id });
+        await saveAnchors(ctx.db, id, anchors);
         // A post without a topic gets tags picked after the response (autotag.ts); the editor fetches them.
         const tagging = await wantsAutoTags(ctx, post);
         if (post.status === 'published') republish(ctx, tagging ? autoTag(ctx, id) : undefined);
@@ -266,6 +272,7 @@ export function adminRoutes(): Router<A> {
         if (!existing) throw new HttpError(404, 'Post not found.');
         await canEdit(ctx, existing, existing.status !== 'draft');
         await deletePost(ctx.db, id);
+        await forgetPost(ctx.db, id);
         if (existing.status !== 'draft') republish(ctx);
         return json({ ok: true });
     });
