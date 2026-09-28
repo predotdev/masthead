@@ -16,6 +16,12 @@ export interface Env {
      * the admin use it. Same path as SITE_URL.
      */
     APP_URL?: string;
+    /**
+     * A second path the whole site answers on, e.g. "/blog-new/" while an old blog still has
+     * SITE_URL's path: links stay on it, canonical URLs keep naming SITE_URL, and it is noindex.
+     * The admin stays on the main path.
+     */
+    PREVIEW_PATH?: string;
     /** Signs login, unsubscribe and confirmation links. Long and random. */
     SECRET: string;
     /** Owner access for the first sign-in and for the CLI. Long and random. */

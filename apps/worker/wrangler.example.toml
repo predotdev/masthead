@@ -46,6 +46,7 @@ EMAIL_TEST_MODE = "true"
 # VIDEO_MODEL = "<model id>"          # the editor's "Generate a video"
 # EMBEDDING_MODEL = "<model id>"      # lets the AI search the blog and your knowledge sources
 # APP_URL = "https://masthead.<your-subdomain>.workers.dev/blog/"
+# PREVIEW_PATH = "/blog-new/"
 # Analytics (optional): your PostHog project key (public) and host.
 # POSTHOG_KEY = "phc_..."
 # POSTHOG_HOST = "https://us.i.posthog.com"

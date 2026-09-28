@@ -54,6 +54,7 @@ All of it comes from the Worker's environment: `[vars]` in `wrangler.toml` for p
 |---|---|---|
 | `SITE_URL` | var | Canonical address of the blog, e.g. `https://example.com/blog/`. Only this host (directly, or through a proxy passing it as `x-forwarded-host`) is indexable. |
 | `APP_URL` | var | Where this Worker is reachable when that differs from `SITE_URL` (a preview host); used in email and admin links. |
+| `PREVIEW_PATH` | var | A second path the whole site answers on, e.g. `/blog-new/`, to try Masthead on your real domain while an old blog still has `SITE_URL`'s path. Links stay on it, canonical URLs keep naming `SITE_URL`, pages are `noindex`, and the admin stays on the main path. |
 | `SECRET` | secret | Signs member links. Long and random; never rotate casually (old unsubscribe links stop working). |
 | `BOOTSTRAP_TOKEN` | secret | Owner access for the first sign-in and the CLI. |
 | `EMAIL_FROM`, `EMAIL_REPLY_TO`, `POSTAL_ADDRESS` | var | Newsletter sender, reply address, and the postal address US law requires in the footer. |
