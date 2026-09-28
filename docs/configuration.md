@@ -80,7 +80,7 @@ Everything in Settings is also one JSON file you can keep in your own repository
 MASTHEAD_TOKEN=<owner token> bun run masthead settings --server https://example.com/blog/ --file site-settings.json
 ```
 
-It saves `site`, `newsletter` and `ai`, adds `memory` entries the server does not have yet (entries added in the admin stay), then rebuilds the site. Fields you leave out keep their current values. An example:
+It saves `site`, `newsletter`, `ai`, `style` and `workflow`, adds `memory` entries the server does not have yet (entries added in the admin stay), then rebuilds the site. Fields you leave out keep their current values. An example:
 
 ```json
 {
@@ -146,6 +146,10 @@ It saves `site`, `newsletter` and `ai`, adds `memory` entries the server does no
 ### `ai`
 
 `textModel`, `imageModel`, `videoModel` and `embeddingModel` override the variables of the same names. `knowledgeSources` are pages the AI reads besides the blog itself (an `llms.txt`, docs, a changelog feed). `voice` is the house style every draft follows.
+
+### `workflow`
+
+`requireApproval`: `true` means a draft is published or scheduled only once its review is approved (Settings, Review). The owner can always publish. Off by default.
 
 ### Ideas
 

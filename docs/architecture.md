@@ -47,6 +47,8 @@ AI features go through the `AIProvider` connector. Text streams to the browser a
 
 The studio turns sources (GitHub, JSON feeds, pre.dev projects) into ideas. Policies run between sources and models: the denylist skips signals that name anyone on it, masks those names in evidence before a model reads it, and blocks drafts that still contain one.
 
+Staff review and comment on posts in the editor. A review asks chosen staff to approve a post or say what to change, and Settings can make an approval a condition for publishing a draft (the owner is never held back). Comments sit on a passage or the whole post. In the editor a passage is a TipTap mark, so it follows the text through edits, but saved HTML leaves it out: comments and their anchors (position, quoted words and a little context) live in their own tables, and publishing only reads posts, so no comment can reach the site, feeds, search or email. Review requests, answers, comments and mentions become notifications in the admin; review events and mentions are also emailed to staff through the email connector. The calendar places scheduled and published posts on their publish day and drafts on their target day.
+
 ## Subscribers and the newsletter
 
 Signing up creates a pending member and sends a confirmation link signed with `SECRET`; clicking it subscribes. Every change is an event in `member_events` with its source (the member, an admin, an API integration, an import or the email provider), and a later import or API call never turns an opt-out back into a subscriber.
@@ -69,6 +71,7 @@ D1 holds everything that is not a file:
 | `sends`, `send_recipients`, `email_events` | Newsletters, recipients and delivery events |
 | `media`, `site_files` | Stored files with sizes, and the hash of every published file |
 | `knowledge`, `ai_jobs`, `ideas` | What the AI has read, video jobs, studio ideas |
+| `post_reviews`, `post_reviewers`, `comment_threads`, `comments`, `notifications` | Reviews and each reviewer's answer, staff comments and where they sit, each person's notifications |
 | `settings`, `analytics_cache` | Site, newsletter and AI settings; cached analytics queries |
 
 Migrations live in `packages/server/src/db.ts` and run on the first request after a deploy, each as one batch that applies completely or not at all.
