@@ -33,9 +33,9 @@ About ten minutes. You need a Cloudflare account on the Workers Paid plan ($5 a 
 ```bash
 cd apps/worker
 bunx wrangler login
-bunx wrangler d1 create masthead                 # prints the database_id
+bunx wrangler d1 create masthead          # prints the database_id
 bunx wrangler r2 bucket create masthead
-cp wrangler.example.toml wrangler.toml          # paste the database_id; set SITE_URL and EMAIL_FROM
+cp wrangler.example.toml wrangler.toml    # paste the database_id; set SITE_URL and EMAIL_FROM
 ```
 
 `SITE_URL` is the blog's public address, such as `https://example.com/blog/`. No domain yet? Use `https://masthead.<your-subdomain>.workers.dev/blog/`, the address `wrangler deploy` prints, and change it later.

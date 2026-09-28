@@ -44,7 +44,7 @@ Masthead reads two kinds of configuration:
 | --- | --- | --- |
 | `PREDEV_API_KEY` | secret | Turns on the AI: drafting, editing, the assistant, images, video, embeddings, auto tags and ideas, through the pre.dev connector. Everything else works without it. |
 | `TEXT_MODEL`, `IMAGE_MODEL`, `VIDEO_MODEL` | var | Default models for everyone. Settings, AI can change them, and each writer can pick their own in the editor. |
-| `EMBEDDING_MODEL` | var | Lets the AI search your posts and knowledge sources. Changing it re-reads everything. |
+| `EMBEDDING_MODEL` | var | Lets the AI search your posts and knowledge sources. Choosing another embedding model in Settings re-reads everything. |
 | `DENYLIST` | secret | Names the studio never mentions in ideas and drafts (customers, partners, vendors), newline or comma separated. Settings, Ideas adds more; the admin shows only how many this variable holds. |
 
 ### Links, search engines and images
