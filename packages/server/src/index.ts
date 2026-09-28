@@ -21,7 +21,7 @@ import { appUrl, processSends } from './newsletter';
 import { legacyRoute, publicRoutes, serveMedia, serveSearch, serveSite } from './public';
 import { processSequences } from './sequences';
 import { basePath, publishSite, publishUnfinished, releaseScheduled } from './publish';
-import { embedPending, refreshKnowledge } from './knowledge';
+import { embedPending, refreshKnowledge, relatedChanged } from './knowledge';
 import { IDEAS_MINUTE, scheduledIdeas } from './ideas';
 import { HttpError, json, now, redirect } from './util';
 
@@ -128,7 +128,8 @@ export function createApp(app: AppOptions) {
             await setSetting(env.DB, 'cron_heartbeat', now());
             // While a backup is being restored nothing else runs: it would publish and send from half the rows.
             if (await restoring(env.DB)) return;
-            if ((await releaseScheduled(env.DB)) || (await publishUnfinished(env.DB))) await publishSite(env, env.DB, options);
+            // Related posts found after the last publish (a new post's embeddings land a little later) rebuild the site too.
+            if ((await releaseScheduled(env.DB)) || (await publishUnfinished(env.DB)) || (await relatedChanged(env.DB))) await publishSite(env, env.DB, options);
             exec.waitUntil(processSends(env, env.DB, options, 50_000));
             exec.waitUntil(processSequences(env, env.DB, options, 40_000).catch(err => console.error('welcome series failed', err)));
             // The writing assistant's knowledge: embed what is queued; re-read every source once a day.

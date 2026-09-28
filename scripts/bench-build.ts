@@ -17,15 +17,18 @@ const published = snap.posts.filter((p: any) => p.status === 'published' && p.ty
 for (const n of (sizes.length ? sizes : ['40', '1000', '5000']).map(Number)) {
     // The "database": every body, outside what the publish holds.
     const store = new Map<string, any>();
+    // Related posts by meaning, when the snapshot has them: each copy's point at the same copy.
+    const related: Record<string, { id: string; score: number }[]> = {};
     const posts = Array.from({ length: n }, (_, i) => {
         const p = published[i % published.length];
         const k = Math.floor(i / published.length);
         const day = new Date(Date.parse(p.publishedAt) - k * 86_400_000).toISOString();
         const post = k === 0 ? p : { ...p, id: `${p.id}-${k}`, slug: `${p.slug}-${k}`, title: `${p.title} (${k})`, publishedAt: day, updatedAt: day, createdAt: day };
         store.set(post.id, { html: post.html, markdown: post.markdown, bodyFormat: post.bodyFormat });
+        if (snap.related?.[p.id]) related[post.id] = snap.related[p.id].map((r: { id: string; score: number }) => ({ ...r, id: k === 0 ? r.id : `${r.id}-${k}` }));
         return { ...post, html: null, markdown: null };
     });
-    const snapshot = { ...snap, posts: [...posts, ...snap.posts.filter((p: any) => p.type === 'page')] };
+    const snapshot = { ...snap, posts: [...posts, ...snap.posts.filter((p: any) => p.type === 'page')], ...(snap.related ? { related } : {}) };
     for (const p of snap.posts.filter((p: any) => p.type === 'page')) store.set(p.id, { html: p.html, markdown: p.markdown, bodyFormat: p.bodyFormat });
     const bodies = { load: async (ids: string[]) => new Map(ids.map(id => [id, store.get(id)])) };
 
@@ -35,7 +38,8 @@ for (const n of (sizes.length ? sizes : ['40', '1000', '5000']).map(Number)) {
     let files = 0;
     let bytes = 0;
     const t0 = performance.now();
-    for await (const f of renderSite(snapshot, { theme: defaultTheme, render: { postsPerPage: 25 } }, bodies)) {
+    // Share cards on, as the server publishes.
+    for await (const f of renderSite(snapshot, { theme: defaultTheme, render: { postsPerPage: 25 }, features: { shareCards: { version: 'bench' } } }, bodies)) {
         const data = typeof f.contents === 'string' ? new TextEncoder().encode(f.contents) : f.contents;
         await crypto.subtle.digest('SHA-256', data as BufferSource);
         bytes += data.length;

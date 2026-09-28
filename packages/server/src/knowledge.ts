@@ -11,13 +11,19 @@
 import type { AIProvider } from '@masthead/core';
 import { plainText } from '@masthead/render';
 import { aiSettings, getSetting, setSetting, siteSettings } from './content';
+import { batched } from './db';
 import type { Ctx, Env } from './env';
 import { HttpError, now, sha256 } from './util';
 
 const INDEX_KEY = 'ai/knowledge.f32';
 const IDS_KEY = 'ai/knowledge.ids.json';
+/** Each post's vector (the mean of its passages'), for related posts. */
+const POSTS_INDEX_KEY = 'ai/posts.f32';
+const POSTS_IDS_KEY = 'ai/posts.json';
 const CHUNK = 1400;
 const BATCH = 48;
+/** The closest posts kept for each post; its page shows three of them, after tags and dates have their say. */
+const RELATED = 8;
 
 export interface Memory {
     id: string;
@@ -194,7 +200,11 @@ export async function embedPending(env: Env, db: D1Database, ai: AIProvider | nu
     while (Date.now() < deadline) {
         const { results } = await db.prepare('SELECT id, title, chunk FROM knowledge WHERE vector IS NULL LIMIT ?').bind(BATCH).all<{ id: number; title: string; chunk: string }>();
         if (!results.length) {
-            if (done) await rebuildIndex(env, db);
+            // Related posts start from a rebuild (once on a site embedded before they existed), and a
+            // large first pass over them continues here, a slice per cron tick.
+            const related = await getSetting<boolean | null>(db, 'related_pending', null);
+            if (done || (related === null && (await getSetting(db, 'knowledge_version', null)))) await rebuildIndex(env, db);
+            else if (related) await relatePosts(env, db, Math.max(2000, deadline - Date.now()));
             break;
         }
         const texts = results.map(r => `${r.title}\n\n${r.chunk}`);
@@ -234,11 +244,21 @@ function permanent(err: unknown): boolean {
 export async function rebuildIndex(env: Env, db: D1Database): Promise<void> {
     const ids: number[] = [];
     const parts: Float32Array[] = [];
+    // A post's vector is the mean of its passages': summed here, normalized when saved.
+    const posts = new Map<string, Float32Array>();
     for (let offset = 0; ; offset += 400) {
-        const { results } = await db.prepare('SELECT id, vector FROM knowledge WHERE vector IS NOT NULL AND length(vector) > 0 ORDER BY id LIMIT 400 OFFSET ?').bind(offset).all<{ id: number; vector: string }>();
+        const { results } = await db
+            .prepare('SELECT id, source, vector FROM knowledge WHERE vector IS NOT NULL AND length(vector) > 0 ORDER BY id LIMIT 400 OFFSET ?')
+            .bind(offset)
+            .all<{ id: number; source: string; vector: string }>();
         for (const r of results) {
+            const v = decode(r.vector);
             ids.push(r.id);
-            parts.push(decode(r.vector));
+            parts.push(v);
+            if (!r.source.startsWith('post:')) continue;
+            const sum = posts.get(r.source.slice(5));
+            if (!sum) posts.set(r.source.slice(5), Float32Array.from(v));
+            else if (sum.length === v.length) for (let d = 0; d < v.length; d++) sum[d] += v[d];
         }
         if (results.length < 400) break;
     }
@@ -247,7 +267,96 @@ export async function rebuildIndex(env: Env, db: D1Database): Promise<void> {
     parts.forEach((v, i) => matrix.set(v, i * dims));
     await env.BUCKET.put(INDEX_KEY, matrix.buffer, { customMetadata: { dims: String(dims), count: String(ids.length) } });
     await env.BUCKET.put(IDS_KEY, JSON.stringify(ids));
+    await savePostVectors(env, posts, dims);
     await setSetting(db, 'knowledge_version', now());
+    await relatePosts(env, db).catch(err => console.error('related posts failed', err));
+}
+
+async function savePostVectors(env: Env, sums: Map<string, Float32Array>, dims: number): Promise<void> {
+    const kept = [...sums].filter(([, v]) => v.length === dims && dims > 0);
+    const matrix = new Float32Array(kept.length * dims);
+    const keys: string[] = [];
+    kept.forEach(([, sum], i) => {
+        const v = normalize(sum);
+        matrix.set(v, i * dims);
+        keys.push(fingerprint(v));
+    });
+    await env.BUCKET.put(POSTS_INDEX_KEY, matrix.buffer);
+    await env.BUCKET.put(POSTS_IDS_KEY, JSON.stringify({ dims, ids: kept.map(([id]) => id), keys }));
+}
+
+/**
+ * Each post's closest posts in meaning (the cosine similarity of their vectors), for "Keep reading".
+ * Only posts whose vector changed are compared with every other post, and each joins the lists of
+ * the posts it is close to, so publishing one post costs one pass over the posts however large the
+ * blog is. A first pass over a large blog stops at the time budget and continues on the next call.
+ */
+async function relatePosts(env: Env, db: D1Database, budgetMs = 10_000): Promise<{ updated: number; remaining: number }> {
+    const deadline = Date.now() + budgetMs;
+    const [bin, meta] = await Promise.all([env.BUCKET.get(POSTS_INDEX_KEY), env.BUCKET.get(POSTS_IDS_KEY)]);
+    if (!bin || !meta) return { updated: 0, remaining: 0 };
+    const { dims, ids, keys } = await meta.json<{ dims: number; ids: string[]; keys: string[] }>();
+    const matrix = new Float32Array(await bin.arrayBuffer());
+    const [rows, pages] = await db.batch([db.prepare('SELECT post_id, vector_key, related FROM related_posts'), db.prepare("SELECT id FROM posts WHERE type = 'page'")]);
+    const lists = new Map((rows.results as { post_id: string; vector_key: string; related: string }[]).map(r => [r.post_id, { key: r.vector_key, related: JSON.parse(r.related) as [string, number][] }]));
+    // Pages are never "read next".
+    const skip = new Set((pages.results as { id: string }[]).map(p => p.id));
+    const order = ids.map((_, i) => i).filter(i => !skip.has(ids[i]));
+    const dirty = order.filter(i => lists.get(ids[i])?.key !== keys[i]);
+    const changed = new Set<string>();
+    let done = 0;
+    for (const i of dirty) {
+        if (done && Date.now() > deadline) break;
+        const own: [string, number][] = [];
+        const a = i * dims;
+        for (const j of order) {
+            if (j === i) continue;
+            const b = j * dims;
+            let s = 0;
+            for (let d = 0; d < dims; d++) s += matrix[a + d] * matrix[b + d];
+            s = Math.round(s * 10_000) / 10_000;
+            place(own, ids[j], s);
+            const other = lists.get(ids[j]);
+            if (other && place(other.related, ids[i], s)) changed.add(ids[j]);
+        }
+        lists.set(ids[i], { key: keys[i], related: own });
+        changed.add(ids[i]);
+        done++;
+    }
+    const known = new Set(ids);
+    const gone = [...lists.keys()].filter(id => !known.has(id) || skip.has(id));
+    const t = now();
+    const stmts = [...changed].map(id =>
+        db
+            .prepare('INSERT INTO related_posts (post_id, vector_key, related, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(post_id) DO UPDATE SET vector_key = excluded.vector_key, related = excluded.related, updated_at = excluded.updated_at')
+            .bind(id, lists.get(id)!.key, JSON.stringify(lists.get(id)!.related), t)
+    );
+    for (let i = 0; i < gone.length; i += 90) stmts.push(db.prepare(`DELETE FROM related_posts WHERE post_id IN (${gone.slice(i, i + 90).map(() => '?').join(',')})`).bind(...gone.slice(i, i + 90)));
+    await batched(db, stmts);
+    const remaining = dirty.length - done;
+    await setSetting(db, 'related_pending', remaining > 0);
+    if (changed.size || gone.length) await setSetting(db, 'related_updated_at', t);
+    return { updated: changed.size, remaining };
+}
+
+/** True when related posts changed after the last publish started: the site is rebuilt to show them. */
+export async function relatedChanged(db: D1Database): Promise<boolean> {
+    const [changed, started] = await Promise.all([getSetting<string | null>(db, 'related_updated_at', null), getSetting<string | null>(db, 'site_publish_started_at', null)]);
+    return !!changed && (!started || changed > started);
+}
+
+/** Puts a post in a closest-first list of at most RELATED, or moves it to its new score. True when the list changed. */
+function place(list: [string, number][], id: string, score: number): boolean {
+    const at = list.findIndex(x => x[0] === id);
+    if (at >= 0) {
+        if (list[at][1] === score) return false;
+        list.splice(at, 1);
+    } else if (list.length >= RELATED && score <= list[list.length - 1][1]) return false;
+    let k = list.length;
+    while (k > 0 && list[k - 1][1] < score) k--;
+    list.splice(k, 0, [id, score]);
+    if (list.length > RELATED) list.pop();
+    return true;
 }
 
 let cached: { version: string; ids: number[]; dims: number; matrix: Float32Array } | null = null;
@@ -417,6 +526,18 @@ function encode(v: Float32Array): string {
     let bin = '';
     for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
     return btoa(bin);
+}
+
+/** A short fingerprint of a vector: a post whose vector keeps it keeps its related posts. */
+function fingerprint(v: Float32Array): string {
+    const bytes = new Uint8Array(v.buffer, v.byteOffset, v.byteLength);
+    let a = 0x811c9dc5;
+    let b = 0x9747b28c;
+    for (let i = 0; i < bytes.length; i++) {
+        a = Math.imul(a ^ bytes[i], 0x01000193);
+        b = Math.imul(b ^ bytes[i], 0x5bd1e995);
+    }
+    return (a >>> 0).toString(36) + (b >>> 0).toString(36);
 }
 
 function decode(b64: string): Float32Array {

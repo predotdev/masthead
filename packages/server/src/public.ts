@@ -158,6 +158,18 @@ export async function serveMedia(req: Request, ctx: Ctx): Promise<Response> {
         return new Response('Not found', { status: 404 });
     }
     let obj = await ctx.env.BUCKET.get(`${MEDIA_PREFIX}${rel}`, { onlyIf: req.headers, range: req.headers });
+    // A share card no one has asked for yet: draw it now (loaded only here, it brings its own WebAssembly).
+    const card = obj === null ? rel.match(/^content\/cards\/([\w-]{1,120})\.png$/) : null;
+    if (card) {
+        try {
+            const { drawCard } = await import('./cards');
+            const png = await drawCard(ctx, card[1]);
+            if (png) return new Response(req.method === 'HEAD' ? null : png, { headers: { ...SECURITY_HEADERS, 'content-type': 'image/png', 'cache-control': 'public, max-age=31536000, immutable' } });
+        } catch (err) {
+            console.error(`share card ${card[1]}`, err);
+            return new Response('The share card could not be drawn right now.', { status: 503, headers: { ...SECURITY_HEADERS, 'retry-after': '60', 'cache-control': 'no-store' } });
+        }
+    }
     // A WebP copy for the theme's <picture> sources that doesn't exist yet: make it now.
     if (obj === null && rel.includes('/format/webp/')) {
         const webp = await webpVariant(ctx.env, rel).catch(err => (console.warn(`webp ${rel}: ${err?.message ?? err}`), null));
@@ -168,8 +180,9 @@ export async function serveMedia(req: Request, ctx: Ctx): Promise<Response> {
             return new Response(req.method === 'HEAD' ? null : webp, { headers });
         }
     }
-    // A resized variant that was never made: serve the original, briefly cached, until one exists.
-    const variant = obj === null ? rel.match(/^content\/images\/size\/w\d+(?:h\d+)?\/(.+)$/) : null;
+    // A resized variant that was never made (or a WebP copy that can't be, without the Images binding):
+    // serve the original, briefly cached, until one exists. Browsers take any image format from a <source>.
+    const variant = obj === null ? rel.match(/^content\/images\/size\/w\d+(?:h\d+)?\/(?:format\/[a-z0-9]+\/)?(.+)$/) : null;
     if (variant) obj = await ctx.env.BUCKET.get(`${MEDIA_PREFIX}content/images/${variant[1]}`, { onlyIf: req.headers, range: req.headers });
     if (obj === null) return new Response('Not found', { status: 404 });
     const headers = new Headers(SECURITY_HEADERS);

@@ -2,6 +2,7 @@ import type { OutputFile } from '@masthead/core';
 import { renderSite } from '@masthead/render';
 import { getSetting, loadBodies, loadSnapshot, setSetting } from './content';
 import { analyticsConfig } from './analytics';
+import { CARD_DESIGN } from './card-layout';
 import { notifyIndexNow } from './indexnow';
 import { batched } from './db';
 import type { AppOptions, Env } from './env';
@@ -47,7 +48,11 @@ export async function publishSite(env: Env, db: D1Database, options: AppOptions)
     const base = basePath(env);
     const files = renderSite(
         snapshot,
-        { theme: options.theme, render: { linkTag: linkTag(env), postsPerPage: 25 }, features: { subscribeUrl: `${base}api/subscribe`, analytics: analyticsConfig(env) } },
+        {
+            theme: options.theme,
+            render: { linkTag: linkTag(env), postsPerPage: 25 },
+            features: { subscribeUrl: `${base}api/subscribe`, analytics: analyticsConfig(env), shareCards: { version: CARD_DESIGN } }
+        },
         { load: ids => loadBodies(db, ids) }
     );
 

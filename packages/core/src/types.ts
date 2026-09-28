@@ -188,7 +188,50 @@ export interface Snapshot {
     staff?: StaffRecord[];
     /** Known image sizes by URL path (e.g. /blog/content/images/x.png), for layout and share cards. */
     imageSizes?: Record<string, { width: number; height: number }>;
+    /**
+     * Posts close in meaning to each post, by post id: the most similar first, with the cosine
+     * similarity of their embeddings. "Keep reading" blends it with shared tags and recency;
+     * without it (or for a post not embedded yet) related posts come from tags.
+     */
+    related?: Record<string, { id: string; score: number }[]>;
     newsletter?: NewsletterSettings;
+}
+
+/**
+ * A share card for a page without its own image: a 1200 x 630 picture the server draws in the
+ * site's look (renderSite lists them when BuildOptions.features.shareCards is set).
+ */
+export interface ShareCard {
+    kind: 'post' | 'home' | 'tag' | 'author';
+    title: string;
+    /** Small caps over the title, e.g. the post's topic, "Topic" or "Author". */
+    eyebrow?: string | null;
+    /** An ISO date shown after the eyebrow. */
+    date?: string | null;
+    /** A line under the title: the blog's tagline, a topic's or author's description. */
+    text?: string | null;
+    /** The bottom line, e.g. "Jane Doe · 6 min read". */
+    meta?: string | null;
+    /** The author's portrait on author cards. */
+    image?: string | null;
+}
+
+/** What every card shares: the lockup and the sky. */
+export interface ShareCardSite {
+    title: string;
+    /** The name shown with the logo, e.g. "Acme blog" (the front page's hero title). */
+    wordmark?: string | null;
+    logo?: string | null;
+    /** The night-sky image (appearance.backdrop.image). */
+    backdrop?: string | null;
+    locale: string;
+    url: string;
+}
+
+/** The cards of a published site by key; the server draws content/cards/<key>.png from it. */
+export interface ShareCards {
+    site: ShareCardSite;
+    cards: Record<string, ShareCard>;
 }
 
 // ------------------------------------------------------------------ audience
@@ -594,6 +637,11 @@ export interface Theme {
     css: string;
     /** Extra files served from ThemeContext.assetsHref, e.g. a small script. Paths are relative to it. */
     assets?: OutputFile[];
+    /**
+     * How wide the theme lays out images in a post body, as values for their sizes attribute,
+     * so browsers fetch the smallest copy that stays sharp. Defaults to the full viewport.
+     */
+    bodyImageSizes?: { content: string; wide: string; full: string };
     document(ctx: ThemeContext, meta: PageMeta, main: string): string;
     post(ctx: ThemeContext, view: PostView): string;
     list(ctx: ThemeContext, view: ListView): string;

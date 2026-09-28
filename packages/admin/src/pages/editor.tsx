@@ -616,7 +616,7 @@ function SettingsPanel(props: {
                     <textarea rows={3} value={draft.metaDescription ?? ''} onInput={e => update({ metaDescription: e.currentTarget.value || null })} />
                 </Field>
             </div>
-            <SearchPanel draft={{ ...draft, tags: draft.tags.filter(id => tags.find(t => t.id === id)?.visibility !== 'internal') }} getHtml={props.getHtml} />
+            <SearchPanel draft={{ ...draft, id: props.post.id, tags: draft.tags.filter(id => tags.find(t => t.id === id)?.visibility !== 'internal') }} getHtml={props.getHtml} />
             <HistoryPanel post={props.post} onRestored={props.onRestored} />
             <label class="check">
                 <input type="checkbox" checked={draft.featured} onChange={e => update({ featured: e.currentTarget.checked })} /> Featured

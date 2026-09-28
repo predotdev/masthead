@@ -419,10 +419,11 @@ const POST_META_COLUMNS =
  */
 export async function loadSnapshot(env: Env, db: D1Database, options: { bodies?: boolean } = {}): Promise<Snapshot> {
     const site = await siteSettings(env, db);
-    const [posts, tags, staff] = await db.batch([
+    const [posts, tags, staff, near] = await db.batch([
         db.prepare(`SELECT ${options.bodies === false ? POST_META_COLUMNS : '*'} FROM posts WHERE status IN ('published','scheduled')`),
         db.prepare('SELECT * FROM tags'),
-        db.prepare("SELECT * FROM staff WHERE status != 'suspended'")
+        db.prepare("SELECT * FROM staff WHERE status != 'suspended'"),
+        db.prepare('SELECT post_id, related FROM related_posts')
     ]);
     const rows = posts.results as unknown as PostRow[];
     const rel = await relations(
@@ -443,11 +444,14 @@ export async function loadSnapshot(env: Env, db: D1Database, options: { bodies?:
     const base = new URL(env.SITE_URL.endsWith('/') ? env.SITE_URL : `${env.SITE_URL}/`).pathname;
     const imageSizes = Object.fromEntries(sized.map(r => [`${base}${r.key}`, { width: r.width, height: r.height }]));
     if (site.logo) site.logoSize = await logoSize(site.logo, env.SITE_URL, imageSizes);
+    const related: Snapshot['related'] = {};
+    for (const r of near.results as { post_id: string; related: string }[]) related[r.post_id] = (JSON.parse(r.related) as [string, number][]).map(([id, score]) => ({ id, score }));
     return {
         format: 'masthead.snapshot/1',
         exportedAt: now(),
         source: 'masthead',
         imageSizes,
+        related,
         site,
         posts: rows.map(r => toPost(r, rel.tags.get(r.id) ?? [], rel.authors.get(r.id) ?? [])),
         tags: (tags.results as any[]).map(t => ({ id: t.id, slug: t.slug, name: t.name, description: t.description, visibility: t.visibility })),

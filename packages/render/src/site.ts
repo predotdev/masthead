@@ -1,7 +1,8 @@
-import type { AnalyticsConfig, Author, ListItem, ListView, OutputFile, PageMeta, Post, PostView, RenderOptions, SearchEntry, SiteSettings, Snapshot, Tag, Theme, ThemeContext } from '@masthead/core';
+import type { AnalyticsConfig, Author, ListItem, ListView, OutputFile, PageMeta, Post, PostView, RenderOptions, SearchEntry, ShareCard, ShareCardSite, SiteSettings, Snapshot, Tag, Theme, ThemeContext } from '@masthead/core';
 import { renderBody } from './body';
 import { rss, sitemapIndex, urlset } from './feeds';
 import { blogLd, blogPostingLd, breadcrumbLd, collectionLd, headTags, profileLd } from './head';
+import { responsiveImages } from './images';
 import { llmsFull, llmsTxt, markdownCopy } from './llms';
 import { autoExcerpt, fileFor, ownLinks, plainText, readingMinutes, shortHash, tagLinks, wordCount } from './util';
 
@@ -12,7 +13,16 @@ export interface BuildOptions {
     render?: RenderOptions;
     /** Publish time for scheduled posts is compared with this. Defaults to now. */
     now?: Date;
-    features?: { subscribeUrl?: string; analytics?: AnalyticsConfig };
+    features?: {
+        subscribeUrl?: string;
+        analytics?: AnalyticsConfig;
+        /**
+         * Pages without their own share image get a generated card at <base>content/cards/<key>.png,
+         * listed in <base>_masthead/cards.json for the server to draw. `version` names the card design:
+         * a new one gives every card a new address.
+         */
+        shareCards?: { version: string };
+    };
 }
 
 /** Rewrites and redirects the host should apply. Written to <base>/_masthead/routes.json. */
@@ -52,6 +62,15 @@ const CHUNK = 50;
 const KEEP_RENDERED = 400;
 /** llms-full.txt carries the full text of this many of the newest posts. */
 const LLMS_FULL_POSTS = 100;
+/**
+ * "Keep reading" adds these to a candidate's similarity in meaning (a cosine; the closest posts on
+ * one blog sit within a few hundredths of each other, so these settle near ties and no more): for
+ * the share of tags the two posts have in common, and for being new (halving each year).
+ */
+const RELATED_TAG_WEIGHT = 0.03;
+const RELATED_RECENCY_WEIGHT = 0.02;
+/** Generated share cards are this size, the one link previews show largest. */
+const CARD_SIZE = { width: 1200, height: 630 };
 
 /** The whole site in memory: for static builds and small sites. */
 export async function buildSite(snapshot: Snapshot, options: BuildOptions): Promise<BuildResult> {
@@ -114,12 +133,32 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
     const absolute = (u: string | null | undefined) => (u && u.startsWith('/') && !u.startsWith('//') ? `${base.origin}${u}` : (u ?? null));
     // Stored images' sizes, for img width/height and og:image:width/height.
     const imageSizeOf = (u: string | null | undefined) => (u ? (snapshot.imageSizes?.[u.startsWith(base.origin) ? u.slice(base.origin.length) : u] ?? null) : null);
+    // Body images on pages (not in feeds or the Markdown copies): WebP, resized copies, lazy loading.
+    const bodyImages = {
+        basePath,
+        origin: base.origin,
+        sizeOf: (path: string) => snapshot.imageSizes?.[path] ?? null,
+        sizes: theme.bodyImageSizes ?? { content: '100vw', wide: '100vw', full: '100vw' }
+    };
     const metaSite: SiteSettings = {
         ...site,
         logo: absolute(site.logo),
         shareImage: absolute(site.shareImage),
         publisher: site.publisher ? { ...site.publisher, logo: absolute(site.publisher.logo) } : undefined
     };
+    // Share cards for pages without their own image. A card's address changes with anything it
+    // shows (its title, the logo, the design), so link previews pick up a new title.
+    const shareCards = options.features?.shareCards;
+    const cards: Record<string, ShareCard> = {};
+    const cardSite = shareCardSite(site);
+    const cardSiteKey = JSON.stringify([shareCards?.version, cardSite]);
+    const shareCard = (name: string, card: ShareCard) => {
+        if (!shareCards) return null;
+        const key = `${name.toLowerCase().replace(/[^a-z0-9-]+/g, '-').slice(0, 80)}-${shortHash(cardSiteKey + JSON.stringify(card))}`;
+        cards[key] = card;
+        return { url: abs(`${basePath}content/cards/${key}.png`), size: CARD_SIZE, alt: card.title };
+    };
+    const postCount = (n: number) => (n === 1 ? '1 post' : `${n} posts`);
 
     // ---------------------------------------------------------- theme files first
     yield { path: fileFor(urls.css), contents: theme.css, contentType: 'text/css; charset=utf-8' };
@@ -195,12 +234,36 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
         const tags = publicTags(p);
         return { post: p, url: urls.post(p), excerpt: f.excerpt, readingMinutes: f.minutes, authors: postAuthors(p), primaryTag: tags[0], tags };
     };
-    /** Up to three other posts, the newest of the same primary tag first. */
-    const related = (post: Post, primary?: Tag): Post[] => {
+    const livePosts = new Map(posts.map(p => [p.id, p]));
+    const newestAt = posts.length ? Date.parse(posts[0].publishedAt!) : 0;
+    /**
+     * Up to three other posts to read next. The posts closest in meaning come first, nudged toward
+     * shared tags and newer posts (years counted back from the newest post, so a rebuild changes
+     * nothing by itself). A post without embeddings, and any places left, take the newest of the
+     * same primary tag, then the newest overall.
+     */
+    const related = (post: Post, tags: Tag[]): Post[] => {
         const out: Post[] = [];
+        const near = snapshot.related?.[post.id];
+        if (near?.length) {
+            const mine = new Set(tags.map(t => t.id));
+            const scored: { p: Post; s: number }[] = [];
+            for (const { id, score } of near) {
+                const p = livePosts.get(id);
+                if (!p || p.id === post.id) continue;
+                const theirs = publicTags(p);
+                const shared = theirs.reduce((n, t) => n + (mine.has(t.id) ? 1 : 0), 0);
+                const overlap = shared ? shared / (mine.size + theirs.length - shared) : 0;
+                const years = (newestAt - Date.parse(p.publishedAt!)) / 31_557_600_000;
+                scored.push({ p, s: score + RELATED_TAG_WEIGHT * overlap + RELATED_RECENCY_WEIGHT * 0.5 ** years });
+            }
+            scored.sort((a, b) => b.s - a.s);
+            for (const { p } of scored.slice(0, 3)) out.push(p);
+        }
+        const primary = tags[0];
         for (const p of primary ? (byTag.get(primary.id) ?? []) : []) {
             if (out.length === 3) return out;
-            if (p.id !== post.id) out.push(p);
+            if (p.id !== post.id && !out.includes(p)) out.push(p);
         }
         for (const p of posts) {
             if (out.length === 3) break;
@@ -222,15 +285,16 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
         const description = f.summary || site.description;
         const coverSize = imageSizeOf(p.featureImage);
         const shareImage = p.ogImage || p.featureImage;
+        const card = shareImage ? null : shareCard(p.slug, postShareCard(p, tags, authors, f.minutes));
         const view: PostView = {
             post: p,
             url: urls.post(p),
-            html: body,
+            html: responsiveImages(body, { ...bodyImages, eagerFirst: !p.featureImage }),
             excerpt: f.excerpt,
             readingMinutes: f.minutes,
             authors: authors.map(a => ({ ...a, url: urls.author(a) })),
             tags: tags.map(t => ({ ...t, url: urls.tag(t) })),
-            related: p.type === 'post' ? related(p, tags[0]).map(listItem) : [],
+            related: p.type === 'post' ? related(p, tags).map(listItem) : [],
             featureImageSize: coverSize ?? undefined
         };
         const jsonLd =
@@ -240,8 +304,8 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
                           post: p,
                           url,
                           description,
-                          image: absolute(p.featureImage),
-                          imageSize: coverSize,
+                          image: absolute(p.featureImage) ?? card?.url,
+                          imageSize: coverSize ?? card?.size,
                           authors: authors.map(a => ({ author: { ...a, profileImage: absolute(a.profileImage) }, url: abs(urls.author(a)) })),
                           tags,
                           words: f.words,
@@ -264,9 +328,9 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
                         description: p.ogDescription || description,
                         canonical: p.canonicalUrl || url,
                         type: p.type === 'post' ? 'article' : 'website',
-                        image: absolute(shareImage),
-                        imageAlt: p.featureImageAlt,
-                        imageSize: imageSizeOf(shareImage),
+                        image: absolute(shareImage) ?? card?.url,
+                        imageAlt: card ? card.alt : p.featureImageAlt,
+                        imageSize: card ? card.size : imageSizeOf(shareImage),
                         authors: p.type === 'post' ? authors.map(a => a.name) : undefined,
                         publishedAt: p.type === 'post' ? p.publishedAt : null,
                         updatedAt: p.type === 'post' ? p.updatedAt : null,
@@ -309,6 +373,8 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
             shareDescription?: string | null;
             type: 'website' | 'profile';
             image?: string | null;
+            /** A generated share card, used when there is no share image of its own. */
+            card?: { name: string; card: ShareCard };
             jsonLd: object[];
             tag?: Tag;
             author?: Author;
@@ -316,6 +382,7 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
         }
     ): Generator<OutputFile> {
         const total = Math.max(1, Math.ceil(items.length / perPage));
+        const card = extra.card ? shareCard(extra.card.name, extra.card.card) : null;
         for (let n = 1; n <= total; n++) {
             const path = urls.paged(prefix, n);
             const prevUrl = n > 1 ? urls.paged(prefix, n - 1) : undefined;
@@ -335,7 +402,7 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
                 author: extra.author,
                 highlights: n === 1 ? extra.highlights : undefined
             };
-            const listImage = extra.image ?? site.shareImage ?? items[0]?.featureImage ?? null;
+            const listImage = card ? null : (extra.image ?? site.shareImage ?? items[0]?.featureImage ?? null);
             yield html(path, {
                 title,
                 description,
@@ -346,8 +413,9 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
                     description: (n === 1 && extra.shareDescription) || description,
                     canonical: abs(path),
                     type: extra.type,
-                    image: absolute(listImage),
-                    imageSize: imageSizeOf(listImage),
+                    image: card?.url ?? absolute(listImage),
+                    imageAlt: card?.alt,
+                    imageSize: card?.size ?? imageSizeOf(listImage),
                     rss: abs(urls.rss),
                     prev: prevUrl && abs(prevUrl),
                     next: nextUrl && abs(nextUrl),
@@ -373,6 +441,8 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
         shareTitle: site.ogTitle,
         shareDescription: site.ogDescription,
         type: 'website',
+        // The front page's share image is the site's, when it has one.
+        card: site.shareImage ? undefined : { name: 'home', card: { kind: 'home', title: site.appearance?.hero?.title || site.title, text: site.ogDescription || site.metaDescription || site.description } },
         jsonLd: [blogLd(metaSite)]
     }))
         (yield file, count++);
@@ -384,6 +454,7 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
             title: `${t.name} - ${site.title}`,
             description: t.description,
             type: 'website',
+            card: { name: `tag-${t.slug}`, card: { kind: 'tag', title: t.name, eyebrow: 'Topic', text: t.description, meta: postCount(byTag.get(t.id)!.length) } },
             tag: t,
             jsonLd: [collectionLd(t.name, abs(urls.tag(t)), t.description)]
         }))
@@ -398,6 +469,7 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
             description: a.bio,
             type: 'profile',
             image: a.profileImage,
+            card: { name: `author-${a.slug}`, card: { kind: 'author', title: a.name, eyebrow: 'Author', text: a.bio, image: absolute(a.profileImage), meta: postCount(byAuthor.get(a.id)!.length) } },
             author: a,
             jsonLd: [profileLd({ ...a, profileImage: absolute(a.profileImage) }, abs(urls.author(a)))]
         }))
@@ -502,6 +574,7 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
         ...(basePath === '/' ? [] : [{ from: basePath.replace(/\/$/, ''), to: basePath, status: 301 as const }])
     ];
     rest.push({ path: fileFor(`${basePath}_masthead/routes.json`), contents: `${JSON.stringify(routes, null, 2)}\n`, contentType: 'application/json' });
+    if (shareCards) rest.push({ path: fileFor(`${basePath}_masthead/cards.json`), contents: JSON.stringify({ site: cardSite, cards }), contentType: 'application/json' });
     for (const file of rest) (yield file, count++);
 
     return {
@@ -547,6 +620,25 @@ function headingIds(html: string): string {
         used.add(id);
         return `<h${level} id="${id}"${attrs ?? ''}>${inner}</h${level}>`;
     });
+}
+
+/** What every share card of a site shows: its lockup and sky, with absolute addresses. */
+export function shareCardSite(site: SiteSettings): ShareCardSite {
+    const origin = new URL(site.url).origin;
+    const absolute = (u: string | null | undefined) => (u && u.startsWith('/') && !u.startsWith('//') ? `${origin}${u}` : (u ?? null));
+    return { title: site.title, wordmark: site.appearance?.hero?.title || null, logo: absolute(site.logo), backdrop: absolute(site.appearance?.backdrop?.image), locale: site.locale, url: site.url };
+}
+
+/** A post's share card: its title, primary topic, date and byline (a page shows only its title). */
+export function postShareCard(p: Post, tags: Tag[], authors: Author[], minutes: number): ShareCard {
+    const post = p.type === 'post';
+    return {
+        kind: 'post',
+        title: p.ogTitle || p.title,
+        eyebrow: post ? tags[0]?.name : null,
+        date: post ? p.publishedAt : null,
+        meta: post ? [authors.map(a => a.name).join(', '), `${minutes} min read`].filter(Boolean).join(' · ') : null
+    };
 }
 
 /** Changes whenever the theme's stylesheet or files change, so their URLs can be cached for good. */

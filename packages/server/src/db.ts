@@ -126,7 +126,10 @@ const MIGRATIONS: string[][] = [
         `CREATE INDEX sequence_sends_member ON sequence_sends (member_id)`,
         `CREATE INDEX sequence_sends_provider ON sequence_sends (provider_id)`,
         `CREATE INDEX sequence_sends_pending ON sequence_sends (status, tried_at)`
-    ]
+    ],
+    // v9: related posts by meaning: each post's closest posts (JSON [id, similarity] pairs), and the
+    // fingerprint of the post's vector they were found for.
+    [`CREATE TABLE related_posts (post_id TEXT PRIMARY KEY, vector_key TEXT NOT NULL, related TEXT NOT NULL, updated_at TEXT NOT NULL)`]
 ];
 
 let migrated: Promise<void> | null = null;

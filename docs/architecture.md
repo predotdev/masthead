@@ -19,7 +19,7 @@ flowchart LR
 
 ## Reading
 
-A request for a page maps to a file in R2 (`/blog/some-post/` is `site/blog/some-post/index.html`) and is answered with its ETag and Last-Modified, so repeat visits get `304 Not Modified`. On a custom domain, Cloudflare's cache sits in front. The read path never queries D1: a traffic spike costs R2 reads, not database load. Media under `content/` is served from R2 with range requests, so video seeks, and WebP copies at `srcset` widths are made on first request when the Images binding is present.
+A request for a page maps to a file in R2 (`/blog/some-post/` is `site/blog/some-post/index.html`) and is answered with its ETag and Last-Modified, so repeat visits get `304 Not Modified`. On a custom domain, Cloudflare's cache sits in front. The read path never queries D1: a traffic spike costs R2 reads, not database load. Media under `content/` is served from R2 with range requests, so video seeks, and WebP copies at `srcset` widths are made on first request when the Images binding is present. So are share cards (`content/cards/<key>.png`) for pages without an image: drawn with satori and resvg the first time someone asks, then kept in R2.
 
 Hosts other than `SITE_URL`'s answer with `x-robots-tag: noindex`, so staging and workers.dev copies never compete with the real site. `PREVIEW_PATH` serves the whole site at a second path with links rewritten on the way out, for trying Masthead on a domain whose main path still belongs to another blog.
 
@@ -30,7 +30,7 @@ Publishing renders every file the site needs from what is in D1:
 - a page per post, page, tag and author, plus paginated listings and a 404 page,
 - the RSS feed, a sitemap index with post, page, tag and author sitemaps (with images),
 - `llms.txt`, `llms-full.txt` and a Markdown copy of every post,
-- a search index, the theme's stylesheet and script, and `_masthead/routes.json` with the redirects a host should apply.
+- a search index, the theme's stylesheet and script, `_masthead/routes.json` with the redirects a host should apply, and `_masthead/cards.json` listing the share card each page without an image gets.
 
 The renderer (`@masthead/render`) is a generator: files stream out one at a time, and post bodies are loaded fifty at a time, so memory stays flat whether the blog has 40 posts or 10,000. Each file is hashed and compared with the hash recorded in `site_files`; only changed files are written to R2, theme files first so no page names a stylesheet that is not there yet. A typical edit rewrites the post, the listings it appears on and the feeds.
 
@@ -42,7 +42,7 @@ The admin is a Preact app (`packages/admin`) served by the Worker under `admin/`
 
 AI features go through the `AIProvider` connector. Text streams to the browser as server-sent events, and a closed tab stops the work. The editor's AI answers from:
 
-- **knowledge**: published posts and the sources in Settings, split into passages and embedded into the `knowledge` table, with a packed index in R2 for fast search. New posts are embedded after they publish; sources are re-read daily.
+- **knowledge**: published posts and the sources in Settings, split into passages and embedded into the `knowledge` table, with a packed index in R2 for fast search. New posts are embedded after they publish; sources are re-read daily. Each post's vector (the mean of its passages') finds its closest posts, kept in `related_posts` for Keep reading; only posts whose vector changed are compared again, and the next cron tick republishes when the lists change.
 - **house style and memory**: the voice in Settings and short facts the team adds, sent with every request.
 
 The studio turns sources (GitHub, JSON feeds, pre.dev projects) into ideas. Policies run between sources and models: the denylist skips signals that name anyone on it, masks those names in evidence before a model reads it, and blocks drafts that still contain one.
@@ -68,12 +68,12 @@ D1 holds everything that is not a file:
 | `members`, `member_events` | The list and every change to it |
 | `sends`, `send_recipients`, `email_events` | Newsletters, recipients and delivery events |
 | `media`, `site_files` | Stored files with sizes, and the hash of every published file |
-| `knowledge`, `ai_jobs`, `ideas` | What the AI has read, video jobs, studio ideas |
+| `knowledge`, `related_posts`, `ai_jobs`, `ideas` | What the AI has read and the posts closest in meaning to each post, video jobs, studio ideas |
 | `settings`, `analytics_cache` | Site, newsletter and AI settings; cached analytics queries |
 
 Migrations live in `packages/server/src/db.ts` and run on the first request after a deploy, each as one batch that applies completely or not at all.
 
-R2 holds the published site under `site/` and media under `media/content/`, with the same relative paths Ghost used.
+R2 holds the published site under `site/` and media under `media/content/`, with the same relative paths Ghost used. `ai/` holds the packed vectors, and `cards/` what share cards are made from (fonts, the sky, sized images).
 
 ## Repository layout
 

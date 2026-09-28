@@ -55,7 +55,7 @@ Masthead reads two kinds of configuration:
 | `LINK_TAG` | var | `param=value` added to outbound links in posts, e.g. `ref=example.com`. |
 | `INDEXNOW` | var | `"true"`: tell search engines (IndexNow: Bing, Yandex and others) about changed pages on publish. Turn it on once `SITE_URL` serves this blog. |
 | `INDEXNOW_KEY` | var | The IndexNow key, 32 hex characters. Generated and kept in settings when unset. |
-| `IMAGES` | Images binding | Optional. Makes resized WebP copies of stored images for `srcset`, the way Ghost's `size/wN/` addresses work. |
+| `IMAGES` | Images binding | Optional. Makes resized WebP copies of stored images for `srcset`, the way Ghost's `size/wN/` addresses work, and sizes the backdrop, logo and portraits on generated share cards (which also lets them use WebP files). |
 
 ### Analytics (PostHog, optional)
 

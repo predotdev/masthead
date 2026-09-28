@@ -358,7 +358,7 @@ a.eyebrow:hover { color: var(--fg); }
 .signup-form input[type="email"]:focus { outline: none; border-color: var(--fg); }
 .signup-form .btn { height: 44px; }
 .signup-note { margin: 18px auto 0; max-width: 28rem; font-size: 15px; color: var(--fg); }
-@media (max-width: 520px) { .signup { padding: 36px 20px; } .signup-form { flex-direction: column; } }
+@media (max-width: 520px) { .signup { padding: 36px 20px; } .signup-form { flex-direction: column; } .signup-form input[type="email"] { flex: none; } }
 
 /* ------------------------------------------------------------ footer */
 .site-footer { margin-top: 96px; border-top: 1px solid var(--line); }

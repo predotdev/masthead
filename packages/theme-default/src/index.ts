@@ -285,6 +285,12 @@ export const defaultTheme: Theme = {
     name: 'default',
     css,
     assets: [{ path: 'masthead.js', contents: script, contentType: 'text/javascript; charset=utf-8' }],
+    // The text column is 44rem inside the page's 24px gutters (18px on phones); wide cards are 64rem.
+    bodyImageSizes: {
+        content: '(max-width: 640px) calc(100vw - 36px), (max-width: 752px) calc(100vw - 48px), 704px',
+        wide: '(max-width: 1072px) calc(100vw - 48px), 1024px',
+        full: '100vw'
+    },
 
     document(ctx: ThemeContext, meta: PageMeta, main: string): string {
         const s = ctx.site;
