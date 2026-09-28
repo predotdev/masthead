@@ -98,7 +98,8 @@ export async function generateIdeas(cfg: MastheadConfig, ai: AIProvider, opts: I
         'Every idea must be grounded only in the signals given. Never invent numbers, customers, quotes or outcomes; the angle can say what a writer would need to find out.',
         'Never name customers, partners, vendors, individual people, or the projects, apps and companies of users that appear in the signals. Describe them generically ("a restaurant app", "an agency").',
         'Never build an idea on internal pricing, revenue, deal terms, traffic or analytics numbers, sales process, or security details. Skip signals that are only about those.',
-        'Prefer specific, useful stories a developer or founder would click: how something works, what it cost, what failed first, a head-to-head result, a build walkthrough.',
+        'Pitch progress: new features and launches and what they make possible, how something works, build walkthroughs, measured results, and what tasks or benchmarks teach models (the skills they train or measure, and why that matters). Specific, useful stories a developer or founder would click, in a positive, forward-looking frame.',
+        'Never pitch a story about bugs, fixes, incidents, outages, regressions, failed deploys or postmortems. Skip signals that are only about those.',
         'Do not repeat or lightly reword an existing post.',
         voice ? `House style:\n${voice}` : ''
     ]

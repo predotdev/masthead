@@ -18,12 +18,26 @@ function useModels(kind: 'image' | 'video') {
     return models;
 }
 
-const STYLES: { id: string; label: string; suffix: string }[] = [
-    { id: 'sky', label: 'Night sky', suffix: 'Black background with a soft grey glow and fine white star specks, minimal and cinematic, one clear subject, lots of empty space, no text or letters.' },
-    { id: 'diagram', label: 'Diagram', suffix: 'A clean, minimal technical diagram: thin white lines and simple shapes on a black background, no text or letters.' },
-    { id: 'product', label: 'Product shot', suffix: 'A crisp product-style render on a dark studio background with soft rim light, no text or letters.' },
-    { id: 'photo', label: 'Photo', suffix: 'A natural, realistic photograph with soft light and shallow depth of field.' },
-    { id: 'none', label: 'As written', suffix: '' }
+/** Starting points for the style field, which takes any style in words. Blank sends the description as written. */
+const STYLES: { label: string; style: string }[] = [
+    { label: 'As written', style: '' },
+    { label: 'Photo', style: 'a natural, realistic photograph with soft light' },
+    { label: 'Illustration', style: 'a modern editorial illustration' },
+    { label: '3D render', style: 'a polished 3D render with soft studio lighting' },
+    { label: 'Isometric', style: 'a detailed isometric illustration' },
+    { label: 'Flat vector', style: 'a clean flat vector illustration with bold shapes' },
+    { label: 'Line art', style: 'minimal black line art on white' },
+    { label: 'Watercolor', style: 'a loose watercolor painting' },
+    { label: 'Oil painting', style: 'an oil painting with visible brushwork' },
+    { label: 'Pixel art', style: 'retro pixel art' },
+    { label: 'Anime', style: 'anime, cel shaded' },
+    { label: 'Claymation', style: 'a claymation scene with handmade textures' },
+    { label: 'Retro poster', style: 'a screen-printed retro poster with limited colors and grain' },
+    { label: 'Blueprint', style: 'a technical blueprint drawing, white lines on deep blue' },
+    { label: 'Diagram', style: 'a clean, minimal technical diagram with simple shapes and arrows' },
+    { label: 'Neon', style: 'glowing neon light on a dark background' },
+    { label: 'Product shot', style: 'a crisp product render on a studio background with soft rim light' },
+    { label: 'Night sky', style: 'black background with a soft grey glow and fine white star specks, minimal and cinematic' }
 ];
 
 const RATIOS = ['16:9', '3:2', '1:1', '4:5', '9:16'];
@@ -32,17 +46,16 @@ const RATIOS = ['16:9', '3:2', '1:1', '4:5', '9:16'];
 export function ImageDialog({ mode, src, title, onClose, onDone }: { mode: 'insert' | 'cover' | 'edit'; src?: string; title: string; onClose: () => void; onDone: (url: string, alt: string) => void }) {
     const models = useModels('image');
     const [prompt, setPrompt] = useState(mode === 'edit' ? '' : mode === 'cover' ? `Cover art for a post titled "${title}".` : '');
-    const [style, setStyle] = useState(mode === 'edit' ? 'none' : 'sky');
+    const [style, setStyle] = useState('');
     const [ratio, setRatio] = useState('16:9');
     const [model, setModel] = useState('');
     const [url, setUrl] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
-    const suffix = STYLES.find(s => s.id === style)?.suffix ?? '';
     const run = async () => {
         setBusy(true);
         try {
             const res = await api<{ url: string; model: string }>('/ai/image', {
-                body: { prompt: `${prompt.trim()} ${suffix}`.trim(), aspectRatio: ratio, model: model || undefined, reference: mode === 'edit' ? url ?? src : undefined }
+                body: { prompt: style.trim() ? `${prompt.trim()}\n\nStyle: ${style.trim()}.` : prompt.trim(), aspectRatio: ratio, model: model || undefined, reference: mode === 'edit' ? url ?? src : undefined }
             });
             setUrl(res.url);
         } catch (err) {
@@ -64,9 +77,12 @@ export function ImageDialog({ mode, src, title, onClose, onDone }: { mode: 'inse
                             onInput={e => setPrompt(e.currentTarget.value)}
                         />
                     </Field>
+                    <Field label="Style" hint="Any style, in your words. Blank: the description as written.">
+                        <input value={style} placeholder="1970s sci-fi paperback cover, risograph print, Pixar-like 3D…" onInput={e => setStyle(e.currentTarget.value)} />
+                    </Field>
                     <div class="chip-row">
                         {STYLES.map(s => (
-                            <button key={s.id} type="button" class={`chip ${style === s.id ? 'on' : ''}`} onClick={() => setStyle(s.id)}>
+                            <button key={s.label} type="button" class={`chip ${style === s.style ? 'on' : ''}`} onClick={() => setStyle(s.style)}>
                                 {s.label}
                             </button>
                         ))}
