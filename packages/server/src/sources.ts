@@ -73,11 +73,13 @@ async function readSource(env: Env, url: string, at: Date): Promise<SourceRead> 
         return failed(err instanceof Error ? err.message : String(err));
     }
     const prev = await env.BUCKET.get(stateKey)
-        .then(o => (o ? (o.json() as Promise<{ items: Kept[] }>) : null))
+        .then(o => (o ? (o.json() as Promise<{ readAt?: string; items: Kept[] }>) : null))
         .catch(() => null);
-    // A source that suddenly lost most of its entries (an error page, a truncated file) must not become the baseline.
+    // A source that suddenly lost most of its entries (an error page, a truncated file) must not become the
+    // baseline, or everything would look new once it recovers. A drop that lasts three days is real.
     if (!parsed.items.length) return failed('No entries found');
-    if (prev && prev.items.length >= 20 && parsed.items.length < prev.items.length * 0.3) return failed(`Only ${parsed.items.length} entries, down from ${prev.items.length}; kept the last read`);
+    const dropped = !!prev && prev.items.length >= 20 && parsed.items.length < prev.items.length * 0.3;
+    if (dropped && Date.parse(prev!.readAt ?? '') > at.getTime() - 3 * 86400_000) return failed(`Only ${parsed.items.length} entries, down from ${prev!.items.length}; kept the last read`);
     const nowIso = at.toISOString();
     const { fresh, recent, keep } = compare(prev?.items ?? null, parsed.items, nowIso);
     return {
