@@ -9,6 +9,7 @@ import { Answered, Caret, StopButton, Working, splitDraft, useAiRun } from '../s
 import { Button, Dialog, ErrorNote, Field, Loading, Pill, errorToast, toast, useLoad } from '../ui';
 import { AiPreview, AiPrompt, AssistantPanel, QUICK_EDITS, liveHtml, type AiJob } from './ai';
 import { AiPanel, AiPanelButton } from './ai-panel';
+import { ChecksPanel, PublishStyleNote, StyleButton, StyleFixMenu, TitleChecks } from './checks';
 import { EmbedDialog, HtmlDialog, ImageDialog, VideoDialog } from './media';
 import { HistoryPanel, SearchPanel } from './post-tools';
 import { AutoTagNote, useServerTags, type TaggedPost } from './post-tags';
@@ -36,7 +37,7 @@ function PostEditor({ initial, tags: allTags, staff }: { initial: Post; tags: Ta
     const [draft, setDraft] = useState<Draft>(() => pick(initial));
     const [dirty, setDirty] = useState(false);
     const [saving, setSaving] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-    const [side, setSide] = useState<null | 'settings' | 'assistant' | 'ai'>(null);
+    const [side, setSide] = useState<null | 'settings' | 'assistant' | 'ai' | 'checks'>(null);
     const [modal, setModal] = useState<Modal>(null);
     const [tags, setTags] = useState<Tag[]>(allTags);
     const [slash, setSlash] = useState<SlashState | null>(null);
@@ -173,6 +174,12 @@ function PostEditor({ initial, tags: allTags, staff }: { initial: Post; tags: Ta
         setAiJob({ mode, instruction: instruction || undefined, label, from: mode === 'edit' ? from : to, to, ...cursorBox() });
     };
 
+    // A style fix that needs rewording: the sentence goes to the AI card, like a rewrite you asked for.
+    const rewrite = (range: { from: number; to: number }, instruction: string) => {
+        editorRef.current?.chain().focus().setTextSelection(range).run();
+        runAi(instruction, 'edit', 'Rewrite');
+    };
+
     const items = useMemo(
         () =>
             slashItems({
@@ -261,6 +268,7 @@ function PostEditor({ initial, tags: allTags, staff }: { initial: Post; tags: Ta
                 <Pill tone={post.status === 'published' ? 'green' : post.status === 'scheduled' ? 'amber' : 'neutral'}>{post.status}</Pill>
                 <span class="save-state">{saving === 'saving' ? 'Saving…' : saving === 'error' ? 'Not saved' : dirty ? (live ? 'Unpublished changes' : 'Editing') : saving === 'saved' ? 'Saved' : ''}</span>
                 <div class="grow" />
+                <StyleButton postId={post.id} title={draft.title} open={side === 'checks'} onClick={() => setSide(side === 'checks' ? null : 'checks')} />
                 <AiPanelButton open={side === 'ai'} onClick={() => setSide(side === 'ai' ? null : 'ai')} />
                 <Button onClick={() => setSide(side === 'assistant' ? null : 'assistant')} aria-pressed={side === 'assistant'} class={side === 'assistant' ? 'on' : ''}>
                     ✦ Assistant
@@ -291,7 +299,9 @@ function PostEditor({ initial, tags: allTags, staff }: { initial: Post; tags: Ta
 
             <div class={`editor-layout ${side ? 'with-panel' : ''}`}>
                 <div class="writing">
-                    <textarea ref={titleRef} class="title-input" rows={1} placeholder="Title" value={draft.title} onInput={e => update({ title: e.currentTarget.value })} />
+                    <TitleChecks title={draft.title}>
+                        <textarea ref={titleRef} class="title-input" rows={1} placeholder="Title" value={draft.title} onInput={e => update({ title: e.currentTarget.value })} />
+                    </TitleChecks>
                     <div class="cover-row">
                         {draft.featureImage ? (
                             <figure class="feature-preview">
@@ -381,6 +391,7 @@ function PostEditor({ initial, tags: allTags, staff }: { initial: Post; tags: Ta
                             ) : null}
                             {prompt ? <AiPrompt {...prompt} onRun={runAi} onClose={() => setPrompt(null)} /> : null}
                             {aiJob && editorRef.current ? <AiPreview editor={editorRef.current} job={aiJob} title={draft.title} onClose={() => setAiJob(null)} /> : null}
+                            <StyleFixMenu onRewrite={rewrite} />
                         </div>
                     )}
                     <input ref={imageInput} type="file" accept="image/*" hidden onChange={upload1('image')} />
@@ -424,10 +435,12 @@ function PostEditor({ initial, tags: allTags, staff }: { initial: Post; tags: Ta
                     <AssistantPanel editor={editorRef.current} title={draft.title} />
                 ) : side === 'ai' ? (
                     <AiPanel />
+                ) : side === 'checks' ? (
+                    <ChecksPanel postId={post.id} title={draft.title} onTitle={title => update({ title })} onRewrite={rewrite} />
                 ) : null}
             </div>
 
-            {modal?.kind === 'publish' ? <PublishDialog post={post} onClose={() => setModal(null)} onDone={p => (setPost(p), serverTags.saved(p), setModal(null))} /> : null}
+            {modal?.kind === 'publish' ? <PublishDialog post={post} onClose={() => setModal(null)} onDone={p => (setPost(p), serverTags.saved(p), setModal(null))} onReview={() => (setModal(null), setSide('checks'))} /> : null}
             {modal?.kind === 'send' ? <SendDialog post={post} onClose={() => setModal(null)} /> : null}
             {modal?.kind === 'draft' ? (
                 <DraftDialog
@@ -615,7 +628,7 @@ function toLocal(iso: string) {
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function PublishDialog({ post, onClose, onDone }: { post: Post; onClose: () => void; onDone: (p: Post) => void }) {
+function PublishDialog({ post, onClose, onDone, onReview }: { post: Post; onClose: () => void; onDone: (p: Post) => void; onReview: () => void }) {
     const [when, setWhen] = useState<'now' | 'later'>(post.status === 'scheduled' ? 'later' : 'now');
     const [at, setAt] = useState(post.publishedAt && post.status === 'scheduled' ? toLocal(post.publishedAt) : '');
     const [busy, setBusy] = useState(false);
@@ -635,6 +648,7 @@ function PublishDialog({ post, onClose, onDone }: { post: Post; onClose: () => v
     return (
         <Dialog title={`Publish "${post.title || 'Untitled'}"`} onClose={onClose}>
             <div class="stack">
+                <PublishStyleNote title={post.title} onReview={onReview} />
                 <label class="check">
                     <input type="radio" name="when" checked={when === 'now'} onChange={() => setWhen('now')} /> Now
                 </label>

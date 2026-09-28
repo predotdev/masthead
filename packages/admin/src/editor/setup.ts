@@ -4,6 +4,7 @@ import Placeholder from '@tiptap/extension-placeholder';
 import { Markdown } from '@tiptap/markdown';
 import StarterKit from '@tiptap/starter-kit';
 import { Bookmark, ButtonCard, Callout, Embed, Figure, HtmlCard, prepareHtml, publishHtml, Video, type MediaBridge } from './nodes';
+import { StyleCheck } from './style-check';
 
 export interface SlashState {
     query: string;
@@ -47,7 +48,9 @@ export function extensions(bridge: MediaBridge | null = null) {
         Bookmark,
         Callout,
         ButtonCard,
-        HtmlCard.configure({ bridge })
+        HtmlCard.configure({ bridge }),
+        // House-style underlines belong to the editor people write in, not to previews.
+        ...(bridge ? [StyleCheck] : [])
     ];
 }
 
