@@ -68,6 +68,8 @@ export interface Post {
     tags: string[];
     authors: string[];
     newsletter: { sentAt: string | null; recipients: number; delivered: number; opened: number } | null;
+    /** Where its review stands, in lists. */
+    review?: { status: 'in_review' | 'approved' | 'changes_requested'; approved: number; reviewers: number } | null;
 }
 
 export interface Tag {

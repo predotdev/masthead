@@ -1685,6 +1685,14 @@ button.cm-quote:hover { color: var(--fg-2); }
 .mention-role { margin-left: auto; color: var(--faint); font-size: var(--text-xs); }
 .mention-none { margin: 6px 0 0; color: var(--muted); font-size: var(--text-xs); }
 
+/* the posts list */
+.status-pills { display: inline-flex; align-items: center; gap: 6px; }
+.planned-date { display: inline-flex; align-items: center; gap: 6px; }
+.planned-date .icon { color: var(--faint); }
+
+/* settings */
+.settings-review-hint { margin: -8px 0 0 26px; }
+
 @media (max-width: 900px) {
   .editor-layout.with-panel:has(.review-panel) { grid-template-columns: minmax(0, 1fr); }
 }
