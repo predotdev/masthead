@@ -11,7 +11,7 @@ import { BarList, Delta, Kpi, Segments, TrendChart, compact, fmtInt, pct, shortD
 import { Icon, type IconName } from '../icons';
 import { modelFor } from '../models';
 import { Answered, Caret, StopButton, Working, useAiRun } from '../streaming';
-import { Button, Dialog, ErrorNote, Loading, Segmented, errorToast, toast, useLoad } from '../ui';
+import { Button, Dialog, Empty, ErrorNote, Loading, Segmented, errorToast, toast, useLoad } from '../ui';
 import { Panel, Toolbar, ago, countryName, flag, isEditor, pageName, periodText, useReport, vsText, type Range, type RangeKey } from './analytics-shared';
 
 // ------------------------------------------------------------------ what the server answers
@@ -252,9 +252,27 @@ export function SearchTab({ range, setRange }: { range: RangeKey; setRange: (r: 
                 <Trouble text={s.error} onRetry={() => report.reload(true)} />
             </>
         );
+    const r = d.range;
+    const host = (() => {
+        try {
+            return new URL(session.value?.site.url ?? location.href).host;
+        } catch {
+            return 'the blog';
+        }
+    })();
+    if (!d.totals.impressions && !d.prevTotals?.impressions)
+        return (
+            <>
+                {toolbar}
+                <Empty title="No searches yet" icon="search">
+                    Google showed no pages under {host}
+                    {new URL(session.value?.site.url ?? location.href).pathname} in this period. New pages take a few days to appear, and Search Console runs two to three days behind. If the blog has
+                    been live for a while, check that {s.setup.property} is the property that holds it.
+                </Empty>
+            </>
+        );
     const posts: Record<string, PostRef> = { ...s.posts };
     for (const [slug, patch] of Object.entries(edited)) if (posts[slug]) posts[slug] = { ...posts[slug], ...patch };
-    const r = d.range;
     const clicksTotal = d.countries.reduce((n, c) => n + c.clicks, 0);
     return (
         <div class={report.loading ? 'an-busy' : ''}>
@@ -306,33 +324,35 @@ export function SearchTab({ range, setRange }: { range: RangeKey; setRange: (r: 
                 </Panel>
                 <Panel title="Devices">
                     <Segments label="Clicks by device" items={d.devices.map(x => ({ key: x.device, label: deviceName(x.device), value: x.clicks }))} />
-                    <table class="table an-table sc-devices">
-                        <caption class="an-sr">Search by device</caption>
-                        <thead>
-                            <tr>
-                                <th scope="col">Device</th>
-                                <th scope="col" class="num">
-                                    Clicks
-                                </th>
-                                <th scope="col" class="num">
-                                    Click rate
-                                </th>
-                                <th scope="col" class="num">
-                                    Position
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {d.devices.map(x => (
-                                <tr key={x.device}>
-                                    <td>{deviceName(x.device)}</td>
-                                    <td class="num">{fmtInt(x.clicks)}</td>
-                                    <td class="num">{pct(x.ctr)}</td>
-                                    <td class="num">{place(x.position)}</td>
+                    {d.devices.length ? (
+                        <table class="table an-table sc-devices">
+                            <caption class="an-sr">Search by device</caption>
+                            <thead>
+                                <tr>
+                                    <th scope="col">Device</th>
+                                    <th scope="col" class="num">
+                                        Clicks
+                                    </th>
+                                    <th scope="col" class="num">
+                                        Click rate
+                                    </th>
+                                    <th scope="col" class="num">
+                                        Position
+                                    </th>
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody>
+                                {d.devices.map(x => (
+                                    <tr key={x.device}>
+                                        <td>{deviceName(x.device)}</td>
+                                        <td class="num">{fmtInt(x.clicks)}</td>
+                                        <td class="num">{pct(x.ctr)}</td>
+                                        <td class="num">{place(x.position)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    ) : null}
                 </Panel>
             </div>
             <p class="an-foot">
@@ -683,6 +703,8 @@ export function PostSearch({ id, range }: { id: string; range: RangeKey }) {
     if (s.status === 'error' || !s.data) return <Trouble text={s.error} onRetry={() => report.reload(true)} />;
     const d = s.data;
     const post = s.post ? { ...s.post, ...edited } : undefined;
+    // Nothing yet (a new post, say): the snippet can still be written before Google shows it.
+    const none = !d.totals.impressions && !d.prevTotals?.impressions;
     const days = d.range.days ?? 30;
     const shown = d.shown;
     const low = shown && shown.impressions >= Math.max(80, (100 * days) / 30) && shown.clicks < 0.55 * shown.impressions * shown.typicalCtr ? shown : null;
@@ -700,8 +722,14 @@ export function PostSearch({ id, range }: { id: string; range: RangeKey }) {
                 </span>
             </div>
             {s.error ? <Trouble text={s.error} onRetry={() => report.reload(true)} /> : null}
-            <MetricTiles t={d.totals} p={d.prevTotals} r={d.range} metric={metric} setMetric={setMetric} small />
-            <MetricChart d={d} metric={metric} height={180} what="for this post" />
+            {none ? (
+                <p class="muted small an-none">Google has not shown this post in search in this period. New posts take a few days to appear, and Search Console runs two to three days behind.</p>
+            ) : (
+                <>
+                    <MetricTiles t={d.totals} p={d.prevTotals} r={d.range} metric={metric} setMetric={setMetric} small />
+                    <MetricChart d={d} metric={metric} height={180} what="for this post" />
+                </>
+            )}
             {post ? (
                 <div class="sc-snippet">
                     <div class="sc-snippet-preview">
@@ -717,7 +745,7 @@ export function PostSearch({ id, range }: { id: string; range: RangeKey }) {
                                 </span>
                             </p>
                         ) : (
-                            <p class="muted small">The title and description people see in search results. Write them for the searches below.</p>
+                            <p class="muted small">The title and description people see in search results.{none ? '' : ' Write them for the searches below.'}</p>
                         )}
                         {canEdit(post) ? (
                             <Button icon="sparkles" size="sm" onClick={() => setRewriting(true)}>
@@ -727,22 +755,26 @@ export function PostSearch({ id, range }: { id: string; range: RangeKey }) {
                     </div>
                 </div>
             ) : null}
-            <h3 class="an-h3">Searches</h3>
-            <SearchTable
-                caption={`Searches that showed this post, ${periodText(d.range)}`}
-                first="Search"
-                empty="No searches showed this post in this period."
-                rows={d.queries.map(q => {
-                    const near = q.position !== null && q.position >= 5 && q.position < 21 && q.impressions >= 10;
-                    return {
-                        key: q.query,
-                        label: q.query,
-                        ...q,
-                        prevClicks: q.prev ? q.prev.clicks : undefined,
-                        tag: near ? <span class="sc-tag kind-rank">Almost page one</span> : null
-                    };
-                })}
-            />
+            {none ? null : (
+                <>
+                    <h3 class="an-h3">Searches</h3>
+                    <SearchTable
+                        caption={`Searches that showed this post, ${periodText(d.range)}`}
+                        first="Search"
+                        empty="No searches showed this post in this period."
+                        rows={d.queries.map(q => {
+                            const near = q.position !== null && q.position >= 5 && q.position < 21 && q.impressions >= 10;
+                            return {
+                                key: q.query,
+                                label: q.query,
+                                ...q,
+                                prevClicks: q.prev ? q.prev.clicks : undefined,
+                                tag: near ? <span class="sc-tag kind-rank">Almost page one</span> : null
+                            };
+                        })}
+                    />
+                </>
+            )}
             {rewriting && post ? (
                 <SnippetDialog
                     post={post}

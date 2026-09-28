@@ -1176,13 +1176,13 @@ html.has-sheet { overflow: hidden; }
    Search Console: the Search tab, each post's search section, the connect
    steps and the title and description rewrite. Prefixed sc-.
    ====================================================================== */
-:root { --sc-link: #1a0dab; }
-:root[data-theme="dark"] { --sc-link: #8ab4f8; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --sc-link: #8ab4f8; } }
+:root { --sc-link: #1a0dab; --sc-red: #b91c1c; --sc-green: #166534; }
+:root[data-theme="dark"] { --sc-link: #8ab4f8; --sc-red: var(--red); --sc-green: var(--green); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --sc-link: #8ab4f8; --sc-red: var(--red); --sc-green: var(--green); } }
 .sc-opp.kind-rank, .sc-kind.kind-rank, .sc-tag.kind-rank { --k: var(--blue); --k-bg: var(--blue-bg); }
 .sc-opp.kind-snippet, .sc-kind.kind-snippet { --k: var(--amber); --k-bg: var(--amber-bg); }
-.sc-opp.kind-drop, .sc-kind.kind-drop { --k: var(--red); --k-bg: var(--red-bg); }
-.sc-opp.kind-gap, .sc-kind.kind-gap { --k: var(--green); --k-bg: var(--green-bg); }
+.sc-opp.kind-drop, .sc-kind.kind-drop { --k: var(--sc-red); --k-bg: var(--red-bg); }
+.sc-opp.kind-gap, .sc-kind.kind-gap { --k: var(--sc-green); --k-bg: var(--green-bg); }
 
 /* four tiles: clicks, impressions, click rate, position */
 .sc-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
@@ -1215,9 +1215,9 @@ html.has-sheet { overflow: hidden; }
 .sc-gain b { font-size: 24px; font-weight: 640; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .sc-gain span { margin-top: 2px; color: var(--muted); font-size: 12px; }
 .sc-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
-.btn.sc-added { color: var(--green); }
+.btn.sc-added { color: var(--sc-green); }
 .sc-opp .sc-serp { align-self: stretch; margin: 2px 0; }
-.sc-rewritten { display: inline-flex; align-items: center; gap: 6px; color: var(--green); font-size: 12.5px; font-weight: 500; }
+.sc-rewritten { display: inline-flex; align-items: center; gap: 6px; color: var(--sc-green); font-size: 12.5px; font-weight: 500; }
 
 /* searches and pages */
 .sc-table { margin: -4px -20px 0; }
@@ -1255,7 +1255,7 @@ html.has-sheet { overflow: hidden; }
 .sc-serp-url { overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .sc-serp-title { margin: 0; color: var(--sc-link); font-size: 20px; line-height: 1.3; overflow-wrap: anywhere; }
 .sc-serp-desc { display: -webkit-box; margin: 2px 0 0; overflow: hidden; color: var(--fg-2); font-size: 14px; line-height: 1.58; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-.sc-serp-desc.auto { color: var(--faint); font-style: italic; }
+.sc-serp-desc.auto { color: var(--muted); font-style: italic; }
 .sc-serp.small { max-width: 560px; padding: 11px 13px 12px; box-shadow: none; background: var(--surface); }
 .sc-serp.small .sc-serp-icon { width: 22px; height: 22px; font-size: 11px; }
 .sc-serp.small .sc-serp-icon img { width: 14px; height: 14px; }
@@ -1291,7 +1291,7 @@ html.has-sheet { overflow: hidden; }
 .sc-rewrite-searches { display: flex; flex-direction: column; gap: 8px; }
 .sc-rewrite .sc-serp { max-width: none; }
 .sc-count-row { display: flex; justify-content: space-between; gap: 8px; }
-.sc-count { color: var(--faint); font-size: 12px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.sc-count { color: var(--muted); font-size: 12px; font-weight: 400; font-variant-numeric: tabular-nums; }
 .sc-count.over { color: var(--amber); font-weight: 550; }
 .sc-options { display: flex; flex-direction: column; }
 .sc-options-head { margin: 0 0 2px; color: var(--muted); font-size: 12px; font-weight: 500; }
@@ -1300,7 +1300,7 @@ html.has-sheet { overflow: hidden; }
 .sc-option.used { background: var(--green-bg); }
 .sc-option-text { min-width: 0; overflow-wrap: anywhere; }
 .sc-option-side { display: inline-flex; flex: none; align-items: center; gap: 10px; }
-.sc-used { display: inline-flex; align-items: center; gap: 4px; height: 28px; color: var(--green); font-size: 12.5px; font-weight: 550; }
+.sc-used { display: inline-flex; align-items: center; gap: 4px; height: 28px; color: var(--sc-green); font-size: 12.5px; font-weight: 550; }
 .sc-flush { margin: 0; }
 
 /* connecting */
@@ -1313,7 +1313,7 @@ html.has-sheet { overflow: hidden; }
 .sc-step-error { display: block; margin-bottom: 6px; color: var(--red); }
 .sc-step-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .sc-step-actions .btn .icon { margin: 0 -3px 0 0; }
-.sc-step-hint { display: block; margin-top: 8px; color: var(--faint); }
+.sc-step-hint { display: block; margin-top: 8px; color: var(--muted); }
 .sc-done-value { color: var(--fg-2); font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
 .sc-copy code { font-size: 12px; }
 .sc-steps .an-step-body code { white-space: nowrap; }
