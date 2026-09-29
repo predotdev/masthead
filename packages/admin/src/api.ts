@@ -84,6 +84,18 @@ export interface Tag {
     description: string | null;
     visibility: 'public' | 'internal';
     posts?: number;
+    featureImage?: string | null;
+    featureImageAlt?: string | null;
+    metaTitle?: string | null;
+    metaDescription?: string | null;
+    ogTitle?: string | null;
+    ogDescription?: string | null;
+    ogImage?: string | null;
+    twitterTitle?: string | null;
+    twitterDescription?: string | null;
+    twitterImage?: string | null;
+    canonicalUrl?: string | null;
+    noindex?: boolean;
 }
 
 export interface Staff {
@@ -95,6 +107,11 @@ export interface Staff {
     status: 'active' | 'invited' | 'suspended';
     profileImage: string | null;
     lastSeenAt: string | null;
+    bio?: string | null;
+    metaTitle?: string | null;
+    metaDescription?: string | null;
+    ogImage?: string | null;
+    noindex?: boolean;
 }
 
 export const fmtDate = (iso: string | null | undefined) =>

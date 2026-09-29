@@ -303,11 +303,52 @@ export async function deletePost(db: D1Database, id: string): Promise<void> {
 
 // ------------------------------------------------------------------ tags
 
+/** A tags row as a Tag, search and share fields included. */
+function toTag(r: any): Tag {
+    return {
+        id: r.id,
+        slug: r.slug,
+        name: r.name,
+        description: r.description,
+        visibility: r.visibility,
+        featureImage: r.feature_image ?? null,
+        featureImageAlt: r.feature_image_alt ?? null,
+        metaTitle: r.meta_title ?? null,
+        metaDescription: r.meta_description ?? null,
+        ogTitle: r.og_title ?? null,
+        ogDescription: r.og_description ?? null,
+        ogImage: r.og_image ?? null,
+        twitterTitle: r.twitter_title ?? null,
+        twitterDescription: r.twitter_description ?? null,
+        twitterImage: r.twitter_image ?? null,
+        canonicalUrl: r.canonical_url ?? null,
+        noindex: Boolean(r.noindex)
+    };
+}
+
+/** The search and share fields of a topic, each with the column that holds it. */
+const TAG_SEO_FIELDS = [
+    ['featureImage', 'feature_image'],
+    ['featureImageAlt', 'feature_image_alt'],
+    ['metaTitle', 'meta_title'],
+    ['metaDescription', 'meta_description'],
+    ['ogTitle', 'og_title'],
+    ['ogDescription', 'og_description'],
+    ['ogImage', 'og_image'],
+    ['twitterTitle', 'twitter_title'],
+    ['twitterDescription', 'twitter_description'],
+    ['twitterImage', 'twitter_image'],
+    ['canonicalUrl', 'canonical_url']
+] as const;
+
+/** Text from a form: trimmed, and empty means unset. */
+const text = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null);
+
 export async function listTags(db: D1Database): Promise<(Tag & { posts: number })[]> {
     const { results } = await db
         .prepare('SELECT t.*, (SELECT COUNT(*) FROM post_tags pt WHERE pt.tag_id = t.id) AS posts FROM tags t ORDER BY t.name COLLATE NOCASE')
         .all<any>();
-    return results.map(r => ({ id: r.id, slug: r.slug, name: r.name, description: r.description, visibility: r.visibility, posts: r.posts }));
+    return results.map(r => ({ ...toTag(r), posts: r.posts }));
 }
 
 export async function saveTag(db: D1Database, input: Partial<Tag> & { name?: string }): Promise<Tag> {
@@ -317,14 +358,20 @@ export async function saveTag(db: D1Database, input: Partial<Tag> & { name?: str
     if (!name) throw new HttpError(400, 'A tag needs a name.');
     const slug = slugify(input.slug ?? existing?.slug ?? name);
     const t = now();
+    // A field the request leaves out keeps its value; one sent empty is cleared.
+    const seo = TAG_SEO_FIELDS.map(([key, col]) => (key in input ? text((input as any)[key]) : (existing?.[col] ?? null)));
+    const noindex = 'noindex' in input ? (input.noindex ? 1 : 0) : Number(existing?.noindex ?? 0);
+    const sets = TAG_SEO_FIELDS.map(([, col]) => col);
     await db
         .prepare(
-            `INSERT INTO tags (id, slug, name, description, visibility, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
-             ON CONFLICT(id) DO UPDATE SET slug = excluded.slug, name = excluded.name, description = excluded.description, visibility = excluded.visibility, updated_at = excluded.updated_at`
+            `INSERT INTO tags (id, slug, name, description, visibility, ${sets.join(', ')}, noindex, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ${sets.map(() => '?').join(', ')}, ?, ?, ?)
+             ON CONFLICT(id) DO UPDATE SET slug = excluded.slug, name = excluded.name, description = excluded.description, visibility = excluded.visibility,
+               ${sets.map(c => `${c} = excluded.${c}`).join(', ')}, noindex = excluded.noindex, updated_at = excluded.updated_at`
         )
-        .bind(id, slug, name, input.description ?? existing?.description ?? null, input.visibility ?? existing?.visibility ?? (name.startsWith('#') ? 'internal' : 'public'), existing?.created_at ?? t, t)
+        .bind(id, slug, name, input.description ?? existing?.description ?? null, input.visibility ?? existing?.visibility ?? (name.startsWith('#') ? 'internal' : 'public'), ...seo, noindex, existing?.created_at ?? t, t)
         .run();
-    return { id, slug, name, description: input.description ?? existing?.description ?? null, visibility: input.visibility ?? existing?.visibility ?? 'public' };
+    return toTag(await db.prepare('SELECT * FROM tags WHERE id = ?').bind(id).first<any>());
 }
 
 export async function deleteTag(db: D1Database, id: string): Promise<void> {
@@ -345,6 +392,10 @@ interface StaffRow {
     website: string | null;
     twitter: string | null;
     linkedin: string | null;
+    meta_title?: string | null;
+    meta_description?: string | null;
+    og_image?: string | null;
+    noindex?: number | null;
     created_at: string;
     updated_at: string;
     last_seen_at: string | null;
@@ -363,6 +414,10 @@ function toStaff(r: StaffRow): StaffRecord & { createdAt: string; lastSeenAt: st
         website: r.website,
         twitter: r.twitter,
         linkedin: r.linkedin,
+        metaTitle: r.meta_title ?? null,
+        metaDescription: r.meta_description ?? null,
+        ogImage: r.og_image ?? null,
+        noindex: Boolean(r.noindex),
         createdAt: r.created_at,
         lastSeenAt: r.last_seen_at
     };
@@ -399,13 +454,18 @@ export async function saveStaff(db: D1Database, input: Partial<StaffRecord> & { 
     const v = (k: keyof StaffRecord) => (k in input ? (input as any)[k] : existing ? (existing as any)[k] : null) ?? null;
     await db
         .prepare(
-            `INSERT INTO staff (id, email, name, slug, role, status, bio, profile_image, website, twitter, linkedin, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `INSERT INTO staff (id, email, name, slug, role, status, bio, profile_image, website, twitter, linkedin, meta_title, meta_description, og_image, noindex, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(id) DO UPDATE SET email = excluded.email, name = excluded.name, slug = excluded.slug, role = excluded.role, status = excluded.status,
                bio = excluded.bio, profile_image = excluded.profile_image, website = excluded.website, twitter = excluded.twitter, linkedin = excluded.linkedin,
+               meta_title = excluded.meta_title, meta_description = excluded.meta_description, og_image = excluded.og_image, noindex = excluded.noindex,
                updated_at = excluded.updated_at`
         )
-        .bind(id, email, name, slug, v('role') ?? 'author', v('status') ?? 'active', v('bio'), v('profileImage'), v('website'), v('twitter'), v('linkedin'), existing?.createdAt ?? t, t)
+        .bind(
+            id, email, name, slug, v('role') ?? 'author', v('status') ?? 'active', v('bio'), v('profileImage'), v('website'), v('twitter'), v('linkedin'),
+            'metaTitle' in input ? text(input.metaTitle) : v('metaTitle'), 'metaDescription' in input ? text(input.metaDescription) : v('metaDescription'),
+            'ogImage' in input ? text(input.ogImage) : v('ogImage'), (('noindex' in input ? input.noindex : existing?.noindex) ? 1 : 0), existing?.createdAt ?? t, t
+        )
         .run();
     return (await getStaff(db, id))!;
 }
@@ -446,7 +506,11 @@ export async function loadSnapshot(env: Env, db: D1Database, options: { bodies?:
         profileImage: r.profile_image,
         website: r.website,
         twitter: r.twitter,
-        linkedin: r.linkedin
+        linkedin: r.linkedin,
+        metaTitle: r.meta_title ?? null,
+        metaDescription: r.meta_description ?? null,
+        ogImage: r.og_image ?? null,
+        noindex: Boolean(r.noindex)
     }));
     const { results: sized } = await db.prepare('SELECT key, width, height FROM media WHERE width > 0 AND height > 0').all<{ key: string; width: number; height: number }>();
     const base = new URL(env.SITE_URL.endsWith('/') ? env.SITE_URL : `${env.SITE_URL}/`).pathname;
@@ -462,7 +526,7 @@ export async function loadSnapshot(env: Env, db: D1Database, options: { bodies?:
         related,
         site,
         posts: rows.map(r => toPost(r, rel.tags.get(r.id) ?? [], rel.authors.get(r.id) ?? [])),
-        tags: (tags.results as any[]).map(t => ({ id: t.id, slug: t.slug, name: t.name, description: t.description, visibility: t.visibility })),
+        tags: (tags.results as any[]).map(toTag),
         authors
     };
 }
@@ -497,4 +561,23 @@ async function logoSize(url: string, siteUrl: string, known: Record<string, { wi
     } catch {
         return null;
     }
+}
+
+/** What the AI reads to write search data for a topic page or an author's page: their newest posts, title and opening. */
+export async function listingContext(db: D1Database, input: { tagId?: unknown; authorId?: unknown }): Promise<{ title: string; markdown: string; subject: 'topic' | 'author' } | null> {
+    const topic = typeof input.tagId === 'string' && input.tagId;
+    const who = typeof input.authorId === 'string' && input.authorId;
+    if (!topic && !who) return null;
+    const head = topic
+        ? await db.prepare('SELECT name, description FROM tags WHERE id = ?').bind(topic).first<{ name: string; description: string | null }>()
+        : await db.prepare('SELECT name, bio AS description FROM staff WHERE id = ?').bind(who).first<{ name: string; description: string | null }>();
+    if (!head) throw new HttpError(404, topic ? 'Tag not found.' : 'Author not found.');
+    const join = topic ? 'JOIN post_tags x ON x.post_id = p.id WHERE x.tag_id = ?' : 'JOIN post_authors x ON x.post_id = p.id WHERE x.staff_id = ?';
+    const { results } = await db
+        .prepare(`SELECT p.title, p.custom_excerpt, p.meta_description FROM posts p ${join} AND p.type = 'post' AND p.status = 'published' ORDER BY p.published_at DESC LIMIT 25`)
+        .bind(topic || who)
+        .all<{ title: string; custom_excerpt: string | null; meta_description: string | null }>();
+    const posts = results.map(r => `- ${r.title}${r.meta_description || r.custom_excerpt ? `: ${(r.meta_description || r.custom_excerpt)!.slice(0, 200)}` : ''}`);
+    const about = head.description ? `${topic ? 'Current description' : 'Bio'}: ${head.description}\n\n` : '';
+    return { title: topic ? `Topic: ${head.name}` : `Author: ${head.name}`, markdown: `${about}Posts on the page, newest first:\n${posts.join('\n') || '(none yet)'}`, subject: topic ? 'topic' : 'author' };
 }

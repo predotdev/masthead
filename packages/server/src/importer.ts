@@ -28,10 +28,21 @@ export async function importContent(ctx: Ctx, snap: Snapshot) {
     const tagStmts = snap.tags.map(tag =>
         db
             .prepare(
-                `INSERT INTO tags (id, slug, name, description, visibility, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
-                 ON CONFLICT(id) DO UPDATE SET slug = excluded.slug, name = excluded.name, description = excluded.description, visibility = excluded.visibility, updated_at = excluded.updated_at`
+                `INSERT INTO tags (id, slug, name, description, visibility, feature_image, feature_image_alt, meta_title, meta_description, og_title, og_description, og_image,
+                                   twitter_title, twitter_description, twitter_image, canonical_url, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 ON CONFLICT(id) DO UPDATE SET slug = excluded.slug, name = excluded.name, description = excluded.description, visibility = excluded.visibility,
+                   feature_image = COALESCE(excluded.feature_image, tags.feature_image), feature_image_alt = COALESCE(excluded.feature_image_alt, tags.feature_image_alt),
+                   meta_title = COALESCE(excluded.meta_title, tags.meta_title), meta_description = COALESCE(excluded.meta_description, tags.meta_description),
+                   og_title = COALESCE(excluded.og_title, tags.og_title), og_description = COALESCE(excluded.og_description, tags.og_description), og_image = COALESCE(excluded.og_image, tags.og_image),
+                   twitter_title = COALESCE(excluded.twitter_title, tags.twitter_title), twitter_description = COALESCE(excluded.twitter_description, tags.twitter_description),
+                   twitter_image = COALESCE(excluded.twitter_image, tags.twitter_image), canonical_url = COALESCE(excluded.canonical_url, tags.canonical_url), updated_at = excluded.updated_at`
             )
-            .bind(tag.id, slugify(tag.slug), tag.name, tag.description ?? null, tag.visibility, t, t)
+            .bind(
+                tag.id, slugify(tag.slug), tag.name, tag.description ?? null, tag.visibility, tag.featureImage ?? null, tag.featureImageAlt ?? null, tag.metaTitle ?? null,
+                tag.metaDescription ?? null, tag.ogTitle ?? null, tag.ogDescription ?? null, tag.ogImage ?? null, tag.twitterTitle ?? null, tag.twitterDescription ?? null,
+                tag.twitterImage ?? null, tag.canonicalUrl ?? null, t, t
+            )
     );
     await batched(db, tagStmts);
 

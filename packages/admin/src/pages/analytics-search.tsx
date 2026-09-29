@@ -793,7 +793,7 @@ export function PostSearch({ id, range }: { id: string; range: RangeKey }) {
 const cut = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
 
 /** A search result as Google draws it: site, address, title and description (titles cut near 60 characters, descriptions near 160). */
-function SerpPreview({ url, title, description, small }: { url: string; title: string; description: string | null; small?: boolean }) {
+export function SerpPreview({ url, title, description, small }: { url: string; title: string; description: string | null; small?: boolean }) {
     const site = session.value?.site;
     let crumbs = url;
     try {
@@ -822,7 +822,7 @@ function SerpPreview({ url, title, description, small }: { url: string; title: s
 // ------------------------------------------------------------------ rewriting the title and description
 
 /** The suggestions in text that is still arriving, one per line; the last line may be half written. */
-function suggestions(text: string, finished: boolean): { kind: 'title' | 'description'; text: string; done: boolean }[] {
+export function suggestions(text: string, finished: boolean): { kind: 'title' | 'description'; text: string; done: boolean }[] {
     const lines = text.split('\n');
     const out: { kind: 'title' | 'description'; text: string; done: boolean }[] = [];
     lines.forEach((line, i) => {

@@ -27,7 +27,7 @@ Hosts other than `SITE_URL`'s answer with `x-robots-tag: noindex`, so staging an
 
 Publishing renders every file the site needs from what is in D1:
 
-- a page per post, page, tag and author, plus paginated listings and a 404 page,
+- a page per post, page, tag and author (a tag or author can carry its own meta title and description, share and X card text and image, canonical address and `noindex`, which also drops it from the sitemap), plus paginated listings and a 404 page,
 - the RSS feed, a sitemap index with post, page, tag and author sitemaps (with images),
 - `llms.txt`, `llms-full.txt` and a Markdown copy of every post,
 - a search index, the theme's stylesheet and script, `_masthead/routes.json` with the redirects a host should apply, and `_masthead/cards.json` listing the share card each page without an image gets.

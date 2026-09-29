@@ -385,12 +385,15 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
             shareDescription?: string | null;
             type: 'website' | 'profile';
             image?: string | null;
+            imageAlt?: string | null;
             /** A generated share card, used when there is no share image of its own. */
             card?: { name: string; card: ShareCard };
             jsonLd: object[];
             tag?: Tag;
             author?: Author;
             highlights?: ListItem[];
+            /** Search and share data set by hand for this page; each field replaces the generated one. */
+            seo?: { title?: string | null; description?: string | null; twitterTitle?: string | null; twitterDescription?: string | null; twitterImage?: string | null; canonical?: string | null; noindex?: boolean };
         }
     ): Generator<OutputFile> {
         const total = Math.max(1, Math.ceil(items.length / perPage));
@@ -399,8 +402,11 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
             const path = urls.paged(prefix, n);
             const prevUrl = n > 1 ? urls.paged(prefix, n - 1) : undefined;
             const nextUrl = n < total ? urls.paged(prefix, n + 1) : undefined;
-            const title = n === 1 ? extra.title : `${extra.pagedTitle ?? extra.title} (Page ${n})`;
-            const description = fitMeta(extra.description || site.description);
+            const own = extra.seo;
+            const title = n === 1 ? (own?.title || extra.title) : `${own?.title || extra.pagedTitle || extra.title} (Page ${n})`;
+            const description = fitMeta(own?.description || extra.description || site.description);
+            // A canonical set by hand names the first page; later pages keep their own address.
+            const canonical = n === 1 && own?.canonical ? own.canonical : abs(path);
             const view: ListView = {
                 kind,
                 heading: extra.heading,
@@ -418,15 +424,19 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
             yield html(path, {
                 title,
                 description,
-                canonical: abs(path),
+                canonical,
                 head: headTags({
                     site: metaSite,
                     title: (n === 1 && extra.shareTitle) || title,
                     description: (n === 1 && extra.shareDescription) || description,
-                    canonical: abs(path),
+                    canonical,
+                    noindex: own?.noindex,
+                    twitterTitle: n === 1 ? own?.twitterTitle : undefined,
+                    twitterDescription: n === 1 ? own?.twitterDescription : undefined,
+                    twitterImage: own?.twitterImage ? absolute(own.twitterImage) : undefined,
                     type: extra.type,
                     image: card?.url ?? absolute(listImage),
-                    imageAlt: card?.alt,
+                    imageAlt: card?.alt ?? extra.imageAlt,
                     imageSize: card?.size ?? imageSizeOf(listImage),
                     rss: abs(urls.rss),
                     prev: prevUrl && abs(prevUrl),
@@ -461,32 +471,45 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
 
     const tagsWithPosts = snapshot.tags.filter(t => t.visibility === 'public' && byTag.has(t.id));
     for (const t of tagsWithPosts) {
+        // The share image: one set for sharing, else the topic's cover, else a generated card.
+        const tagImage = t.ogImage || t.featureImage || null;
+        const seoDescription = t.metaDescription || t.description || collectionSummary(`Posts about ${t.name} from ${metaSite.title}`, byTag.get(t.id)!);
         for (const file of listing('tag', urls.tag(t), byTag.get(t.id)!, {
             heading: t.name,
-            title: `${t.name} - ${site.title}`,
+            title: t.metaTitle || `${t.name} - ${site.title}`,
             description: t.description || collectionSummary(`Posts about ${t.name} from ${metaSite.title}`, byTag.get(t.id)!),
+            shareTitle: t.ogTitle,
+            shareDescription: t.ogDescription,
             type: 'website',
-            card: { name: `tag-${t.slug}`, card: { kind: 'tag', title: t.name, eyebrow: 'Topic', text: t.description, meta: postCount(byTag.get(t.id)!.length) } },
+            image: tagImage,
+            imageAlt: t.featureImageAlt,
+            card: tagImage ? undefined : { name: `tag-${t.slug}`, card: { kind: 'tag', title: t.name, eyebrow: 'Topic', text: t.description, meta: postCount(byTag.get(t.id)!.length) } },
             tag: t,
-            jsonLd: [collectionLd(t.name, abs(urls.tag(t)), t.description)]
+            seo: { title: t.metaTitle, description: t.metaDescription, twitterTitle: t.twitterTitle, twitterDescription: t.twitterDescription, twitterImage: t.twitterImage, canonical: t.canonicalUrl, noindex: t.noindex },
+            jsonLd: [collectionLd(t.metaTitle || t.name, abs(urls.tag(t)), fitMeta(seoDescription), absolute(tagImage))]
         }))
             (yield file, count++);
     }
 
     const authorsWithPosts = snapshot.authors.filter(a => byAuthor.has(a.id));
     for (const a of authorsWithPosts) {
+        const authorImage = a.ogImage || a.profileImage || null;
         for (const file of listing('author', urls.author(a), byAuthor.get(a.id)!, {
             heading: a.name,
-            title: `${a.name} - ${site.title}`,
+            title: a.metaTitle || `${a.name} - ${site.title}`,
             description: a.bio || collectionSummary(`Posts by ${a.name} on ${metaSite.title}`, byAuthor.get(a.id)!),
             type: 'profile',
-            image: a.profileImage,
-            card: { name: `author-${a.slug}`, card: { kind: 'author', title: a.name, eyebrow: 'Author', text: a.bio, image: absolute(a.profileImage), meta: postCount(byAuthor.get(a.id)!.length) } },
+            image: authorImage,
+            card: a.ogImage ? undefined : { name: `author-${a.slug}`, card: { kind: 'author', title: a.name, eyebrow: 'Author', text: a.bio, image: absolute(a.profileImage), meta: postCount(byAuthor.get(a.id)!.length) } },
             author: a,
+            seo: { title: a.metaTitle, description: a.metaDescription, noindex: a.noindex },
             jsonLd: [profileLd({ ...a, profileImage: absolute(a.profileImage) }, abs(urls.author(a)))]
         }))
             (yield file, count++);
     }
+    // Pages set to noindex stay out of the sitemaps.
+    const indexedTags = tagsWithPosts.filter(t => !t.noindex);
+    const indexedAuthors = authorsWithPosts.filter(a => !a.noindex);
 
     // ---------------------------------------------------------- the rest
     const rest: OutputFile[] = [];
@@ -545,11 +568,11 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
             lastmod: lastmod([...posts, ...pages])
         },
         'sitemap-tags.xml': {
-            xml: urlset(tagsWithPosts.map(t => ({ url: abs(urls.tag(t)), lastmod: lastmod(byTag.get(t.id)!) }))),
+            xml: urlset(indexedTags.map(t => ({ url: abs(urls.tag(t)), lastmod: lastmod(byTag.get(t.id)!) }))),
             lastmod: lastmod(posts)
         },
         'sitemap-authors.xml': {
-            xml: urlset(authorsWithPosts.map(a => ({ url: abs(urls.author(a)), lastmod: lastmod(byAuthor.get(a.id)!), image: absolute(a.profileImage) }))),
+            xml: urlset(indexedAuthors.map(a => ({ url: abs(urls.author(a)), lastmod: lastmod(byAuthor.get(a.id)!), image: absolute(a.profileImage) }))),
             lastmod: lastmod(posts)
         }
     };
