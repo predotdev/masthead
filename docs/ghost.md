@@ -7,7 +7,7 @@ Masthead reads your Ghost site through the Admin API, loads it into your own Wor
 | From Ghost | In Masthead |
 | --- | --- |
 | Posts, pages and drafts | Same slugs, dates, excerpts, share and SEO fields. Bodies keep Ghost's HTML byte for byte (callouts, buttons, bookmarks, galleries, embeds and video render as they did), with a Markdown copy you can switch to in the editor. |
-| Tags | Public and internal, with descriptions. |
+| Tags | Public and internal, with descriptions, cover image, and search and share fields (meta title and description, Open Graph and Twitter text and images, canonical address). |
 | Staff | Everyone with their role (owner, administrator, editor, author, contributor). They sign in with an emailed link; no passwords move. |
 | Images and media | Every file the content references is copied into R2 under the same `content/images/...` path, with Ghost's resized copies for covers, and content is rewritten to point at it. |
 | Members | Subscribed or not, bounces and spam complaints as suppressions, labels, email and open counts. Paid members come across as newsletter subscribers. |

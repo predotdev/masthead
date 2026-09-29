@@ -1,6 +1,15 @@
 import { useState } from 'preact/hooks';
 import { api, session, type Tag } from '../api';
 import { Button, Dialog, Empty, ErrorNote, Field, PageHead, Pill, TableSkeleton, errorToast, toast, useLoad } from '../ui';
+import { SeoFields } from './seo-fields';
+
+/** A tag's address as the server will make it from its name. */
+const slugOf = (name: string) =>
+    name
+        .toLowerCase()
+        .normalize('NFKD')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
 
 export function Tags() {
     const { data, error, loading, reload } = useLoad(() => api<Tag[]>('/tags'), []);
@@ -74,7 +83,7 @@ export function Tags() {
                 </div>
             )}
             {editing ? (
-                <Dialog title={editing.id ? 'Edit tag' : 'New tag'} onClose={() => setEditing(null)}>
+                <Dialog title={editing.id ? 'Edit tag' : 'New tag'} onClose={() => setEditing(null)} wide>
                     <form
                         class="stack"
                         onSubmit={async e => {
@@ -106,6 +115,17 @@ export function Tags() {
                             />{' '}
                             Internal (organizes posts, never shown to readers)
                         </label>
+                        {editing.visibility === 'internal' ? null : (
+                            <SeoFields
+                                kind="topic"
+                                id={editing.id}
+                                name={editing.name ?? ''}
+                                address={`${session.value?.site.url ?? ''}tag/${editing.slug || slugOf(editing.name ?? '')}/`}
+                                description={editing.description}
+                                value={editing}
+                                onChange={patch => setEditing(cur => ({ ...cur, ...patch }))}
+                            />
+                        )}
                         <div class="dialog-actions">
                             {editing.id ? (
                                 <Button

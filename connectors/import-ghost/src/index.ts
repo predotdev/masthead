@@ -108,7 +108,9 @@ function toAuthor(u: any): Author {
         profileImage: u.profile_image ?? null,
         website: u.website ?? null,
         twitter: u.twitter ?? u.x ?? null,
-        linkedin: u.linkedin ?? null
+        linkedin: u.linkedin ?? null,
+        metaTitle: u.meta_title ?? null,
+        metaDescription: u.meta_description ?? null
     };
 }
 
@@ -137,7 +139,17 @@ function toTag(t: any): Tag {
         slug: String(t.slug),
         name: String(t.name),
         description: t.description ?? null,
-        visibility: t.visibility === 'internal' ? 'internal' : 'public'
+        visibility: t.visibility === 'internal' ? 'internal' : 'public',
+        featureImage: t.feature_image ?? null,
+        metaTitle: t.meta_title ?? null,
+        metaDescription: t.meta_description ?? null,
+        ogTitle: t.og_title ?? null,
+        ogDescription: t.og_description ?? null,
+        ogImage: t.og_image ?? null,
+        twitterTitle: t.twitter_title ?? null,
+        twitterDescription: t.twitter_description ?? null,
+        twitterImage: t.twitter_image ?? null,
+        canonicalUrl: t.canonical_url ?? null
     };
 }
 

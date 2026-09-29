@@ -15,6 +15,7 @@ import {
     getStaff,
     listPosts,
     listStaff,
+    listingContext,
     listTags,
     loadBodies,
     loadSnapshot,
@@ -371,7 +372,10 @@ export function adminRoutes(): Router<A> {
             atLeast(p, 'admin');
             if (target.role === 'owner' || input.role === 'owner') throw new HttpError(400, 'The owner role cannot be changed here.');
         }
-        return json(await saveStaff(ctx.db, { ...input, id }));
+        const saved = await saveStaff(ctx.db, { ...input, id });
+        // An author's page is public, so a change to their name, bio or search data goes live.
+        republish(ctx);
+        return json(saved);
     });
 
     r.delete('/staff/:id', async (_req, ctx, { id }) => {
@@ -751,7 +755,9 @@ export function adminRoutes(): Router<A> {
     });
     r.post('/ai/meta', async (req, ctx) => {
         me(ctx);
-        const input = (await body(req)) as any;
+        // A topic or an author asks by id; the posts on its page are the material.
+        const asked = (await body(req)) as any;
+        const input = { ...asked, ...((await listingContext(ctx.db, asked)) ?? {}) } as any;
         return wantsEvents(req) ? metaStream(ctx, input, req.signal) : json(await meta(ctx, input));
     });
     r.post('/ai/image', async (req, ctx) => {

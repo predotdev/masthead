@@ -259,6 +259,8 @@ interface MetaInput {
     title?: string;
     markdown: string;
     model?: string;
+    /** Set when the page is a topic or an author's page: a listing, so `markdown` holds the posts on it. */
+    subject?: 'topic' | 'author';
     /** What people search for when the post shows in Google, most searched first (from Search Console). */
     searches?: unknown;
     /** The search title and description it has now, when they draw fewer clicks than its position should. */
@@ -278,7 +280,7 @@ function metaJob(input: MetaInput) {
             : ''
     ].filter(Boolean);
     return {
-        task: 'Suggest search and share metadata for the post. Reply with seven lines and nothing else: three lines that start "TITLE: " (titles, at most 60 characters each), three that start "DESCRIPTION: " (search descriptions, at most 155 characters each), then one that starts "EXCERPT: " (one or two sentences for the post listing). No quotes, no numbering.',
+        task: `Suggest search and share metadata for ${input.subject === 'topic' ? 'a topic page that lists the posts below. Say what the topic covers and who it is for, from those posts' : input.subject === 'author' ? "an author's page that lists the posts below. Say who they are and what they write about, from those posts" : 'the post'}. Reply with seven lines and nothing else: three lines that start "TITLE: " (titles, at most 60 characters each), three that start "DESCRIPTION: " (search descriptions, at most 155 characters each), then one that starts "EXCERPT: " (one or two sentences for the post listing). No quotes, no numbering.`,
         messages: [{ role: 'user' as const, content: `${context.length ? `${context.join('\n\n')}\n\n` : ''}Current title: ${input.title ?? ''}\n\n${(input.markdown ?? '').slice(0, 12000)}` }],
         // Seven short lines, but a reasoning model thinks first and that counts too: at 800 some wrote nothing.
         maxTokens: 3000

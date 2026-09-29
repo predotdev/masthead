@@ -17,6 +17,12 @@ export interface Author {
     /** Handles or full URLs; rendered as sameAs links in structured data. */
     twitter?: string | null;
     linkedin?: string | null;
+    /** Search and share data for the author's page. */
+    metaTitle?: string | null;
+    metaDescription?: string | null;
+    ogImage?: string | null;
+    /** Keep the page out of search results and the sitemap. */
+    noindex?: boolean;
 }
 
 export interface Tag {
@@ -26,6 +32,21 @@ export interface Tag {
     description?: string | null;
     /** Internal tags organize content and are never rendered publicly. */
     visibility: 'public' | 'internal';
+    /** A cover image for the topic page; also its share image unless ogImage is set. */
+    featureImage?: string | null;
+    featureImageAlt?: string | null;
+    /** Search and share data for the topic page: the same fields a post has. */
+    metaTitle?: string | null;
+    metaDescription?: string | null;
+    ogTitle?: string | null;
+    ogDescription?: string | null;
+    ogImage?: string | null;
+    twitterTitle?: string | null;
+    twitterDescription?: string | null;
+    twitterImage?: string | null;
+    canonicalUrl?: string | null;
+    /** Keep the page out of search results and the sitemap. */
+    noindex?: boolean;
 }
 
 export interface Post {

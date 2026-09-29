@@ -16,6 +16,10 @@ export interface HeadInput {
     publishedAt?: string | null;
     updatedAt?: string | null;
     tags?: Tag[];
+    /** Twitter/X card text and image when they differ from the Open Graph ones. */
+    twitterTitle?: string | null;
+    twitterDescription?: string | null;
+    twitterImage?: string | null;
     rss: string;
     markdown?: string;
     prev?: string;
@@ -45,9 +49,9 @@ export function headTags(h: HeadInput): string {
         h.updatedAt ? meta('property', 'article:modified_time', h.updatedAt) : '',
         ...(h.tags ?? []).map(t => meta('property', 'article:tag', t.name)),
         meta('name', 'twitter:card', image ? 'summary_large_image' : 'summary'),
-        meta('name', 'twitter:title', h.title),
-        meta('name', 'twitter:description', h.description),
-        image ? meta('name', 'twitter:image', image) : '',
+        meta('name', 'twitter:title', h.twitterTitle || h.title),
+        meta('name', 'twitter:description', h.twitterDescription || h.description),
+        h.twitterImage || image ? meta('name', 'twitter:image', h.twitterImage || image!) : '',
         handle ? meta('name', 'twitter:site', handle) : '',
         h.authors?.length ? meta('name', 'twitter:label1', 'Written by') : '',
         h.authors?.length ? meta('name', 'twitter:data1', h.authors.join(', ')) : '',
@@ -209,13 +213,14 @@ export function blogLd(site: SiteSettings) {
     };
 }
 
-export function collectionLd(name: string, url: string, description?: string | null) {
+export function collectionLd(name: string, url: string, description?: string | null, image?: string | null) {
     return {
         '@context': 'https://schema.org',
         '@type': 'CollectionPage',
         name,
         url,
-        ...(description ? { description } : {})
+        ...(description ? { description } : {}),
+        ...(image ? { image } : {})
     };
 }
 

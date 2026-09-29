@@ -157,6 +157,28 @@ const MIGRATIONS: string[][] = [
             id INTEGER PRIMARY KEY AUTOINCREMENT, staff_id TEXT NOT NULL, kind TEXT NOT NULL, post_id TEXT, thread_id TEXT,
             actor_id TEXT, actor_name TEXT, text TEXT, created_at TEXT NOT NULL, read_at TEXT)`,
         `CREATE INDEX notifications_staff ON notifications (staff_id, id)`
+    ],
+    // v11: reserved for the redirects table (feat/redirects); empty here so this branch's v12 keeps its number.
+    [],
+    // v12: search and share data for topic and author pages, the same fields a post has: meta title and
+    // description, share card text and image, canonical address, noindex; a topic also has a cover image.
+    [
+        `ALTER TABLE tags ADD COLUMN meta_title TEXT`,
+        `ALTER TABLE tags ADD COLUMN meta_description TEXT`,
+        `ALTER TABLE tags ADD COLUMN og_title TEXT`,
+        `ALTER TABLE tags ADD COLUMN og_description TEXT`,
+        `ALTER TABLE tags ADD COLUMN og_image TEXT`,
+        `ALTER TABLE tags ADD COLUMN twitter_title TEXT`,
+        `ALTER TABLE tags ADD COLUMN twitter_description TEXT`,
+        `ALTER TABLE tags ADD COLUMN twitter_image TEXT`,
+        `ALTER TABLE tags ADD COLUMN canonical_url TEXT`,
+        `ALTER TABLE tags ADD COLUMN feature_image TEXT`,
+        `ALTER TABLE tags ADD COLUMN feature_image_alt TEXT`,
+        `ALTER TABLE tags ADD COLUMN noindex INTEGER NOT NULL DEFAULT 0`,
+        `ALTER TABLE staff ADD COLUMN meta_title TEXT`,
+        `ALTER TABLE staff ADD COLUMN meta_description TEXT`,
+        `ALTER TABLE staff ADD COLUMN og_image TEXT`,
+        `ALTER TABLE staff ADD COLUMN noindex INTEGER NOT NULL DEFAULT 0`
     ]
 ];
 
