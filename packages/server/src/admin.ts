@@ -39,6 +39,7 @@ import { addMemory, deleteMemory, embedPending, knowledgeStats, listMemory, refr
 import { addMember, deleteMember, getMember, getMemberByEmail, listMembers, memberEvents, memberStats, restoreOptOuts, setStatus, type MemberStatus } from './members';
 import { appUrl, buildEmail, cancelSend, countSegment, createSend, getSend, listSends, processSends, sendTest, testMode, unsubscribeUrl, type Segment } from './newsletter';
 import { linkTag, publishSite } from './publish';
+import { deleteRedirect, exportRedirects, importRedirects, listRedirects, parseImport, redirectMovedAddress, saveRedirect, testRedirect, type RedirectInput } from './redirects';
 import { MEDIA_PREFIX } from './public';
 import { checkApproval, reviewSummaries, saveWorkflowSettings, workflowSettings } from './review';
 import { Router } from './router';
@@ -191,6 +192,8 @@ export function adminRoutes(): Router<A> {
         await keepRevision(ctx.db, existing, input, p.name, 'edited');
         const post = await savePost(ctx.db, { ...input, id });
         await saveAnchors(ctx.db, id, anchors);
+        // A live address that moved keeps working: the old one redirects to the new one.
+        if (existing.publishedAt && existing.status !== 'draft' && post.slug !== existing.slug) await redirectMovedAddress(ctx.db, ctx.env, `/${existing.slug}/`, `/${post.slug}/`, p.name).catch(err => console.error('redirect for a moved address failed', err));
         // A post without a topic gets tags picked after the response (autotag.ts); the editor fetches them.
         const tagging = await wantsAutoTags(ctx, post);
         if (post.status === 'published') republish(ctx, tagging ? autoTag(ctx, id) : undefined);
@@ -324,12 +327,45 @@ export function adminRoutes(): Router<A> {
         return new Response(await paintCard(ctx, shareCardSite(site), card), { headers: { 'content-type': 'image/png', 'cache-control': 'private, max-age=300' } });
     });
 
+    // ---------------------------------------------------------- redirects
+    r.get('/redirects', async (_req, ctx) => (atLeast(ctx.principal, 'editor'), json(await listRedirects(ctx.db))));
+    r.post('/redirects', async (req, ctx) => {
+        const p = atLeast(ctx.principal, 'editor');
+        return json(await saveRedirect(ctx.db, ctx.env, (await body(req)) as RedirectInput, p.name), 201);
+    });
+    r.put('/redirects/:id', async (req, ctx, { id }) => {
+        const p = atLeast(ctx.principal, 'editor');
+        return json(await saveRedirect(ctx.db, ctx.env, (await body(req)) as RedirectInput, p.name, id));
+    });
+    r.delete('/redirects/:id', async (_req, ctx, { id }) => {
+        atLeast(ctx.principal, 'editor');
+        await deleteRedirect(ctx.db, id);
+        return json({ ok: true });
+    });
+    r.post('/redirects/import', async (req, ctx) => {
+        const p = atLeast(ctx.principal, 'editor');
+        const { text } = await body(req);
+        return json(await importRedirects(ctx.db, ctx.env, parseImport(String(text ?? '')), p.name));
+    });
+    r.post('/redirects/test', async (req, ctx) => {
+        atLeast(ctx.principal, 'editor');
+        const { url } = await body(req);
+        return json({ result: await testRedirect(ctx, String(url ?? '')) });
+    });
+    r.get('/redirects/export', async (_req, ctx) => {
+        atLeast(ctx.principal, 'editor');
+        const csv = ctx.url.searchParams.get('format') === 'csv';
+        return new Response(await exportRedirects(ctx.db, ctx.env, csv ? 'csv' : 'json'), { headers: { 'content-type': csv ? 'text/csv; charset=utf-8' : 'application/json; charset=utf-8', 'content-disposition': `attachment; filename="redirects.${csv ? 'csv' : 'json'}"` } });
+    });
+
     // ---------------------------------------------------------- tags
     r.get('/tags', async (_req, ctx) => (me(ctx), json(await listTags(ctx.db))));
     r.post('/tags', async (req, ctx) => (atLeast(ctx.principal, 'editor'), json(await saveTag(ctx.db, { ...(await body(req)), id: undefined }), 201)));
     r.put('/tags/:id', async (req, ctx, { id }) => {
-        atLeast(ctx.principal, 'editor');
+        const p = atLeast(ctx.principal, 'editor');
+        const before = (await listTags(ctx.db)).find(t => t.id === id);
         const tag = await saveTag(ctx.db, { ...(await body(req)), id });
+        if (before && before.visibility === 'public' && tag.slug !== before.slug) await redirectMovedAddress(ctx.db, ctx.env, `/tag/${before.slug}/`, `/tag/${tag.slug}/`, p.name).catch(err => console.error('redirect for a moved tag failed', err));
         republish(ctx);
         return json(tag);
     });

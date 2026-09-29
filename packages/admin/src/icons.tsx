@@ -26,6 +26,12 @@ const PATHS = {
             <circle cx="7.5" cy="7.5" r=".5" fill="currentColor" />
         </>
     ),
+    redirect: (
+        <>
+            <polyline points="15 14 20 9 15 4" />
+            <path d="M4 20v-7a4 4 0 0 1 4-4h12" />
+        </>
+    ),
     analytics: (
         <>
             <path d="M3 3v16a2 2 0 0 0 2 2h16" />

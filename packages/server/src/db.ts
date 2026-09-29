@@ -157,6 +157,14 @@ const MIGRATIONS: string[][] = [
             id INTEGER PRIMARY KEY AUTOINCREMENT, staff_id TEXT NOT NULL, kind TEXT NOT NULL, post_id TEXT, thread_id TEXT,
             actor_id TEXT, actor_name TEXT, text TEXT, created_at TEXT NOT NULL, read_at TEXT)`,
         `CREATE INDEX notifications_staff ON notifications (staff_id, id)`
+    ],
+    // v11: URL redirects an editor manages (exact paths and regular expressions), with hit counts.
+    [
+        `CREATE TABLE redirects (
+            id TEXT PRIMARY KEY, from_path TEXT NOT NULL UNIQUE, to_url TEXT NOT NULL,
+            status INTEGER NOT NULL DEFAULT 301 CHECK (status IN (301,302,307,308)),
+            kind TEXT NOT NULL DEFAULT 'path' CHECK (kind IN ('path','regex')),
+            hits INTEGER NOT NULL DEFAULT 0, last_hit_at TEXT, note TEXT, created_by TEXT, created_at TEXT NOT NULL)`
     ]
 ];
 

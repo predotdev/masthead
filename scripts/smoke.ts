@@ -256,6 +256,19 @@ await check('unpublish removes it', async () => {
     const res = await get(`${base}${slug}/`);
     assert(res.status === 404, `status ${res.status}`);
 });
+await check('redirects: exact, pattern, never over a real page', async () => {
+    const from = `smoke-old-${stamp}`;
+    const made = await admin('POST', '/redirects', { from: `/${from}/`, to: `/${slug}/` }, 201);
+    cleanup.push(() => admin('DELETE', `/redirects/${made.id}`));
+    const pattern = await admin('POST', '/redirects', { from: `^/smoke-topic-${stamp}/(.*)$`, to: '/tag/$1/', status: 302 }, 201);
+    cleanup.push(() => admin('DELETE', `/redirects/${pattern.id}`));
+    const hit = await get(`${base}${from}/?x=1`);
+    assert(hit.status === 301 && (hit.headers.get('location') ?? '').endsWith(`${base}${slug}/?x=1`), `exact: ${hit.status} ${hit.headers.get('location')}`);
+    const tagged = await get(`${base}smoke-topic-${stamp}/news/`);
+    assert(tagged.status === 302 && (tagged.headers.get('location') ?? '').endsWith(`${base}tag/news/`), `pattern: ${tagged.status} ${tagged.headers.get('location')}`);
+    await admin('POST', '/redirects', { from: `/${slug}-x/`, to: `/${slug}-x/` }, 400);
+    await admin('POST', '/redirects', { from: '/', to: '/x/' }, 400);
+});
 await check('image upload', async () => {
     const png = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='), c => c.charCodeAt(0));
     const form = new FormData();

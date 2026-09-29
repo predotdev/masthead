@@ -8,6 +8,7 @@ Masthead reads your Ghost site through the Admin API, loads it into your own Wor
 | --- | --- |
 | Posts, pages and drafts | Same slugs, dates, excerpts, share and SEO fields. Bodies keep Ghost's HTML byte for byte (callouts, buttons, bookmarks, galleries, embeds and video render as they did), with a Markdown copy you can switch to in the editor. |
 | Tags | Public and internal, with descriptions. |
+| Redirects | Import Ghost's `redirects.json` (or a CSV) under Redirects in the admin; patterns keep working. Export gives the same file back. |
 | Staff | Everyone with their role (owner, administrator, editor, author, contributor). They sign in with an emailed link; no passwords move. |
 | Images and media | Every file the content references is copied into R2 under the same `content/images/...` path, with Ghost's resized copies for covers, and content is rewritten to point at it. |
 | Members | Subscribed or not, bounces and spam complaints as suppressions, labels, email and open counts. Paid members come across as newsletter subscribers. |
@@ -15,7 +16,7 @@ Masthead reads your Ghost site through the Admin API, loads it into your own Wor
 | Newsletter stats | Recipients, deliveries and opens for every post Ghost emailed, shown in Analytics next to new sends. |
 | Settings | Title, description, logo, icon, accent color, navigation and the newsletter sender. |
 
-Addresses stay the same: `/<slug>/`, `/tag/<slug>/`, `/author/<slug>/`, `/rss/`, `/sitemap.xml` and `/content/images/...`. Ghost's older shapes (`/amp/`, uppercase slugs, `index.html`, tag and author feeds) redirect to where those pages live now. Unsubscribe links in newsletters Ghost already sent (`/unsubscribe/?uuid=...`) keep working, tracked links from old emails (`/r/...`) land on the front page, and `/ghost/` answers `410 Gone`.
+Redirects you add in the admin (Redirects) apply only where no page exists, so they never hide a post. Changing a published post's or tag's address adds a permanent redirect from the old one. Addresses stay the same: `/<slug>/`, `/tag/<slug>/`, `/author/<slug>/`, `/rss/`, `/sitemap.xml` and `/content/images/...`. Ghost's older shapes (`/amp/`, uppercase slugs, `index.html`, tag and author feeds) redirect to where those pages live now. Unsubscribe links in newsletters Ghost already sent (`/unsubscribe/?uuid=...`) keep working, tracked links from old emails (`/r/...`) land on the front page, and `/ghost/` answers `410 Gone`.
 
 Not supported: paid tiers and Stripe checkout, comments, recommendations and Ghost themes. Masthead's theme is configured with settings instead.
 

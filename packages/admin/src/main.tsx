@@ -14,6 +14,7 @@ import { NotificationsButton, useNotificationsPoll } from './pages/notifications
 import { Posts, createPost } from './pages/posts';
 import { Settings } from './pages/settings';
 import { StaffPage } from './pages/staff';
+import { Redirects } from './pages/redirects';
 import { Tags } from './pages/tags';
 import { Avatar, Loading, Toasts, errorToast } from './ui';
 
@@ -80,12 +81,13 @@ const NAV: { label: string; items: NavItem[] }[] = [
     {
         label: 'Site',
         items: [
+            { path: '/redirects', label: 'Redirects', icon: 'redirect', roles: ['owner', 'admin', 'editor'] },
             { path: '/staff', label: 'Staff', icon: 'staff' },
             { path: '/settings', label: 'Settings', icon: 'settings', roles: ['owner', 'admin'] }
         ]
     }
 ];
-const TITLES: Record<string, string> = { pages: 'Pages', edit: 'Editor', calendar: 'Calendar', ideas: 'Ideas', analytics: 'Analytics', members: 'Members', newsletters: 'Newsletters', tags: 'Tags', staff: 'Staff', settings: 'Settings' };
+const TITLES: Record<string, string> = { pages: 'Pages', edit: 'Editor', calendar: 'Calendar', ideas: 'Ideas', analytics: 'Analytics', members: 'Members', newsletters: 'Newsletters', tags: 'Tags', redirects: 'Redirects', staff: 'Staff', settings: 'Settings' };
 const ROLE_LABEL: Record<Role, string> = { owner: 'Owner', admin: 'Admin', editor: 'Editor', author: 'Author', contributor: 'Contributor' };
 
 /** The nav item a route belongs to: pages and the editor live under Posts. */
@@ -123,6 +125,8 @@ function Page() {
             return arg === 'welcome' ? <WelcomeSeries /> : arg ? <SendDetail id={arg} /> : <Newsletters />;
         case 'tags':
             return <Tags />;
+        case 'redirects':
+            return <Redirects />;
         case 'staff':
             return <StaffPage />;
         case 'settings':

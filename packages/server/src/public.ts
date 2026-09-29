@@ -12,6 +12,7 @@ import { checkMemberToken, getMember, getMemberByExternalUuid, memberToken, requ
 import { appUrl, mayEmail, recordEmailEvents, testMode } from './newsletter';
 import { sequenceUnsubscribe } from './sequences';
 import { SITE_PREFIX, edgeCache, edgeKey } from './publish';
+import { redirectFor } from './redirects';
 import { Router } from './router';
 import { HttpError, body, escapeHtml as esc, html, json, redirect } from './util';
 
@@ -127,6 +128,11 @@ async function fromStorage(ctx: Ctx, key: string, canonical: boolean, req: Reque
     const cache = edgeCache();
     if (obj === null) {
         if (cache) ctx.exec.waitUntil(cache.delete(edgeKey(key, canonical)));
+        // Nothing lives here: an editor's redirect may. (Real pages always win, so a redirect can never hide one.)
+        if (req && (req.method === 'GET' || req.method === 'HEAD')) {
+            const moved = await redirectFor(ctx, decodeURIComponent(ctx.url.pathname)).catch(() => null);
+            if (moved) return redirect(moved.location, moved.status, { ...SECURITY_HEADERS, ...robots(ctx), 'cache-control': 'public, max-age=300' });
+        }
         const missing = await ctx.env.BUCKET.get(`${SITE_PREFIX}${ctx.basePath.slice(1)}404.html`);
         return new Response(missing?.body ?? 'Not found', { status: 404, headers: { 'content-type': 'text/html; charset=utf-8', ...SECURITY_HEADERS, ...robots(ctx) } });
     }
