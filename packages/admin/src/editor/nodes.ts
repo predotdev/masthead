@@ -4,7 +4,7 @@
  * back, so imported posts open as editable content instead of raw HTML.
  * Anything unrecognized becomes an HTML card that is kept byte for byte.
  */
-import { Node, type Editor } from '@tiptap/core';
+import { Extension, Node, type Editor, type JSONContent, type MarkdownToken } from '@tiptap/core';
 
 export interface MediaBridge {
     /** Opens the AI image tool on an image, to edit or regenerate it in place. */
@@ -167,6 +167,50 @@ export const Figure = Node.create<{ bridge: MediaBridge | null }>({
                 ignoreMutation: () => true
             };
         };
+    }
+});
+
+/** `![alt](src)`, or `[![alt](src)](href)` for a linked one, as image card attributes; null for anything else. */
+function markdownImage(t: MarkdownToken) {
+    const link = t.type === 'link' && t.tokens?.length === 1 ? t : null;
+    const img = link ? link.tokens![0] : t;
+    return img.type === 'image' ? { src: img.href, alt: img.text ?? '', href: link?.href ?? null } : null;
+}
+
+/**
+ * Markdown images open as image cards. A card is a block, so a paragraph that
+ * holds images splits around them, as pasted HTML does, and its text stays.
+ */
+export const MarkdownImages = Extension.create({
+    name: 'markdownImages',
+    // Ahead of the paragraph's own parser, which keeps only the alt text.
+    priority: 1001,
+    markdownTokenName: 'paragraph',
+    parseMarkdown: (token, h) => {
+        const tokens = token.tokens ?? [];
+        // No images: the paragraph parser takes it.
+        if (!tokens.some(markdownImage)) return [];
+        const out: JSONContent[] = [];
+        let run: MarkdownToken[] = [];
+        const flush = () => {
+            const c = h.parseInline(run);
+            run = [];
+            // The line breaks that stood around an image go with it.
+            const edge = (n?: JSONContent) => n && (n.type === 'hardBreak' || !n.text?.trim());
+            while (edge(c[0])) c.shift();
+            while (edge(c.at(-1))) c.pop();
+            if (!c.length) return;
+            c[0].text &&= c[0].text.trimStart();
+            c[c.length - 1].text &&= c[c.length - 1].text!.trimEnd();
+            out.push(h.createNode('paragraph', undefined, c));
+        };
+        for (const t of tokens) {
+            const img = markdownImage(t);
+            if (img) (flush(), out.push(h.createNode('figure', img)));
+            else run.push(t);
+        }
+        flush();
+        return out;
     }
 });
 

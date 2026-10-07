@@ -4,7 +4,7 @@ import Placeholder from '@tiptap/extension-placeholder';
 import { Markdown } from '@tiptap/markdown';
 import StarterKit from '@tiptap/starter-kit';
 import { CommentMark, withoutCommentAnchors } from './comments';
-import { Bookmark, ButtonCard, Callout, Embed, Figure, HtmlCard, prepareHtml, publishHtml, Video, type MediaBridge } from './nodes';
+import { Bookmark, ButtonCard, Callout, Embed, Figure, HtmlCard, MarkdownImages, prepareHtml, publishHtml, Video, type MediaBridge } from './nodes';
 import { StyleCheck } from './style-check';
 
 export interface SlashState {
@@ -48,6 +48,7 @@ export function extensions(bridge: MediaBridge | null = null) {
         Markdown,
         TableKit.configure({ table: { resizable: false } }),
         Figure.configure({ bridge }),
+        MarkdownImages,
         Video,
         Embed,
         Bookmark,
