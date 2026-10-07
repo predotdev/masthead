@@ -13,6 +13,19 @@ import { HttpError, isEmail, newId, now, sleep } from './util';
 
 export const BATCH = 100;
 
+/** Reserved test domains (RFC 2606, RFC 6761): no provider delivers there, and Resend rejects a whole batch over one. */
+const RESERVED_TLDS = new Set(['test', 'example', 'invalid', 'localhost', 'local']);
+
+/** An address no email provider will deliver to: malformed, or on a reserved test domain. */
+export function undeliverable(address: string): boolean {
+    const email = String(address ?? '').trim().toLowerCase();
+    const at = email.lastIndexOf('@');
+    if (at < 1 || /\s/.test(email)) return true;
+    const domain = email.slice(at + 1);
+    if (!domain.includes('.') || domain.startsWith('.') || domain.endsWith('.')) return true;
+    return RESERVED_TLDS.has(domain.split('.').pop()!) || /(^|\.)example\.(com|net|org)$/.test(domain);
+}
+
 export function appUrl(env: Env): string {
     const u = env.APP_URL || env.SITE_URL;
     return u.endsWith('/') ? u : `${u}/`;
@@ -304,11 +317,16 @@ export async function processSends(env: Env, db: D1Database, options: AppOptions
             const postSlug = email.slug ?? '';
             // A test-mode send already holds only team addresses; anything else (the team list changed since) goes to the test inbox.
             const team = send.test_mode ? await testTeam(env, db) : null;
+            const toOf = (r: { email: string }) => (team && !onTeam(team, r.email) ? testAddress(env) : r.email);
+            // Placeholder addresses (scrubbed accounts at example.invalid, test sign-ups) are never handed to the
+            // provider: one of them fails a whole Resend batch, which used to stop the send halfway (2026-10-07).
+            const skipped = batch.filter(r => undeliverable(toOf(r)));
+            const deliver = batch.filter(r => !undeliverable(toOf(r)));
             const messages: EmailMessage[] = await Promise.all(
-                batch.map(async r => {
+                deliver.map(async r => {
                     const unsub = await unsubscribeUrl(env, r.member_id, send.id);
                     return {
-                        to: team && !onTeam(team, r.email) ? testAddress(env) : r.email,
+                        to: toOf(r),
                         from,
                         replyTo,
                         subject: send.subject,
@@ -323,12 +341,30 @@ export async function processSends(env: Env, db: D1Database, options: AppOptions
                     };
                 })
             );
-            const results = await transport.send(messages);
+            let results = await transport.send(messages);
+            // The provider refused the whole batch as invalid (a 4xx, not a rate limit): one bad address does that.
+            // Send that batch one by one so only the bad address fails; each message keeps its own idempotency key,
+            // so nothing is sent twice. Three single failures in a row with nothing sent is the provider itself.
+            if (messages.length > 1 && results.every(r => !r.ok) && / returned 4(?!29)\d\d/.test(results[0]?.error ?? '')) {
+                results = [];
+                for (const m of messages) {
+                    results.push(...(await transport.send([m])));
+                    if (results.length >= 3 && results.every(r => !r.ok)) break;
+                }
+            }
             const t = now();
             const stmts: D1PreparedStatement[] = [];
             let ok = 0;
+            for (const r of skipped) {
+                stmts.push(
+                    db
+                        .prepare("UPDATE send_recipients SET status = 'failed', error = ?, updated_at = ? WHERE send_id = ? AND member_id = ?")
+                        .bind('Not sent: reserved test address', t, send.id, r.member_id)
+                );
+            }
+            // Results line up with the messages that were attempted; a recipient past them stays pending.
             results.forEach((res, i) => {
-                const r = batch[i];
+                const r = deliver[i];
                 if (res.ok) ok++;
                 stmts.push(
                     db
@@ -337,12 +373,12 @@ export async function processSends(env: Env, db: D1Database, options: AppOptions
                 );
                 if (res.ok) stmts.push(db.prepare('UPDATE members SET email_count = email_count + 1, last_emailed_at = ? WHERE id = ?').bind(t, r.member_id));
             });
-            stmts.push(db.prepare('UPDATE sends SET sent = sent + ?, failed = failed + ? WHERE id = ?').bind(ok, results.length - ok, send.id));
+            stmts.push(db.prepare('UPDATE sends SET sent = sent + ?, failed = failed + ? WHERE id = ?').bind(ok, results.length - ok + skipped.length, send.id));
             await batched(db, stmts);
             stats.batches++;
             stats.sent += ok;
-            stats.failed += results.length - ok;
-            if (ok === 0) {
+            stats.failed += results.length - ok + skipped.length;
+            if (ok === 0 && results.length) {
                 // The whole batch failed (bad key, provider down): stop rather than burn through the list.
                 await db.prepare("UPDATE sends SET status = 'failed', error = ?, finished_at = ? WHERE id = ?").bind(results[0]?.error ?? 'Sending failed.', now(), send.id).run();
                 break;
