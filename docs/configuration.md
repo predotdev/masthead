@@ -146,6 +146,8 @@ It saves `site`, `newsletter`, `ai`, `style` and `workflow`, adds `memory` entri
 
 `senderName`, `senderEmail` and `replyTo`. `EMAIL_FROM` wins over the sender when it is set; a `postalAddress` here wins over `POSTAL_ADDRESS`.
 
+`perMinute` caps how many newsletter emails go out per minute; unset sends as fast as the provider takes them. A sender still building its reputation does better spreading a big send over half an hour or more (Gmail defers mail that arrives in a burst).
+
 ### `ai`
 
 `textModel`, `imageModel`, `videoModel` and `embeddingModel` override the variables of the same names. `knowledgeSources` are pages the AI reads besides the blog itself (an `llms.txt`, docs, a changelog feed). `voice` is the house style every draft follows.

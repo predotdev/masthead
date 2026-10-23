@@ -44,6 +44,12 @@ export interface NewsletterConfig extends NewsletterSettings {
      * emails use them too (no post slug; the send id is the email's own), plus {sequence} and {step}.
      */
     emailHeaders?: Record<string, string> | null;
+    /**
+     * Most newsletter emails to send per minute (the cron runs every minute). Unset sends as fast as the
+     * provider takes them. A cap spreads a big send out, which mailbox providers prefer from a sender still
+     * building its reputation.
+     */
+    perMinute?: number | null;
 }
 
 export async function newsletterSettings(env: Env, db: D1Database): Promise<NewsletterConfig> {
