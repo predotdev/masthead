@@ -211,6 +211,15 @@ export const MarkdownImages = Extension.create({
         }
         flush();
         return out;
+    },
+    // Holding the paragraph token also makes this the paragraph's writer when saving Markdown, so it
+    // writes paragraphs as the paragraph extension does; without this every paragraph saved empty.
+    renderMarkdown: (node: any, h: any, ctx: any) => {
+        const content = Array.isArray(node?.content) ? node.content : [];
+        if (content.length) return h.renderChildren(content);
+        // A second empty paragraph in a row keeps the gap.
+        const prev = ctx?.previousNode;
+        return prev?.type === 'paragraph' && !(Array.isArray(prev.content) && prev.content.length) ? '&nbsp;' : '';
     }
 });
 
