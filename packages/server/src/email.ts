@@ -203,7 +203,13 @@ function plainBody(markdown: string): string {
         })
         .replace(/<iframe\b[^>]*src="([^"]+)"[^>]*>[\s\S]*?<\/iframe>/gi, '$1')
         .replace(/<img\b[^>]*alt="([^"]*)"[^>]*>/gi, (_m, alt: string) => (alt ? `[${alt}]` : ''))
-        .replace(/<\/(p|div|figure|figcaption|h\d|li|blockquote)>/gi, '\n')
+        // Lists and tables from HTML bodies: a line per item and per row.
+        .replace(/<\/p>\s*(?=<\/(li|td|th)>)/gi, '')
+        .replace(/<li\b[^>]*>/gi, '- ')
+        .replace(/<\/t[dh]>\s*(?=<\/tr>)/gi, '')
+        .replace(/<\/t[dh]>/gi, ' | ')
+        .replace(/<br\s*\/?>|<\/(tr|li)>/gi, '\n')
+        .replace(/<\/(p|div|figure|figcaption|h\d|blockquote|pre|ul|ol|table)>/gi, '\n\n')
         .replace(/<[^>]+>/g, '')
         .replace(/&nbsp;/g, ' ')
         .replace(/&amp;/g, '&')
@@ -214,6 +220,18 @@ function plainBody(markdown: string): string {
         .replace(/[ \t]+\n/g, '\n')
         .replace(/\n{3,}/g, '\n\n')
         .trim();
+}
+
+const wordCount = (text: string) => text.match(/[\p{L}\p{N}]+/gu)?.length ?? 0;
+
+/**
+ * The text part's body. The Markdown copy reads best, but copies saved by editors before the
+ * paragraph fix lost their paragraphs; when it holds clearly fewer words than the HTML, use the HTML.
+ */
+function textPart(markdown: string, html: string): string {
+    const fromMarkdown = plainBody(markdown);
+    const fromHtml = plainBody(html);
+    return wordCount(fromMarkdown) >= wordCount(fromHtml) * 0.8 ? fromMarkdown : fromHtml;
 }
 
 /** The newsletter for a post. The unsubscribe placeholder is swapped per recipient. */
@@ -271,7 +289,7 @@ export function newsletterEmail(o: {
     });
 
     const byNames = o.authors.map(a => a.name).join(', ');
-    const text = `${post.title}\n${[byNames, date].filter(Boolean).join(' · ')}\n\n${plainBody(o.markdown)}\n\nRead on the web: ${o.postUrl}\n\n--\n${o.site.title}\nUnsubscribe: ${UNSUBSCRIBE_PLACEHOLDER}${o.postalAddress ? `\n${o.postalAddress}` : ''}\n`;
+    const text = `${post.title}\n${[byNames, date].filter(Boolean).join(' · ')}\n\n${textPart(o.markdown, o.body)}\n\nRead on the web: ${o.postUrl}\n\n--\n${o.site.title}\nUnsubscribe: ${UNSUBSCRIBE_PLACEHOLDER}${o.postalAddress ? `\n${o.postalAddress}` : ''}\n`;
     return { subject: post.title, html, text };
 }
 
