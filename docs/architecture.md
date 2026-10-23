@@ -55,6 +55,8 @@ Signing up creates a pending member and sends a confirmation link signed with `S
 
 Sending a post freezes its recipients into `send_recipients` when the send is queued. The cron works through them in batches, one worker at a time per send (a lease), and every message carries an idempotency key, so a retry never sends twice. Each email has a signed RFC 8058 one-click unsubscribe header. Delivery, open, click, bounce and complaint events come back through a verified webhook; bounces and complaints suppress the address.
 
+A member labeled `paused` gets no newsletter from any segment until the label comes off. It is for bringing a cold list back slowly: pause the people who rarely open, then take the label off a batch before each send.
+
 ## Accounts
 
 Staff sign in with single-use links that expire in an hour; the link opens the admin, and only a click uses it, so mail scanners cannot. Sessions are HttpOnly cookies. API keys for integrations are stored as hashes and carry a role (admin, editor or author). The owner token (`BOOTSTRAP_TOKEN`) is for first setup and the CLI. State-changing admin calls need a bearer token or the admin app's own header, so a cross-site form cannot make them.

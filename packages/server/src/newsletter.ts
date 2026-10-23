@@ -195,8 +195,11 @@ async function readSize(url: string): Promise<Size | null> {
 
 export type Segment = 'all' | 'engaged' | `label:${string}`;
 
+/** Members with this label get no newsletter, whatever the segment, until it comes off (e.g. while a cold list is brought back a batch at a time). */
+export const PAUSED_LABEL = 'paused';
+
 function segmentWhere(segment: Segment): { sql: string; args: unknown[] } {
-    const base = "status = 'subscribed' AND suppressed IS NULL";
+    const base = `status = 'subscribed' AND suppressed IS NULL AND instr(labels, '"${PAUSED_LABEL}"') = 0`;
     if (segment === 'engaged') return { sql: `${base} AND opened_count > 0`, args: [] };
     if (segment.startsWith('label:'))
         return { sql: `${base} AND instr(labels, json_quote(?)) > 0 AND EXISTS (SELECT 1 FROM json_each(members.labels) WHERE value = ?)`, args: [segment.slice(6), segment.slice(6)] };
