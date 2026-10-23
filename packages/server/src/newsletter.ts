@@ -279,10 +279,13 @@ export async function processSends(env: Env, db: D1Database, options: AppOptions
     if (!transport) return stats;
     const deadline = Date.now() + budgetMs;
     const templates = new Map<string, NewsletterEmail>();
+    const { perMinute } = await newsletterSettings(env, db);
+    // A run handles at most the per-minute cap; the next cron run picks up the rest.
+    const cap = perMinute && perMinute > 0 ? Math.floor(perMinute) : Infinity;
 
     let leased: string | null = null;
     try {
-        while (Date.now() < deadline) {
+        while (Date.now() < deadline && stats.sent + stats.failed < cap) {
             const send = await db.prepare("SELECT * FROM sends WHERE status IN ('queued','sending') ORDER BY created_at LIMIT 1").first<any>();
             if (!send) break;
             // Claim the send for the next batch; if another worker holds it, leave it to them.
@@ -298,7 +301,7 @@ export async function processSends(env: Env, db: D1Database, options: AppOptions
                 .prepare(
                     "SELECT r.member_id, r.email, m.analytics_id FROM send_recipients r LEFT JOIN members m ON m.id = r.member_id WHERE r.send_id = ? AND r.status = 'pending' ORDER BY r.member_id LIMIT ?"
                 )
-                .bind(send.id, BATCH)
+                .bind(send.id, Math.min(BATCH, cap - stats.sent - stats.failed))
                 .all<{ member_id: string; email: string; analytics_id: string | null }>();
             if (!batch.length) {
                 await finishSend(db, send.id);
