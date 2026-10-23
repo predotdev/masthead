@@ -75,7 +75,7 @@ export function SendDialog({ post, onClose }: { post: Post; onClose: () => void 
             <div class="send-grid">
                 <div class="stack">
                     {testMode ? <div class="note">Test mode is on: a newsletter goes only to the team members of the segment you pick. Subscribers get nothing.</div> : null}
-                    <Field label="Send to">
+                    <Field label="Send to" hint='People labeled "paused" are left out.'>
                         <select value={segment} onChange={e => setSegment(e.currentTarget.value)}>
                             <option value="all">All subscribers</option>
                             <option value="engaged">Subscribers who have opened an email</option>
