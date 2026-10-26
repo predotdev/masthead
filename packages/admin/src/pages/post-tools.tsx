@@ -85,7 +85,8 @@ export function SearchPanel(props: { draft: { id?: string; title: string; slug: 
     const d = props.draft;
     const checks = seoChecks(d, props.getHtml());
     const passed = checks.filter(c => c.ok).length;
-    const image = d.ogImage || d.featureImage;
+    // A share image set by hand wins; the cover is shared only when posts don't all get a card.
+    const image = d.ogImage || (session.value?.site.everyPostCard ? null : d.featureImage);
     // Without an image the post is shared with a drawn card: show it, redrawn once the title settles.
     const [cardTitle, setCardTitle] = useState(d.ogTitle || d.title);
     useEffect(() => {

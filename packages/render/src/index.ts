@@ -7,5 +7,5 @@ export { headTags, blogPostingLd, breadcrumbLd, blogLd, collectionLd, profileLd,
 export { rss, urlset, sitemapIndex } from './feeds';
 export { llmsFull, llmsTxt, markdownCopy } from './llms';
 export type { LlmsEntry, LlmsLinks } from './llms';
-export { escapeHtml, plainText, autoExcerpt, readingMinutes, wordCount, tagLinks, shortHash } from './util';
-export { postShareCard, shareCardSite, themeAssetsVersion } from './site';
+export { escapeHtml, plainText, autoExcerpt, readingMinutes, sentenceSummary, wordCount, tagLinks, shortHash } from './util';
+export { postShareCard, shareCardAlt, shareCardSite, shownAddress, themeAssetsVersion } from './site';

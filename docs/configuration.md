@@ -126,7 +126,7 @@ It saves `site`, `newsletter`, `ai`, `style` and `workflow`, adds `memory` entri
 | Field | What it does |
 | --- | --- |
 | `title`, `description`, `locale` | The publication's name, one-line description and language (default `en`). |
-| `metaTitle`, `metaDescription`, `ogTitle`, `ogDescription` | Title, description and share card for the front page, when they differ from the above. |
+| `metaTitle`, `metaDescription`, `ogTitle`, `ogDescription` | Title, description and share card for the front page, when they differ from the above. Shared, a page goes by its own name (`og:title`): the front page by `ogTitle`, else `appearance.hero.title`, else `title`; a post by its `ogTitle` or title, a topic by its `ogTitle` or name, an author by their name. `metaTitle` stays in `<title>`. |
 | `logo`, `icon`, `shareImage` | Logo in the header and footer, favicon, and the default share image for pages without their own. |
 | `accentColor` | Brand color for links and buttons. |
 | `twitter` | The publication's X handle, for share cards. |
@@ -138,6 +138,7 @@ It saves `site`, `newsletter`, `ai`, `style` and `workflow`, adds `memory` entri
 | `appearance.backdrop` | A backdrop behind the header: an `image`, an optional `mobileImage` and twinkling `sparkles`. Inverted in the light scheme. |
 | `appearance.headerCta` | A button at the end of the header, with an optional `signedIn` variant chosen by a cookie your product sets. |
 | `appearance.subscribe` | Title and text of the signup band. |
+| `appearance.shareCards` | The share cards drawn for pages without a share image of their own. `design`: `centered` (the default; the logo and title on the night sky) or `left` (the logo and a trail such as `ACME · BLOG · TOPIC` on top, the headline and a support line, then the byline or post count and the page's address under a hairline, on a sky of still stars). `everyPost`: posts and pages with a cover image are shared with a card too; the cover stays on the page, and an `ogImage` set on the post still wins. `home`: the front page card's `title` (default: `appearance.hero.title`, then `title`), a dimmer second line `dim` (left design) and `text` (default: the front page's share description). |
 | `publisher` | The organization in structured data: `name`, `url`, `logo`, `sameAs`, `description`, `knowsAbout`. Defaults to the site. Every page carries it as a short entity with a stable `@id`; the front page carries the full one. |
 | `about` | A short paragraph on who publishes the blog and what they do. It leads `llms.txt` and `llms-full.txt`, closes every post's Markdown copy, and is the RSS channel description, so a model that reads any one of them knows who is speaking. |
 | `offerings` | What the publisher offers, as `{ name, url, description }`. Listed under About in `llms.txt` and published as offers on the organization. |

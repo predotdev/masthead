@@ -1,5 +1,5 @@
 import type { AspectRatio, ModelKind, Post, StaffRole } from '@masthead/core';
-import { postShareCard, readingMinutes, renderBody, renderSite, shareCardSite, tagLinks } from '@masthead/render';
+import { postShareCard, readingMinutes, renderBody, renderSite, sentenceSummary, shareCardSite, tagLinks } from '@masthead/render';
 import { addIdeas, assist, draft, draftIdea, draftIdeaStream, draftStream, edit, editStream, image, imageStream, listIdeas, listModels, meta, metaStream, saveIdeaDraft, startVideo, unfurl, videoStatus } from './ai';
 import { autoTag, tagUntagged, wantsAutoTags } from './autotag';
 import { backupRoutes } from './backup';
@@ -144,7 +144,12 @@ export function adminRoutes(): Router<A> {
     r.get('/me', async (_req, ctx) => {
         const p = me(ctx);
         const site = await siteSettings(ctx.env, ctx.db);
-        return json({ user: p, site: { title: site.title, url: site.url, icon: site.icon ?? null }, appUrl: appUrl(ctx.env), testMode: testMode(ctx.env) });
+        return json({
+            user: p,
+            site: { title: site.title, url: site.url, icon: site.icon ?? null, everyPostCard: Boolean(site.appearance?.shareCards?.everyPost) },
+            appUrl: appUrl(ctx.env),
+            testMode: testMode(ctx.env)
+        });
     });
 
     // ---------------------------------------------------------- posts
@@ -309,7 +314,7 @@ export function adminRoutes(): Router<A> {
     });
 
     /**
-     * The share card a post without a cover gets, as the editor has it now: `title` is the title being
+     * The share card a post without a cover (or every post, with appearance.shareCards.everyPost) gets, as the editor has it now: `title` is the title being
      * typed. Drawn on request and never stored (the site's cards are drawn from what is published).
      */
     r.get('/posts/:id/card', async (_req, ctx, { id }) => {
@@ -318,11 +323,13 @@ export function adminRoutes(): Router<A> {
         await canEdit(ctx, post);
         const [site, tags, staff] = await Promise.all([siteSettings(ctx.env, ctx.db), listTags(ctx.db), listStaff(ctx.db)]);
         const title = (ctx.url.searchParams.get('title') ?? '').trim().slice(0, 300);
+        const rendered = renderBody(post);
         const card = postShareCard(
             { ...post, title: title || post.title, ogTitle: title ? null : post.ogTitle, publishedAt: post.publishedAt ?? now() },
             post.tags.map(t => tags.find(x => x.id === t)).filter((t): t is (typeof tags)[number] => t?.visibility === 'public'),
             post.authors.map(a => staff.find(s => s.id === a)).filter((a): a is (typeof staff)[number] => !!a),
-            readingMinutes(renderBody(post))
+            readingMinutes(rendered),
+            { site, summary: sentenceSummary(rendered) }
         );
         const { paintCard } = await import('./cards');
         return new Response(await paintCard(ctx, shareCardSite(site), card), { headers: { 'content-type': 'image/png', 'cache-control': 'private, max-age=300' } });
