@@ -52,6 +52,8 @@ export function headTags(h: HeadInput): string {
         meta('name', 'twitter:title', h.twitterTitle || h.title),
         meta('name', 'twitter:description', h.twitterDescription || h.description),
         h.twitterImage || image ? meta('name', 'twitter:image', h.twitterImage || image!) : '',
+        // The alt describes og:image, so it goes with twitter:image only when that is the same image.
+        !h.twitterImage && image && h.imageAlt ? meta('name', 'twitter:image:alt', h.imageAlt) : '',
         handle ? meta('name', 'twitter:site', handle) : '',
         h.authors?.length ? meta('name', 'twitter:label1', 'Written by') : '',
         h.authors?.length ? meta('name', 'twitter:data1', h.authors.join(', ')) : '',
