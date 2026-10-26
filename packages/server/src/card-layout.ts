@@ -11,8 +11,8 @@ import type { ShareCard, ShareCardSite } from '@masthead/core';
 
 export const CARD_WIDTH = 1200;
 export const CARD_HEIGHT = 630;
-/** Part of every card's address: change it with the design, and every card is drawn again. */
-export const CARD_DESIGN = '1';
+/** Part of every card's address, for both designs (centered here, left in card-left.ts): change it with either, and every card is drawn again. */
+export const CARD_DESIGN = '2';
 
 export interface CardImage {
     /** A data: URL satori can embed (PNG, JPEG or SVG). */

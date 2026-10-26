@@ -30,6 +30,13 @@ interface Appearance {
     headerCta?: { label: string; url: string; signedIn?: { cookie: string; label: string; url: string } | null } | null;
     hero?: { title?: string | null; text?: string | null } | null;
     subscribe?: { title?: string | null; text?: string | null } | null;
+    shareCards?: ShareCards | null;
+}
+
+interface ShareCards {
+    design?: 'centered' | 'left';
+    everyPost?: boolean;
+    home?: { title?: string | null; dim?: string | null; text?: string | null } | null;
 }
 
 const ICONS = ['', 'terminal', 'window', 'workflow', 'pointer', 'flask', 'book', 'rss', 'mail'];
@@ -201,7 +208,11 @@ export function AppearanceEditor({ value, onChange }: { value: Appearance; onCha
     const cta = value.headerCta ?? { label: '', url: '' };
     const hero = value.hero ?? {};
     const sub = value.subscribe ?? {};
+    const cards = value.shareCards ?? {};
+    const home = cards.home ?? {};
     const setCta = (c: typeof cta) => onChange({ ...value, headerCta: c.label || c.url ? c : null });
+    const setCards = (c: ShareCards) => onChange({ ...value, shareCards: c });
+    const setHome = (h: NonNullable<ShareCards['home']>) => setCards({ ...cards, home: h.title || h.dim || h.text ? h : null });
     return (
         <div class="stack">
             <div class="grid2">
@@ -268,6 +279,32 @@ export function AppearanceEditor({ value, onChange }: { value: Appearance; onCha
                     </Field>
                     <Field label="Tagline" hint="Blank: none.">
                         <input value={hero.text ?? ''} onInput={e => onChange({ ...value, hero: { ...hero, text: text(e.currentTarget.value) } })} />
+                    </Field>
+                </div>
+            </Group>
+            <Group title="Share cards">
+                <p class="muted small">The picture link previews show for pages without a share image of their own.</p>
+                <div class="grid2">
+                    <Field label="Design">
+                        <select value={cards.design ?? 'centered'} onChange={e => setCards({ ...cards, design: e.currentTarget.value as ShareCards['design'] })}>
+                            <option value="centered">Centered: the logo and title on the night sky</option>
+                            <option value="left">Left: a trail on top, the headline, a byline and address below</option>
+                        </select>
+                    </Field>
+                </div>
+                <label class="check">
+                    <input type="checkbox" checked={!!cards.everyPost} onChange={e => setCards({ ...cards, everyPost: e.currentTarget.checked })} /> Share every post with a card, also
+                    posts with a cover image (a share image set on the post still wins)
+                </label>
+                <div class="grid2">
+                    <Field label="Front page card headline" hint="Blank: the masthead title.">
+                        <input value={home.title ?? ''} placeholder="News from Acme" onInput={e => setHome({ ...home, title: text(e.currentTarget.value) })} />
+                    </Field>
+                    <Field label="Second line, set dimmer" hint="Left design. Blank: none.">
+                        <input value={home.dim ?? ''} onInput={e => setHome({ ...home, dim: text(e.currentTarget.value) })} />
+                    </Field>
+                    <Field label="Front page card text" hint="Blank: the front page's share description.">
+                        <input value={home.text ?? ''} onInput={e => setHome({ ...home, text: text(e.currentTarget.value) })} />
                     </Field>
                 </div>
             </Group>

@@ -5,7 +5,8 @@ export const base = location.pathname.replace(/admin(\/.*)?$/, '');
 
 export interface Me {
     user: { staffId: string; email: string; name: string; role: 'owner' | 'admin' | 'editor' | 'author' | 'contributor'; via: string };
-    site: { title: string; url: string; icon: string | null };
+    /** `everyPostCard`: posts are shared with a drawn card even when they have a cover (appearance.shareCards.everyPost). */
+    site: { title: string; url: string; icon: string | null; everyPostCard?: boolean };
     appUrl: string;
     testMode: boolean;
 }

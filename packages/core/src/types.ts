@@ -167,6 +167,28 @@ export interface Appearance {
     } | null;
     /** Heading and text of the newsletter signup band. */
     subscribe?: { title?: string | null; text?: string | null } | null;
+    /** The share cards drawn for pages without their own share image. */
+    shareCards?: ShareCardSettings | null;
+}
+
+export interface ShareCardSettings {
+    /**
+     * `centered` (the default): the logo and the page's title in the middle of the site's night sky.
+     * `left`: the logo and a trail of small capitals on top (site, section, the page's topic or kind),
+     * the headline and one support line set left, and a footer band with the byline or post count on
+     * the left and the page's address on the right, on a sky of still stars.
+     */
+    design?: 'centered' | 'left';
+    /**
+     * Every post and page is shared with a drawn card, also when it has a cover image (the cover
+     * stays on the page and in its structured data). A share image set by hand (ogImage) still wins.
+     */
+    everyPost?: boolean;
+    /**
+     * The front page's card. `title` defaults to the masthead title, then the site title; `dim`
+     * is a second headline line set dimmer (left design); `text` defaults to the share description.
+     */
+    home?: { title?: string | null; dim?: string | null; text?: string | null } | null;
 }
 
 export interface SiteSettings {
@@ -248,10 +270,17 @@ export interface ShareCard {
     date?: string | null;
     /** A line under the title: the blog's tagline, a topic's or author's description. */
     text?: string | null;
-    /** The bottom line, e.g. "Jane Doe · 6 min read". */
+    /**
+     * The bottom line, e.g. "Jane Doe · 6 min read". On the left design: the byline alone (the
+     * card adds the date) or a post count, e.g. "9 posts".
+     */
     meta?: string | null;
     /** The author's portrait on author cards. */
     image?: string | null;
+    /** A second headline line, set dimmer (left design). */
+    dim?: string | null;
+    /** The address the card shows, e.g. "example.com/blog/tag/news" (left design). */
+    address?: string | null;
 }
 
 /** What every card shares: the lockup and the sky. */
@@ -264,6 +293,10 @@ export interface ShareCardSite {
     backdrop?: string | null;
     locale: string;
     url: string;
+    /** The card design (appearance.shareCards.design); centered when unset. */
+    design?: 'centered' | 'left';
+    /** The left design's trail before each card's own part, e.g. ["Acme", "Blog"]. */
+    trail?: string[];
 }
 
 /** The cards of a published site by key; the server draws content/cards/<key>.png from it. */

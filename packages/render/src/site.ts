@@ -152,6 +152,8 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
     // Share cards for pages without their own image. A card's address changes with anything it
     // shows (its title, the logo, the design), so link previews pick up a new title.
     const shareCards = options.features?.shareCards;
+    const cardSettings = site.appearance?.shareCards ?? {};
+    const leftCards = cardSettings.design === 'left';
     const cards: Record<string, ShareCard> = {};
     const cardSite = shareCardSite(site);
     const cardSiteKey = JSON.stringify([shareCards?.version, cardSite]);
@@ -159,7 +161,7 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
         if (!shareCards) return null;
         const key = `${name.toLowerCase().replace(/[^a-z0-9-]+/g, '-').slice(0, 80)}-${shortHash(cardSiteKey + JSON.stringify(card))}`;
         cards[key] = card;
-        return { url: abs(`${basePath}content/cards/${key}.png`), size: CARD_SIZE, alt: card.title };
+        return { url: abs(`${basePath}content/cards/${key}.png`), size: CARD_SIZE, alt: shareCardAlt(card) };
     };
     /** A description for a topic or author page that has none: what it is, then its newest post titles. */
     const collectionSummary = (lead: string, items: { title: string }[]) => {
@@ -294,8 +296,9 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
         const authors = postAuthors(p);
         const description = fitMeta(f.summary || site.description);
         const coverSize = imageSizeOf(p.featureImage);
-        const shareImage = p.ogImage || p.featureImage;
-        const card = shareImage ? null : shareCard(p.slug, postShareCard(p, tags, authors, f.minutes));
+        // With every post on a card, only a share image set by hand stands in for it; the cover stays on the page.
+        const shareImage = p.ogImage || (cardSettings.everyPost ? null : p.featureImage);
+        const card = shareImage ? null : shareCard(p.slug, postShareCard(p, tags, authors, f.minutes, { site, summary: f.summary }));
         const view: PostView = {
             post: p,
             url: urls.post(p),
@@ -335,7 +338,8 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
                     canonical: p.canonicalUrl || url,
                     head: headTags({
                         site: metaSite,
-                        title: p.ogTitle || title,
+                        // Shared, a post goes by its own name; the search title (metaTitle) stays in <title>.
+                        title: p.ogTitle || p.title,
                         description: p.ogDescription || description,
                         canonical: p.canonicalUrl || url,
                         type: p.type === 'post' ? 'article' : 'website',
@@ -460,11 +464,11 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
         title: site.metaTitle || site.title,
         pagedTitle: site.metaTitle || site.title,
         description: site.metaDescription || site.description,
-        shareTitle: site.ogTitle,
+        shareTitle: site.ogTitle || site.appearance?.hero?.title || site.title,
         shareDescription: homeShareDescription(site),
         type: 'website',
         // The front page's share image is the site's, when it has one.
-        card: site.shareImage ? undefined : { name: 'home', card: { kind: 'home', title: site.appearance?.hero?.title || site.title, text: homeShareDescription(site) || site.description } },
+        card: site.shareImage ? undefined : { name: 'home', card: homeShareCard(site, posts.length) },
         jsonLd: [blogLd(metaSite), websiteLd(metaSite, abs(urls.search)), organizationLd(metaSite)]
     }))
         (yield file, count++);
@@ -478,12 +482,18 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
             heading: t.name,
             title: t.metaTitle || `${t.name} - ${site.title}`,
             description: t.description || collectionSummary(`Posts about ${t.name} from ${metaSite.title}`, byTag.get(t.id)!),
-            shareTitle: t.ogTitle,
+            // Shared, a topic goes by its name alone; <title> keeps the site's name after it.
+            shareTitle: t.ogTitle || t.name,
             shareDescription: t.ogDescription,
             type: 'website',
             image: tagImage,
             imageAlt: t.featureImageAlt,
-            card: tagImage ? undefined : { name: `tag-${t.slug}`, card: { kind: 'tag', title: t.name, eyebrow: 'Topic', text: t.description, meta: postCount(byTag.get(t.id)!.length) } },
+            card: tagImage
+                ? undefined
+                : {
+                      name: `tag-${t.slug}`,
+                      card: { kind: 'tag', title: t.name, eyebrow: 'Topic', text: t.description, meta: postCount(byTag.get(t.id)!.length), ...(leftCards ? { address: shownAddress(abs(urls.tag(t))) } : {}) }
+                  },
             tag: t,
             seo: { title: t.metaTitle, description: t.metaDescription, twitterTitle: t.twitterTitle, twitterDescription: t.twitterDescription, twitterImage: t.twitterImage, canonical: t.canonicalUrl, noindex: t.noindex },
             jsonLd: [collectionLd(t.metaTitle || t.name, abs(urls.tag(t)), fitMeta(seoDescription), absolute(tagImage))]
@@ -498,9 +508,23 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
             heading: a.name,
             title: a.metaTitle || `${a.name} - ${site.title}`,
             description: a.bio || collectionSummary(`Posts by ${a.name} on ${metaSite.title}`, byAuthor.get(a.id)!),
+            shareTitle: a.name,
             type: 'profile',
             image: authorImage,
-            card: a.ogImage ? undefined : { name: `author-${a.slug}`, card: { kind: 'author', title: a.name, eyebrow: 'Author', text: a.bio, image: absolute(a.profileImage), meta: postCount(byAuthor.get(a.id)!.length) } },
+            card: a.ogImage
+                ? undefined
+                : {
+                      name: `author-${a.slug}`,
+                      card: {
+                          kind: 'author',
+                          title: a.name,
+                          eyebrow: 'Author',
+                          text: a.bio,
+                          image: absolute(a.profileImage),
+                          meta: postCount(byAuthor.get(a.id)!.length),
+                          ...(leftCards ? { address: shownAddress(abs(urls.author(a))) } : {})
+                      }
+                  },
             author: a,
             seo: { title: a.metaTitle, description: a.metaDescription, noindex: a.noindex },
             jsonLd: [profileLd({ ...a, profileImage: absolute(a.profileImage) }, abs(urls.author(a)))]
@@ -674,16 +698,60 @@ function headingIds(html: string): string {
     });
 }
 
-/** What every share card of a site shows: its lockup and sky, with absolute addresses. */
+/** What every share card of a site shows: its lockup and sky (or, on the left design, its trail), with absolute addresses. */
 export function shareCardSite(site: SiteSettings): ShareCardSite {
     const origin = new URL(site.url).origin;
     const absolute = (u: string | null | undefined) => (u && u.startsWith('/') && !u.startsWith('//') ? `${origin}${u}` : (u ?? null));
-    return { title: site.title, wordmark: site.appearance?.hero?.title || null, logo: absolute(site.logo), backdrop: absolute(site.appearance?.backdrop?.image), locale: site.locale, url: site.url };
+    const wordmark = site.appearance?.hero?.title || null;
+    if (site.appearance?.shareCards?.design === 'left') {
+        // The left design draws its own sky: the backdrop stays out, so changing it redraws no card.
+        return { title: site.title, wordmark, logo: absolute(site.logo), locale: site.locale, url: site.url, design: 'left', trail: cardTrail(site.title, wordmark) };
+    }
+    return { title: site.title, wordmark, logo: absolute(site.logo), backdrop: absolute(site.appearance?.backdrop?.image), locale: site.locale, url: site.url };
 }
 
-/** A post's share card: its title, primary topic, date and byline (a page shows only its title). */
-export function postShareCard(p: Post, tags: Tag[], authors: Author[], minutes: number): ShareCard {
+/**
+ * The left design's trail before each card's own part: the site's name and what it is, read from the
+ * masthead title the way the front page sets it ("Acme blog" gives Acme, blog). A masthead title of
+ * its own stands alone; without one the trail is the site title and "Blog".
+ */
+function cardTrail(title: string, wordmark: string | null): string[] {
+    const words = wordmark?.trim();
+    if (!words) return [title, 'Blog'];
+    if (title && words.toLowerCase().startsWith(`${title.toLowerCase()} `)) return [title, words.slice(title.length + 1).trim()];
+    return [words];
+}
+
+/** An address as a card shows it: no scheme, "www." or trailing slash, e.g. "example.com/blog/tag/news". */
+export function shownAddress(url: string): string {
+    let shown = url.replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/[?#].*$/, '').replace(/\/+$/, '');
+    try {
+        shown = decodeURI(shown);
+    } catch {
+        // Keep it encoded.
+    }
+    return shown;
+}
+
+/**
+ * A post's share card: its title, primary topic, date and byline (a page shows only its title). On the
+ * left design it also carries a support line (`summary`, the page's description, unless the post has
+ * whole share or excerpt text of its own) and the blog's address.
+ */
+export function postShareCard(p: Post, tags: Tag[], authors: Author[], minutes: number, extra: { site?: SiteSettings; summary?: string | null } = {}): ShareCard {
     const post = p.type === 'post';
+    if (extra.site?.appearance?.shareCards?.design === 'left') {
+        const text = [p.ogDescription, p.customExcerpt, p.metaDescription].find(t => t?.trim() && !isTruncated(t)) || extra.summary || null;
+        return {
+            kind: 'post',
+            title: p.ogTitle || p.title,
+            eyebrow: post ? tags[0]?.name : null,
+            date: post ? p.publishedAt : null,
+            meta: post ? authors.map(a => a.name).join(', ') || null : null,
+            text,
+            address: shownAddress(extra.site.url)
+        };
+    }
     return {
         kind: 'post',
         title: p.ogTitle || p.title,
@@ -691,6 +759,24 @@ export function postShareCard(p: Post, tags: Tag[], authors: Author[], minutes: 
         date: post ? p.publishedAt : null,
         meta: post ? [authors.map(a => a.name).join(', '), `${minutes} min read`].filter(Boolean).join(' · ') : null
     };
+}
+
+/** The front page's share card: appearance.shareCards.home, else the masthead and the share description. */
+function homeShareCard(site: SiteSettings, posts: number): ShareCard {
+    const home = site.appearance?.shareCards?.home ?? {};
+    const title = home.title?.trim() || site.appearance?.hero?.title || site.title;
+    const text = home.text?.trim() || homeShareDescription(site) || site.description;
+    if (site.appearance?.shareCards?.design !== 'left') return { kind: 'home', title, text };
+    return { kind: 'home', title, dim: home.dim?.trim() || null, text, meta: posts === 1 ? '1 post' : `${posts} posts`, address: shownAddress(site.url) };
+}
+
+/** A share card's alt text: its headline, then its support line. At most 420 characters (X's limit). */
+export function shareCardAlt(card: ShareCard): string {
+    const sentence = (t: string) => (/[.!?,:]$/.test(t) ? t : `${t}.`);
+    const parts = [sentence([card.title, card.dim].filter(Boolean).join(' ')), (card.text ?? '').replace(/\*\*/g, '')];
+    let alt = parts.filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+    if (alt.length > 420) alt = `${alt.slice(0, 419).replace(/\s+\S*$/, '')}\u2026`;
+    return alt;
 }
 
 /** Changes whenever the theme's stylesheet or files change, so their URLs can be cached for good. */

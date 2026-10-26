@@ -4,8 +4,12 @@
  * stored for good; a card's address changes whenever what it shows does.
  *
  * Satori lays the card out and resvg paints it, both WebAssembly bundled with
- * the Worker and loaded only here. Inter comes from a font CDN once and stays
- * in R2, as do the site's sky, logo and portraits once sized for the card.
+ * the Worker and loaded only here. The fonts (Inter, and JetBrains Mono for the
+ * left design) come from a font CDN once and stay in R2, as do the site's sky,
+ * logo and portraits once sized for the card.
+ *
+ * Two designs: centered (card-layout.ts, the default) and left (card-left.ts),
+ * picked by the site's appearance.shareCards.design.
  */
 import type { ShareCard, ShareCards, ShareCardSite } from '@masthead/core';
 import { shortHash } from '@masthead/render';
@@ -13,6 +17,7 @@ import { initWasm, Resvg } from '@resvg/resvg-wasm';
 import resvgWasm from '@resvg/resvg-wasm/index_bg.wasm';
 import satori, { init as initSatori } from 'satori/standalone';
 import yogaWasm from 'satori/yoga.wasm';
+import { fitCard, LEFT_FONTS, type LeftCard, leftCard, cardTree as leftTree, skySvg, svgDataUrl } from './card-left';
 import { CARD_DESIGN, CARD_HEIGHT, CARD_WIDTH, type CardImage, cardTree, drawable, skyTree, subsetsFor } from './card-layout';
 import type { Ctx, Env } from './env';
 import { imageSize } from './images';
@@ -21,8 +26,9 @@ import { SITE_PREFIX } from './publish';
 
 /** R2 prefix for what cards are made from: fonts, the sky, sized images. Never served. */
 const PARTS = 'cards/';
-/** Inter, as the Latin, Cyrillic, Greek and Vietnamese subsets fontsource publishes (WOFF: satori reads no WOFF2). */
-const FONT_CDN = 'https://cdn.jsdelivr.net/npm/@fontsource/inter@5.3.0/files/';
+/** Fonts as the Latin, Cyrillic, Greek and Vietnamese subsets fontsource publishes (WOFF: satori reads no WOFF2). */
+const FONT_CDN = 'https://cdn.jsdelivr.net/npm/@fontsource/';
+const INTER = { pkg: 'inter', version: '5.3.0' } as const;
 const WEIGHTS = [300, 400, 600] as const;
 
 const memo = new Map<string, Promise<unknown>>();
@@ -44,14 +50,17 @@ export async function drawCard(ctx: Ctx, key: string): Promise<Uint8Array | null
 
 /** One card as a PNG, stored nowhere (the editor's preview uses it as is). */
 export async function paintCard(ctx: Ctx, raw: ShareCardSite, card: ShareCard): Promise<Uint8Array> {
-    const site: ShareCardSite = { ...raw, title: drawable(raw.title), wordmark: raw.wordmark && drawable(raw.wordmark) };
+    const site: ShareCardSite = { ...raw, title: drawable(raw.title), wordmark: raw.wordmark && drawable(raw.wordmark), trail: raw.trail?.map(drawable).filter(Boolean) };
     const clean: ShareCard = {
         ...card,
         title: drawable(card.title) || drawable(site.title),
         eyebrow: card.eyebrow && drawable(card.eyebrow),
         text: card.text && drawable(card.text),
-        meta: card.meta && drawable(card.meta)
+        meta: card.meta && drawable(card.meta),
+        dim: card.dim && drawable(card.dim),
+        address: card.address && drawable(card.address)
     };
+    if (site.design === 'left') return paintLeft(ctx, site, leftCard(site, clean), clean.image);
     const [sky, logo, portrait, fonts] = await Promise.all([
         skyFor(ctx, site.backdrop ?? null),
         site.logo ? picture(ctx, site.logo, { height: 192 }, 'image/png') : null,
@@ -60,6 +69,26 @@ export async function paintCard(ctx: Ctx, raw: ShareCardSite, card: ShareCard): 
         engine()
     ]);
     return paint(await satori(cardTree(site, clean, { sky, logo, portrait }), { width: CARD_WIDTH, height: CARD_HEIGHT, fonts }));
+}
+
+/** A card in the left design: its text fitted with satori's measurements, then drawn on the still sky. */
+async function paintLeft(ctx: Ctx, site: ShareCardSite, card: LeftCard, image: string | null | undefined): Promise<Uint8Array> {
+    const [mark, portrait, fonts] = await Promise.all([
+        site.logo ? picture(ctx, site.logo, { height: 192 }, 'image/png') : null,
+        image ? picture(ctx, image, { width: 264, height: 264, fit: 'cover' }, 'image/jpeg') : null,
+        leftFontsFor(ctx.env, [card.title, card.dim, card.text, ...card.eyebrow, ...card.meta]),
+        engine()
+    ]);
+    const art = { sky: leftSky(), mark, portrait };
+    const fit = await fitCard(card, art, satori, fonts);
+    return paint(await satori(leftTree(card, art, fit), { width: CARD_WIDTH, height: CARD_HEIGHT, fonts }));
+}
+
+let leftSkyUrl: string | null = null;
+/** The left design's sky: one SVG, the same on every card. */
+function leftSky(): string {
+    leftSkyUrl ??= svgDataUrl(skySvg());
+    return leftSkyUrl;
 }
 
 function paint(svg: string): Uint8Array {
@@ -181,16 +210,28 @@ async function fontsFor(env: Env, texts: (string | null | undefined)[]) {
             name: subset === 'latin' ? 'Inter' : `Inter ${subset}`,
             weight,
             style: 'normal' as const,
-            data: await font(env, `inter-${subset}-${weight}-normal.woff`)
+            data: await font(env, INTER, `inter-${subset}-${weight}-normal.woff`)
         }))
     );
 }
 
-function font(env: Env, file: string): Promise<ArrayBuffer> {
+/** The left design's fonts: Inter in the subsets its text needs, and JetBrains Mono (Latin; other letters fall back to Inter). */
+async function leftFontsFor(env: Env, texts: (string | null | undefined)[]) {
+    const { sans, mono } = LEFT_FONTS;
+    const files = [
+        ...subsetsFor(texts).flatMap(subset => sans.weights.map(weight => ({ f: sans, subset, weight, name: subset === 'latin' ? sans.family : `${sans.family} ${subset}` }))),
+        ...mono.weights.map(weight => ({ f: mono, subset: 'latin', weight, name: mono.family }))
+    ];
+    return Promise.all(
+        files.map(async ({ f, subset, weight, name }) => ({ name, weight, style: 'normal' as const, data: await font(env, f, `${f.pkg}-${subset}-${weight}-normal.woff`) }))
+    );
+}
+
+function font(env: Env, from: { pkg: string; version: string }, file: string): Promise<ArrayBuffer> {
     return once(`${PARTS}fonts/${file}`, async key => {
         const kept = await env.BUCKET.get(key);
         if (kept) return kept.arrayBuffer();
-        const res = await fetch(`${FONT_CDN}${file}`, { signal: AbortSignal.timeout(10_000) });
+        const res = await fetch(`${FONT_CDN}${from.pkg}@${from.version}/files/${file}`, { signal: AbortSignal.timeout(10_000) });
         if (!res.ok) throw new Error(`${file}: HTTP ${res.status}`);
         const bytes = await res.arrayBuffer();
         await env.BUCKET.put(key, bytes, { httpMetadata: { contentType: 'font/woff' } });
