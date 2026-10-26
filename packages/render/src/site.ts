@@ -735,13 +735,13 @@ export function shownAddress(url: string): string {
 
 /**
  * A post's share card: its title, primary topic, date and byline (a page shows only its title). On the
- * left design it also carries a support line (`summary`, the page's description, unless the post has
- * whole share or excerpt text of its own) and the blog's address.
+ * left design it also carries a support line (the post's whole share, excerpt or meta description, else
+ * the whole sentences of `summary`, its description) and the blog's address.
  */
 export function postShareCard(p: Post, tags: Tag[], authors: Author[], minutes: number, extra: { site?: SiteSettings; summary?: string | null } = {}): ShareCard {
     const post = p.type === 'post';
     if (extra.site?.appearance?.shareCards?.design === 'left') {
-        const text = [p.ogDescription, p.customExcerpt, p.metaDescription].find(t => t?.trim() && !isTruncated(t)) || extra.summary || null;
+        const text = [p.ogDescription, p.customExcerpt, p.metaDescription].find(t => t?.trim() && !isTruncated(t)) || wholeSentences(extra.summary);
         return {
             kind: 'post',
             title: p.ogTitle || p.title,
@@ -759,6 +759,15 @@ export function postShareCard(p: Post, tags: Tag[], authors: Author[], minutes: 
         date: post ? p.publishedAt : null,
         meta: post ? [authors.map(a => a.name).join(', '), `${minutes} min read`].filter(Boolean).join(' · ') : null
     };
+}
+
+/** Text without the sentence a tool cut off ("...", "…"): the whole sentences before it, else none. */
+function wholeSentences(text: string | null | undefined): string | null {
+    const t = text?.replace(/\s+/g, ' ').trim();
+    if (!t) return null;
+    if (!isTruncated(t)) return t;
+    const kept = t.split(/(?<=[.!?])\s+/).slice(0, -1).join(' ');
+    return kept || null;
 }
 
 /** The front page's share card: appearance.shareCards.home, else the masthead and the share description. */
