@@ -221,6 +221,8 @@ function toPreview(res: Response, env: Env, base: string, at: string): Response 
         .on('audio[src]', attr('src'))
         .on('form[action]', attr('action'))
         .on('meta[property="og:image"]', attr('content', true))
+        .on('meta[property="og:video"]', attr('content', true))
+        .on('meta[property="og:video:secure_url"]', attr('content', true))
         .on('meta[name="twitter:image"]', attr('content', true))
         .on('html', {
             element(el) {

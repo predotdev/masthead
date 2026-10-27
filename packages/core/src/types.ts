@@ -74,6 +74,12 @@ export interface Post {
     ogImage?: string | null;
     ogTitle?: string | null;
     ogDescription?: string | null;
+    /**
+     * A looping MP4 for link previews (og:video) on a post, the size of its share
+     * image and under 10 MB for iMessage. Apps that play no video show the share
+     * image, so the video's first frame should be that image.
+     */
+    ogVideo?: string | null;
     twitterImage?: string | null;
     twitterTitle?: string | null;
     twitterDescription?: string | null;

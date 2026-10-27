@@ -100,6 +100,7 @@ interface PostRow {
     og_title: string | null;
     og_description: string | null;
     og_image: string | null;
+    og_video?: string | null;
     twitter_title: string | null;
     twitter_description: string | null;
     twitter_image: string | null;
@@ -132,6 +133,7 @@ function toPost(r: PostRow, tags: string[], authors: string[]): Post {
         ogTitle: r.og_title,
         ogDescription: r.og_description,
         ogImage: r.og_image,
+        ogVideo: r.og_video ?? null,
         twitterTitle: r.twitter_title,
         twitterDescription: r.twitter_description,
         twitterImage: r.twitter_image,
@@ -189,7 +191,7 @@ export async function listPosts(db: D1Database, q: PostQuery): Promise<{ items: 
         db
             .prepare(
                 `SELECT id, type, slug, title, status, body_format, NULL AS markdown, NULL AS html, custom_excerpt, feature_image, feature_image_alt, feature_image_caption,
-                 meta_title, meta_description, og_title, og_description, og_image, twitter_title, twitter_description, twitter_image, canonical_url,
+                 meta_title, meta_description, og_title, og_description, og_image, og_video, twitter_title, twitter_description, twitter_image, canonical_url,
                  featured, newsletter, published_at, created_at, updated_at, target_date
                  FROM posts ${clause} ORDER BY CASE status WHEN 'draft' THEN 0 WHEN 'scheduled' THEN 1 ELSE 2 END, COALESCE(published_at, updated_at) DESC LIMIT ? OFFSET ?`
             )
@@ -233,6 +235,7 @@ const POST_FIELDS: [keyof Post, string][] = [
     ['ogTitle', 'og_title'],
     ['ogDescription', 'og_description'],
     ['ogImage', 'og_image'],
+    ['ogVideo', 'og_video'],
     ['twitterTitle', 'twitter_title'],
     ['twitterDescription', 'twitter_description'],
     ['twitterImage', 'twitter_image'],
@@ -484,7 +487,7 @@ export async function deleteStaff(db: D1Database, id: string): Promise<void> {
 
 /** Every column but the bodies, for a snapshot that loads bodies on demand. */
 const POST_META_COLUMNS =
-    'id, type, slug, title, status, body_format, NULL AS markdown, NULL AS html, custom_excerpt, feature_image, feature_image_alt, feature_image_caption, meta_title, meta_description, og_title, og_description, og_image, twitter_title, twitter_description, twitter_image, canonical_url, featured, newsletter, published_at, created_at, updated_at';
+    'id, type, slug, title, status, body_format, NULL AS markdown, NULL AS html, custom_excerpt, feature_image, feature_image_alt, feature_image_caption, meta_title, meta_description, og_title, og_description, og_image, og_video, twitter_title, twitter_description, twitter_image, canonical_url, featured, newsletter, published_at, created_at, updated_at';
 
 /**
  * Everything the site is built from. With `bodies: false` the posts come

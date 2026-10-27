@@ -346,6 +346,8 @@ export async function* renderSite(snapshot: Snapshot, options: BuildOptions, bod
                         image: absolute(shareImage) ?? card?.url,
                         imageAlt: card ? card.alt : p.featureImageAlt,
                         imageSize: card ? card.size : imageSizeOf(shareImage),
+                        // Posts only: LinkedIn is served the page without it, as an article (public.ts).
+                        video: p.type === 'post' ? absolute(p.ogVideo) : null,
                         authors: p.type === 'post' ? authors.map(a => a.name) : undefined,
                         publishedAt: p.type === 'post' ? p.publishedAt : null,
                         updatedAt: p.type === 'post' ? p.updatedAt : null,

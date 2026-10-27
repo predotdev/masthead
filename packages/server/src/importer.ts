@@ -148,7 +148,7 @@ export async function importMedia(ctx: Ctx, items: { url: string; path: string }
 export async function rewriteUrls(ctx: Ctx, from: string, to: string) {
     if (!from || from.length < 8) throw new HttpError(400, 'from must be a URL prefix.');
     const db = ctx.db;
-    const cols = ['markdown', 'html', 'feature_image', 'og_image', 'twitter_image'];
+    const cols = ['markdown', 'html', 'feature_image', 'og_image', 'og_video', 'twitter_image'];
     const results = await db.batch([
         // instr, not LIKE: D1 rejects LIKE patterns as long as a storage URL.
         ...cols.map(c => db.prepare(`UPDATE posts SET ${c} = REPLACE(${c}, ?, ?) WHERE instr(${c}, ?) > 0`).bind(from, to, from)),

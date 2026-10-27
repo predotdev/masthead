@@ -11,6 +11,12 @@ export interface HeadInput {
     imageAlt?: string | null;
     /** The share image's size, when known (for og:image:width and og:image:height). */
     imageSize?: { width: number; height: number } | null;
+    /**
+     * A looping MP4 the size of the share image (og:video), which iMessage and
+     * Discord play. It goes out only with a share image, which every other app
+     * shows instead.
+     */
+    video?: string | null;
     /** Author names, shown as "Written by" in link previews on Slack and X. */
     authors?: string[];
     publishedAt?: string | null;
@@ -33,10 +39,12 @@ export interface HeadInput {
 export function headTags(h: HeadInput): string {
     const handle = h.site.twitter ? (h.site.twitter.startsWith('@') ? h.site.twitter : `@${h.site.twitter}`) : null;
     const image = h.image ?? h.site.shareImage ?? null;
+    const video = image ? h.video : null;
     const tags: string[] = [
         h.noindex ? '<meta name="robots" content="noindex">' : '<meta name="robots" content="max-image-preview:large, max-snippet:-1, max-video-preview:-1">',
         meta('property', 'og:site_name', h.site.title),
-        meta('property', 'og:type', h.type),
+        // Discord plays og:video only on a video type.
+        meta('property', 'og:type', video ? 'video.other' : h.type),
         meta('property', 'og:title', h.title),
         meta('property', 'og:description', h.description),
         meta('property', 'og:url', h.canonical),
@@ -45,6 +53,11 @@ export function headTags(h: HeadInput): string {
         image && h.imageAlt ? meta('property', 'og:image:alt', h.imageAlt) : '',
         image && h.imageSize ? meta('property', 'og:image:width', String(h.imageSize.width)) : '',
         image && h.imageSize ? meta('property', 'og:image:height', String(h.imageSize.height)) : '',
+        video ? meta('property', 'og:video', video) : '',
+        video ? meta('property', 'og:video:secure_url', video) : '',
+        video ? meta('property', 'og:video:type', 'video/mp4') : '',
+        video && h.imageSize ? meta('property', 'og:video:width', String(h.imageSize.width)) : '',
+        video && h.imageSize ? meta('property', 'og:video:height', String(h.imageSize.height)) : '',
         h.publishedAt ? meta('property', 'article:published_time', h.publishedAt) : '',
         h.updatedAt ? meta('property', 'article:modified_time', h.updatedAt) : '',
         ...(h.tags ?? []).map(t => meta('property', 'article:tag', t.name)),
