@@ -40,7 +40,27 @@ function legacyShape(path: string, base: string): string | null {
     return null;
 }
 
+/** LinkedIn shows no image at all for a page with og:video, so its crawler gets the post without one, as the article it is. */
+const LINKEDIN = /LinkedInBot/i;
+
 export async function serveSite(req: Request, ctx: Ctx): Promise<Response> {
+    const res = await siteFile(req, ctx);
+    if (!res.body || !LINKEDIN.test(req.headers.get('user-agent') ?? '') || !(res.headers.get('content-type') ?? '').startsWith('text/html')) return res;
+    return new HTMLRewriter()
+        .on('meta[property^="og:video"]', {
+            element(el) {
+                el.remove();
+            }
+        })
+        .on('meta[property="og:type"][content="video.other"]', {
+            element(el) {
+                el.setAttribute('content', 'article');
+            }
+        })
+        .transform(res);
+}
+
+async function siteFile(req: Request, ctx: Ctx): Promise<Response> {
     const base = ctx.basePath;
     let path = decodeURIComponent(ctx.url.pathname);
     if (path === base.replace(/\/$/, '')) return redirect(base, 301);

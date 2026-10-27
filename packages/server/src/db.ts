@@ -185,7 +185,9 @@ const MIGRATIONS: string[][] = [
         `ALTER TABLE staff ADD COLUMN meta_description TEXT`,
         `ALTER TABLE staff ADD COLUMN og_image TEXT`,
         `ALTER TABLE staff ADD COLUMN noindex INTEGER NOT NULL DEFAULT 0`
-    ]
+    ],
+    // v13: a post's share video (og:video), for the link previews that play one.
+    [`ALTER TABLE posts ADD COLUMN og_video TEXT`]
 ];
 
 let migrated: Promise<void> | null = null;
